@@ -1,30 +1,31 @@
-# Programación de Capacitaciones — Explo Drilling Perú
+# Programación de Capacitaciones — Etapa 2
 
-Etapa 1 del aplicativo corporativo para gestión de capacitaciones.
+Versión con autenticación real mediante Supabase Auth.
 
-## No necesitas instalar programas
+## Qué incluye
 
-Este proyecto es HTML/CSS/JavaScript estático y puede publicarse directamente con GitHub Pages desde el navegador.
+- Pantalla de inicio de sesión con correo y contraseña.
+- Sesión persistente al recargar la página.
+- Validación del perfil en `public.profiles`.
+- Bloqueo de usuarios inactivos.
+- Visualización del nombre, rol, cargo y correo del usuario autenticado.
+- Botón de cierre de sesión.
+- Ocultamiento del módulo Usuarios para roles distintos de ADMIN.
+- Conteos reales de trabajadores, proyectos y sedes según RLS.
 
-## Archivos principales
+## Archivos a reemplazar en GitHub
 
-- `index.html`: interfaz principal.
-- `styles.css`: diseño corporativo.
-- `app.js`: navegación inicial.
-- `config.js`: configuración pública de Supabase (se completará en Etapa 2).
-- `assets/logo-explo.jpg`: logo corporativo.
+Sube todos los archivos de esta carpeta al repositorio, reemplazando los existentes.
+Mantén `assets/logo-explo.jpg` dentro de la carpeta `assets`.
 
-## Publicar en GitHub Pages
+## Seguridad
 
-1. Crea un repositorio privado o público en GitHub.
-2. Sube todos estos archivos manteniendo las carpetas.
-3. En GitHub abre **Settings → Pages**.
-4. En **Build and deployment**, selecciona **Deploy from a branch**.
-5. Selecciona la rama `main` y la carpeta `/ (root)`.
-6. Guarda.
+`config.js` contiene únicamente la URL pública y la publishable key de Supabase. No debe contener nunca `service_role`, secret key ni la contraseña de la base de datos.
 
-> Nota: GitHub Pages de repositorios privados depende del plan/configuración de la cuenta. Si GitHub no permite Pages en un repositorio privado, podemos usar otra opción de despliegue manteniendo el código privado.
+## Prueba
 
-## Supabase
-
-En Etapa 2 se creará la base de datos y se completará `config.js` con la URL del proyecto y la clave pública. Nunca se debe colocar una clave `service_role` o secreta en archivos públicos.
+1. Espera a que GitHub Pages publique el nuevo commit.
+2. Abre la URL del aplicativo.
+3. Debe aparecer la pantalla de login.
+4. Inicia sesión con el usuario creado en Supabase Authentication.
+5. Debe aparecer el dashboard con el perfil ADMIN y opción `Cerrar sesión`.

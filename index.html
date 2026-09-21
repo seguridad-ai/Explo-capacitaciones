@@ -11,7 +11,61 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div id="authLoading" class="auth-loading">
+    <div class="loading-card">
+      <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Verificando sesión…</p>
+    </div>
+  </div>
+
+  <section id="authScreen" class="login-screen hidden" aria-label="Inicio de sesión">
+    <div class="login-layout">
+      <div class="login-brand-panel">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" class="login-logo" />
+        <div>
+          <span class="login-eyebrow">SISTEMA INTEGRADO DE GESTIÓN</span>
+          <h1>Programación de Capacitaciones</h1>
+          <p>Gestión corporativa de capacitaciones, inducciones, evaluaciones, Comité SST y Brigadas.</p>
+        </div>
+        <small>Explo Drilling Perú S.R.L.</small>
+      </div>
+
+      <div class="login-form-panel">
+        <div class="login-card">
+          <div class="login-card-head">
+            <span class="login-icon">↪</span>
+            <div>
+              <h2>Iniciar sesión</h2>
+              <p>Acceso para usuarios autorizados</p>
+            </div>
+          </div>
+
+          <form id="loginForm" novalidate>
+            <label for="loginEmail">Correo electrónico</label>
+            <input id="loginEmail" type="email" autocomplete="username" placeholder="usuario@empresa.com" required />
+
+            <label for="loginPassword">Contraseña</label>
+            <div class="password-field">
+              <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Ingresa tu contraseña" required />
+              <button id="togglePassword" class="password-toggle" type="button">Mostrar</button>
+            </div>
+
+            <div id="loginMessage" class="login-message" role="alert"></div>
+
+            <button id="loginButton" class="login-submit" type="submit">Iniciar sesión</button>
+          </form>
+
+          <div class="login-note">
+            <span>🔒</span>
+            <p>El acceso se valida mediante Supabase Auth. Los permisos dependen del rol asignado a cada usuario.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <div class="brand-logo-wrap">
@@ -24,60 +78,41 @@
       </div>
 
       <nav class="menu" aria-label="Menú principal">
-        <button class="menu-item active" data-section="inicio">
-          <span class="menu-icon">⌂</span><span>Inicio</span>
-        </button>
-        <button class="menu-item" data-section="programacion">
-          <span class="menu-icon">▣</span><span>Programación</span>
-        </button>
-        <button class="menu-item" data-section="nueva-capacitacion">
-          <span class="menu-icon">＋</span><span>Nueva capacitación</span>
-        </button>
-        <button class="menu-item" data-section="trabajadores">
-          <span class="menu-icon">♟</span><span>Trabajadores</span>
-        </button>
-        <button class="menu-item" data-section="sedes-proyectos">
-          <span class="menu-icon">◆</span><span>Sedes y proyectos</span>
-        </button>
-        <button class="menu-item" data-section="inducciones">
-          <span class="menu-icon">▶</span><span>Inducciones</span>
-        </button>
-        <button class="menu-item" data-section="practicar">
-          <span class="menu-icon">★</span><span>Practicar</span>
-        </button>
-        <button class="menu-item" data-section="comite">
-          <span class="menu-icon">◎</span><span>Comité SST</span>
-        </button>
-        <button class="menu-item" data-section="brigadas">
-          <span class="menu-icon">⚑</span><span>Brigadas</span>
-        </button>
-        <button class="menu-item" data-section="reportes">
-          <span class="menu-icon">▥</span><span>Reportes</span>
-        </button>
-        <button class="menu-item" data-section="usuarios">
-          <span class="menu-icon">⚙</span><span>Usuarios</span>
-        </button>
+        <button class="menu-item active" data-section="inicio"><span class="menu-icon">⌂</span><span>Inicio</span></button>
+        <button class="menu-item" data-section="programacion"><span class="menu-icon">▣</span><span>Programación</span></button>
+        <button class="menu-item" data-section="nueva-capacitacion"><span class="menu-icon">＋</span><span>Nueva capacitación</span></button>
+        <button class="menu-item" data-section="trabajadores"><span class="menu-icon">♟</span><span>Trabajadores</span></button>
+        <button class="menu-item" data-section="sedes-proyectos"><span class="menu-icon">◆</span><span>Sedes y proyectos</span></button>
+        <button class="menu-item" data-section="inducciones"><span class="menu-icon">▶</span><span>Inducciones</span></button>
+        <button class="menu-item" data-section="practicar"><span class="menu-icon">★</span><span>Practicar</span></button>
+        <button class="menu-item" data-section="comite"><span class="menu-icon">◎</span><span>Comité SST</span></button>
+        <button class="menu-item" data-section="brigadas"><span class="menu-icon">⚑</span><span>Brigadas</span></button>
+        <button class="menu-item" data-section="reportes"><span class="menu-icon">▥</span><span>Reportes</span></button>
+        <button class="menu-item" data-section="usuarios"><span class="menu-icon">⚙</span><span>Usuarios</span></button>
       </nav>
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Versión inicial · Etapa 1</small>
+        <small>Etapa 2 · Autenticación</small>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="topbar">
         <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menú">☰</button>
-        <div>
+        <div class="topbar-title">
           <h1>Programación de Capacitaciones</h1>
           <p>Sistema Integrado de Gestión</p>
         </div>
-        <div class="user-chip">
-          <div class="avatar">A</div>
-          <div>
-            <strong>Administrador</strong>
-            <span>Acceso general</span>
+        <div class="user-area">
+          <div class="user-chip">
+            <div class="avatar" id="userAvatar">U</div>
+            <div>
+              <strong id="userName">Usuario</strong>
+              <span id="userRole">—</span>
+            </div>
           </div>
+          <button class="logout-btn" id="logoutButton" type="button">Cerrar sesión</button>
         </div>
       </header>
 
@@ -85,8 +120,8 @@
         <div class="hero-card">
           <div class="hero-copy">
             <span class="eyebrow">EXPLO DRILLING PERÚ</span>
-            <h2>Gestión de capacitaciones en una sola plataforma</h2>
-            <p>Base inicial preparada para administrar programación, trabajadores, inducciones, evaluaciones, Comité SST, brigadas y reportes.</p>
+            <h2>Bienvenido, <span id="welcomeName">Usuario</span></h2>
+            <p>Plataforma corporativa para gestionar la programación, ejecución, evaluación y trazabilidad de las capacitaciones.</p>
             <div class="hero-actions">
               <button class="primary-btn" data-go="nueva-capacitacion">Nueva capacitación</button>
               <button class="secondary-btn" data-go="programacion">Ver programación</button>
@@ -96,67 +131,56 @@
         </div>
 
         <div class="cards-grid">
-          <article class="stat-card"><span class="stat-label">Capacitaciones del mes</span><strong>0</strong><small>Se activará con Supabase</small></article>
-          <article class="stat-card"><span class="stat-label">Trabajadores registrados</span><strong>0</strong><small>Base maestra pendiente</small></article>
-          <article class="stat-card"><span class="stat-label">Evaluaciones</span><strong>0</strong><small>Practicar / inducciones</small></article>
-          <article class="stat-card"><span class="stat-label">Cumplimiento</span><strong>—</strong><small>Disponible con datos</small></article>
+          <article class="stat-card"><span class="stat-label">Trabajadores visibles</span><strong id="workerCount">0</strong><small>Según tus permisos</small></article>
+          <article class="stat-card"><span class="stat-label">Proyectos visibles</span><strong id="projectCount">0</strong><small>Según tu rol</small></article>
+          <article class="stat-card"><span class="stat-label">Sedes registradas</span><strong id="siteCount">0</strong><small>Catálogo corporativo</small></article>
+          <article class="stat-card"><span class="stat-label">Estado de sesión</span><strong class="session-ok">Activa</strong><small>Supabase Auth</small></article>
         </div>
 
         <div class="content-grid">
           <article class="panel">
-            <div class="panel-head"><div><span class="eyebrow">ESTADO DEL PROYECTO</span><h3>Etapa 1 lista</h3></div><span class="status-pill">Base creada</span></div>
-            <div class="check-list">
-              <div><span>✓</span> Estructura web corporativa</div>
-              <div><span>✓</span> Navegación preparada para todos los módulos</div>
-              <div><span>✓</span> Logo oficial incorporado</div>
-              <div><span>✓</span> Compatible con GitHub Pages</div>
-              <div><span>✓</span> Preparado para conexión con Supabase</div>
+            <div class="panel-head"><div><span class="eyebrow">TU PERFIL</span><h3 id="profileFullName">—</h3></div><span class="status-pill">Autenticado</span></div>
+            <div class="profile-list">
+              <div><span>Rol</span><strong id="profileRole">—</strong></div>
+              <div><span>Cargo</span><strong id="profilePosition">—</strong></div>
+              <div><span>Correo</span><strong id="profileEmail">—</strong></div>
             </div>
           </article>
 
           <article class="panel">
-            <div class="panel-head"><div><span class="eyebrow">SIGUIENTE PASO</span><h3>Etapa 2</h3></div></div>
-            <p class="muted">Crearemos la base de datos de Supabase: usuarios, roles, sedes, proyectos, trabajadores y permisos por proyecto.</p>
-            <div class="connection-box" id="connectionBox">
-              <span class="dot" id="connectionDot"></span>
-              <div>
-                <strong id="connectionTitle">Supabase aún no configurado</strong>
-                <small id="connectionText">La aplicación funciona en modo visual hasta agregar la URL y la clave pública.</small>
-              </div>
+            <div class="panel-head"><div><span class="eyebrow">CONEXIÓN</span><h3>Supabase</h3></div><span class="status-pill">En línea</span></div>
+            <p class="muted">El inicio de sesión ya está conectado a Supabase Auth y el perfil se obtiene desde la tabla <strong>profiles</strong>.</p>
+            <div class="connection-box">
+              <span class="dot online"></span>
+              <div><strong>Conexión configurada</strong><small>La sesión se conserva al recargar la página y puede cerrarse desde la barra superior.</small></div>
             </div>
           </article>
         </div>
       </section>
 
-      <section id="programacion" class="page-section">
-        <div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Programación</h2><p>Calendario y seguimiento de las capacitaciones programadas.</p></div>
-        <div class="coming-card"><span>▣</span><h3>Se implementará en una etapa posterior</h3><p>La navegación ya está preparada para incorporar calendario, filtros por sede/proyecto y estados.</p></div>
-      </section>
+      <section id="programacion" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Programación</h2><p>Calendario y seguimiento de las capacitaciones programadas.</p></div><div class="coming-card"><span>▣</span><h3>Próxima etapa funcional</h3><p>Implementaremos calendario, filtros por sede/proyecto, estados y trazabilidad.</p></div></section>
 
       <section id="nueva-capacitacion" class="page-section">
         <div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Nueva capacitación</h2><p>Registro por etapas: datos del capacitador, evaluación, participantes, evidencias y vista previa.</p></div>
         <div class="steps-preview">
-          <div class="step done"><b>1</b><span>Capacitador</span></div>
-          <div class="step"><b>2</b><span>Evaluación</span></div>
-          <div class="step"><b>3</b><span>Participantes</span></div>
-          <div class="step"><b>4</b><span>Evidencias</span></div>
-          <div class="step"><b>5</b><span>Vista previa</span></div>
+          <div class="step done"><b>1</b><span>Capacitador</span></div><div class="step"><b>2</b><span>Evaluación</span></div><div class="step"><b>3</b><span>Participantes</span></div><div class="step"><b>4</b><span>Evidencias</span></div><div class="step"><b>5</b><span>Vista previa</span></div>
         </div>
-        <div class="coming-card"><span>＋</span><h3>Formulario preparado para la siguiente etapa funcional</h3><p>Tomaremos como referencia los formularios que compartiste y los integraremos con trabajadores, firmas y evaluaciones.</p></div>
+        <div class="coming-card"><span>＋</span><h3>Formulario pendiente de implementación</h3><p>Tomaremos como referencia tus formularios y los conectaremos con trabajadores, firmas y evaluaciones.</p></div>
       </section>
 
-      <section id="trabajadores" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Trabajadores</h2><p>Consulta mediante DNI y base maestra del personal.</p></div><div class="coming-card"><span>♟</span><h3>Próximamente</h3><p>Registro individual, carga masiva y consulta segura por DNI.</p></div></section>
-      <section id="sedes-proyectos" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Sedes y proyectos</h2><p>Sede Lima y administración de proyectos operativos.</p></div><div class="coming-card"><span>◆</span><h3>Próximamente</h3><p>Catálogo de sedes, proyectos, cliente, vigencia y responsables.</p></div></section>
+      <section id="trabajadores" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Trabajadores</h2><p>Consulta mediante DNI y base maestra del personal.</p></div><div class="coming-card"><span>♟</span><h3>Próxima etapa</h3><p>Registro individual, carga masiva y consulta segura por DNI.</p></div></section>
+      <section id="sedes-proyectos" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Sedes y proyectos</h2><p>Sede Lima y administración de proyectos operativos.</p></div><div class="coming-card"><span>◆</span><h3>Próxima etapa</h3><p>Catálogo de sedes, proyectos, cliente, vigencia y responsables.</p></div></section>
       <section id="inducciones" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Inducciones</h2><p>Contenido, videos, evaluación y constancia.</p></div><div class="coming-card"><span>▶</span><h3>Próximamente</h3><p>Rutas de inducción con control de avance y evaluación.</p></div></section>
       <section id="practicar" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Practicar</h2><p>Quizzes didácticos estilo Kahoot.</p></div><div class="coming-card"><span>★</span><h3>Próximamente</h3><p>Preguntas temporizadas, alternativas, puntaje y ranking.</p></div></section>
       <section id="comite" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Comité SST</h2><p>Capacitación y seguimiento de los integrantes.</p></div><div class="coming-card"><span>◎</span><h3>Próximamente</h3><p>Videos, documentos, exámenes y avance de los integrantes.</p></div></section>
       <section id="brigadas" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Brigadas</h2><p>Formación de brigadas de emergencia.</p></div><div class="coming-card"><span>⚑</span><h3>Próximamente</h3><p>Contenido por especialidad, evaluación y seguimiento.</p></div></section>
       <section id="reportes" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Reportes</h2><p>Indicadores, historial y exportaciones.</p></div><div class="coming-card"><span>▥</span><h3>Próximamente</h3><p>Dashboard, PDF, Excel e historial de capacitación por trabajador.</p></div></section>
-      <section id="usuarios" class="page-section"><div class="section-title"><span class="eyebrow">ADMINISTRACIÓN</span><h2>Usuarios</h2><p>Administrador y usuarios por proyecto.</p></div><div class="coming-card"><span>⚙</span><h3>Próximamente</h3><p>Login, roles y acceso restringido según proyecto mediante Supabase.</p></div></section>
+      <section id="usuarios" class="page-section"><div class="section-title"><span class="eyebrow">ADMINISTRACIÓN</span><h2>Usuarios</h2><p>Administrador y usuarios por proyecto.</p></div><div class="coming-card"><span>⚙</span><h3>Acceso reservado al administrador</h3><p>En la siguiente etapa agregaremos creación, desactivación, asignación de rol y proyectos.</p></div></section>
     </main>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

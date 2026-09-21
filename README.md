@@ -1,58 +1,40 @@
-# Explo Drilling Perú · Etapa 7 — Examen
+# Etapa 7B · Acceso al examen por trabajador activo
 
-Esta actualización incorpora la evaluación vinculada a cada capacitación.
+Este ajuste cambia el flujo público del examen:
 
-## Funciones incluidas
+1. El responsable comparte por WhatsApp el enlace específico del examen.
+2. El trabajador abre el enlace e ingresa solo su DNI.
+3. Supabase consulta directamente el maestro `trabajadores`.
+4. Solo puede continuar si `activo = true`.
+5. La pantalla muestra automáticamente apellidos y nombres, DNI, puesto, área y sede.
+6. Si el trabajador todavía no estaba en `capacitacion_participantes`, se registra automáticamente sin duplicarlo.
+7. El trabajador rinde el examen y la nota queda vinculada al registro de participantes.
 
-- Definir si una capacitación tendrá o no examen.
-- Configurar título, nota aprobatoria, número de intentos y visualización del resultado.
-- Crear preguntas de opción múltiple con cuatro alternativas y una respuesta correcta.
-- Publicar/despublicar la evaluación.
-- Generar un enlace público específico por capacitación.
-- El trabajador abre el enlace, ingresa únicamente su DNI y accede si previamente fue agregado como participante.
-- Calificación automática sobre 20 puntos.
-- Registro de cada intento y sus respuestas.
-- Conservación de la mejor nota en `capacitacion_participantes.nota`.
-- La nota se visualiza automáticamente en la lista de participantes.
-- Una vez que existen intentos, las preguntas quedan bloqueadas en la interfaz para conservar la trazabilidad.
+## Supabase
 
-## 1. Supabase
+Si ya ejecutaste la Etapa 7 anterior, ejecuta solamente:
 
-Antes de actualizar GitHub:
+`ETAPA7_AJUSTE_TRABAJADOR_ACTIVO.sql`
 
-1. Abrir **Supabase → SQL Editor → New query**.
-2. Copiar todo el contenido de `ETAPA7_SUPABASE.sql`.
-3. Pulsar **Run**.
-4. Debe mostrarse `Etapa 7 creada correctamente`.
+Ruta: **Supabase → SQL Editor → New query → pegar todo → Run**.
 
-## 2. GitHub
+Resultado esperado: `Etapa 7B aplicada correctamente`.
 
-Subir y reemplazar en la raíz del repositorio:
+> Si todavía no ejecutaste la Etapa 7 original, primero ejecuta `ETAPA7_SUPABASE.sql` del paquete de la Etapa 7 y después este ajuste.
+
+## GitHub
+
+Reemplaza:
 
 - `index.html`
-- `styles.css`
 - `app.js`
+- `styles.css`
 - `config.js`
 
-No reemplazar la carpeta `assets`.
+No reemplaces `assets/`.
 
 Commit sugerido:
 
-`Etapa 7 - Examen y calificación automática`
+`Etapa 7B - Acceso examen por trabajador activo`
 
-Después de que GitHub Pages publique el cambio, actualizar con **Ctrl + F5**.
-
-## Flujo
-
-1. Nueva capacitación → completar datos y firmas.
-2. **Guardar y continuar al examen**.
-3. Elegir si requiere evaluación.
-4. Si requiere examen, crear preguntas y guardar.
-5. Continuar a participantes y agregar trabajadores.
-6. Copiar el enlace del examen.
-7. El trabajador abre el enlace, ingresa su DNI y responde.
-8. La plataforma calcula la nota y la guarda automáticamente.
-
-## Seguridad
-
-El enlace público no expone las respuestas correctas. El acceso a la evaluación se realiza mediante funciones RPC controladas en Supabase y exige la combinación de código de capacitación + DNI de un participante previamente registrado.
+Después espera la publicación de GitHub Pages y actualiza con **Ctrl + F5**.

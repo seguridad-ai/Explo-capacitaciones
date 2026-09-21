@@ -2009,10 +2009,10 @@ async function lookupPublicExam() {
 
   publicExamData = data;
   document.getElementById('publicExamParticipantName').textContent = data.nombre || 'Participante';
-  document.getElementById('publicExamParticipantDetails').textContent = `${data.puesto || 'Sin puesto'} · ${data.area || 'Sin área'} · ${data.tema || ''}`;
+  document.getElementById('publicExamParticipantDetails').textContent = `DNI ${data.dni || '—'} · ${data.puesto || 'Sin puesto'} · ${data.area || 'Sin área'} · ${data.sede || 'Sin sede'}`;
   document.getElementById('publicExamAttempts').textContent = `Intentos disponibles: ${data.intentos_disponibles} de ${data.max_intentos} · Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}`;
   document.getElementById('publicExamParticipantPreview')?.classList.remove('hidden');
-  setPublicExamMessage('Participante validado correctamente.', 'success');
+  setPublicExamMessage('Trabajador activo validado correctamente.', 'success');
 }
 
 function renderPublicExamQuestions() {

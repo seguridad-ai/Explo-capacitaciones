@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-5" />
+  <link rel="stylesheet" href="styles.css?v=20260921-6" />
 </head>
 <body>
   <div id="authLoading" class="auth-loading">
@@ -94,7 +94,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 4 · Trabajadores</small>
+        <small>Etapa 5 · Nueva capacitación</small>
       </div>
     </aside>
 
@@ -162,11 +162,158 @@
       <section id="programacion" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Programación</h2><p>Calendario y seguimiento de las capacitaciones programadas.</p></div><div class="coming-card"><span>▣</span><h3>Próxima etapa funcional</h3><p>Implementaremos calendario, filtros por sede/proyecto, estados y trazabilidad.</p></div></section>
 
       <section id="nueva-capacitacion" class="page-section">
-        <div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Nueva capacitación</h2><p>Registro por etapas: datos del capacitador, evaluación, participantes, evidencias y vista previa.</p></div>
-        <div class="steps-preview">
-          <div class="step done"><b>1</b><span>Capacitador</span></div><div class="step"><b>2</b><span>Evaluación</span></div><div class="step"><b>3</b><span>Participantes</span></div><div class="step"><b>4</b><span>Evidencias</span></div><div class="step"><b>5</b><span>Vista previa</span></div>
+        <div class="section-title section-title-row">
+          <div>
+            <span class="eyebrow">REGISTRO</span>
+            <h2>Nueva capacitación</h2>
+            <p>Programa y registra la actividad. La información quedará guardada como borrador para continuar con examen y participantes.</p>
+          </div>
+          <span class="status-pill">Etapa 1 de 4</span>
         </div>
-        <div class="coming-card"><span>＋</span><h3>Formulario pendiente de implementación</h3><p>Tomaremos como referencia tus formularios y los conectaremos con trabajadores, firmas y evaluaciones.</p></div>
+
+        <div class="training-steps" aria-label="Etapas del registro">
+          <div class="training-step active"><b>1</b><span>Capacitador</span></div>
+          <div class="training-step"><b>2</b><span>Examen</span></div>
+          <div class="training-step"><b>3</b><span>Participantes</span></div>
+          <div class="training-step"><b>4</b><span>Vista previa</span></div>
+        </div>
+
+        <div id="trainingMessage" class="module-message" role="alert"></div>
+
+        <form id="trainingForm" class="training-form" novalidate>
+          <input type="hidden" id="trainingId" />
+          <input type="hidden" id="trainerSignatureData" />
+          <input type="hidden" id="responsibleSignatureData" />
+
+          <article class="training-card">
+            <div class="training-card-head">
+              <div class="training-icon">▤</div>
+              <div><span class="eyebrow">DATOS DE LA ACTIVIDAD</span><h3>Datos del capacitador</h3></div>
+            </div>
+
+            <div class="training-grid">
+              <label>
+                <span>Clasificación *</span>
+                <select id="trainingClassification">
+                  <option value="CAPACITACIÓN">CAPACITACIÓN</option>
+                  <option value="CHARLA">CHARLA</option>
+                  <option value="ENTRENAMIENTO">ENTRENAMIENTO</option>
+                  <option value="TALLER">TALLER</option>
+                  <option value="INDUCCIÓN">INDUCCIÓN</option>
+                </select>
+              </label>
+              <label>
+                <span>Sede / Proyecto *</span>
+                <select id="trainingUnit"><option value="">Seleccione una sede o proyecto</option></select>
+              </label>
+
+              <label class="training-span-2">
+                <span>Tema *</span>
+                <input id="trainingTopic" maxlength="240" placeholder="Tema de la capacitación" />
+              </label>
+
+              <label>
+                <span>Expositor *</span>
+                <input id="trainerName" maxlength="180" placeholder="Apellidos y nombres" />
+              </label>
+              <label>
+                <span>DNI *</span>
+                <input id="trainerDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+                <small class="field-help">Si el DNI pertenece a un trabajador registrado, se completarán sus datos.</small>
+              </label>
+
+              <label>
+                <span>Puesto / Cargo *</span>
+                <input id="trainerPosition" maxlength="160" placeholder="Cargo del expositor" />
+              </label>
+              <label>
+                <span>Empresa *</span>
+                <input id="trainingCompany" maxlength="180" value="EXPLO DRILLING PERU S.R.L." />
+              </label>
+
+              <label>
+                <span>Área *</span>
+                <input id="trainerArea" maxlength="160" placeholder="Área del expositor" />
+              </label>
+              <label>
+                <span>Fecha *</span>
+                <input id="trainingDate" type="date" />
+              </label>
+
+              <label>
+                <span>Tiempo *</span>
+                <input id="trainingDuration" maxlength="80" placeholder="Ej. 2 horas" />
+              </label>
+              <div class="signature-field">
+                <span>Firma del Expositor *</span>
+                <div class="signature-box" id="trainerSignatureBox">
+                  <img id="trainerSignaturePreview" class="signature-preview hidden" alt="Firma del expositor" />
+                  <span class="signature-empty" id="trainerSignatureEmpty">Sin firma registrada</span>
+                </div>
+                <div class="signature-actions">
+                  <button class="secondary-btn signature-open" type="button" data-signature-target="trainer">Agregar firma</button>
+                  <button class="text-btn hidden" id="clearTrainerSignature" type="button">Quitar</button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="training-card">
+            <div class="training-card-head">
+              <div class="training-icon">✓</div>
+              <div><span class="eyebrow">TRAZABILIDAD</span><h3>Responsable del Registro</h3></div>
+            </div>
+
+            <div class="training-grid">
+              <label>
+                <span>Nombre completo del responsable *</span>
+                <input id="responsibleName" maxlength="180" placeholder="Ej. Juan Pérez García" />
+              </label>
+              <label>
+                <span>Cargo del responsable *</span>
+                <input id="responsiblePosition" maxlength="160" placeholder="Ej. Jefe de SSOMAC" />
+              </label>
+              <label>
+                <span>DNI del responsable *</span>
+                <input id="responsibleDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+              </label>
+              <div class="signature-field">
+                <span>Firma del Responsable *</span>
+                <div class="signature-box" id="responsibleSignatureBox">
+                  <img id="responsibleSignaturePreview" class="signature-preview hidden" alt="Firma del responsable" />
+                  <span class="signature-empty" id="responsibleSignatureEmpty">Sin firma registrada</span>
+                </div>
+                <div class="signature-actions">
+                  <button class="secondary-btn signature-open" type="button" data-signature-target="responsible">Agregar firma</button>
+                  <button class="text-btn hidden" id="clearResponsibleSignature" type="button">Quitar</button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div id="trainingFormMessage" class="form-message"></div>
+          <div class="training-form-actions">
+            <button id="clearTrainingButton" class="secondary-btn" type="button">Limpiar</button>
+            <button id="saveTrainingDraftButton" class="secondary-btn" type="button">Guardar borrador</button>
+            <button id="continueTrainingButton" class="primary-btn" type="submit">Guardar y continuar al examen</button>
+          </div>
+        </form>
+
+        <div id="signatureModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="signatureModalTitle">
+          <div class="modal-card signature-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">FIRMA</span><h3 id="signatureModalTitle">Agregar firma</h3></div>
+              <button id="closeSignatureModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <p class="signature-instruction">Firma dentro del recuadro usando el mouse, touchpad o pantalla táctil.</p>
+            <div class="signature-canvas-wrap"><canvas id="signatureCanvas" width="900" height="300"></canvas></div>
+            <div class="modal-actions">
+              <button id="clearSignatureCanvas" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="cancelSignatureModal" class="secondary-btn" type="button">Cancelar</button>
+              <button id="saveSignatureButton" class="primary-btn" type="button">Guardar firma</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="trabajadores" class="page-section">
@@ -370,7 +517,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-5"></script>
-  <script src="app.js?v=20260921-5"></script>
+  <script src="config.js?v=20260921-6"></script>
+  <script src="app.js?v=20260921-6"></script>
 </body>
 </html>

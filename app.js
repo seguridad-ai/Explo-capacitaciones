@@ -58,6 +58,7 @@ function showSection(sectionId) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
+  if (sectionId === 'nueva-capacitacion') loadTrainingModule();
 }
 
 function roleLabel(code) {
@@ -854,5 +855,315 @@ workersTableBody?.addEventListener('click', e => {
   if (toggle) toggleWorker(toggle.dataset.toggleWorker);
 });
 
+
+
+
+// ============================== ETAPA 5 · NUEVA CAPACITACIÓN ==============================
+let trainingCatalogLoaded = false;
+let trainingSitesCache = [];
+let trainingProjectsCache = [];
+let activeSignatureTarget = null;
+let signatureDrawing = false;
+let signatureHasStroke = false;
+
+const trainingForm = document.getElementById('trainingForm');
+const trainingMessage = document.getElementById('trainingMessage');
+const trainingUnit = document.getElementById('trainingUnit');
+const signatureModal = document.getElementById('signatureModal');
+const signatureCanvas = document.getElementById('signatureCanvas');
+const signatureCtx = signatureCanvas?.getContext('2d');
+
+function setTrainingMessage(message = '', type = 'error') {
+  if (!trainingMessage) return;
+  trainingMessage.textContent = message;
+  trainingMessage.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function setTrainingFormMessage(message = '', type = 'error') {
+  const el = document.getElementById('trainingFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function todayISO() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function renderTrainingUnitOptions() {
+  if (!trainingUnit) return;
+  const current = trainingUnit.value;
+  const siteOptions = trainingSitesCache
+    .filter(x => x.activo)
+    .map(x => `<option value="sede:${x.id}">Sede · ${escapeHtml(x.nombre)}</option>`)
+    .join('');
+  const projectOptions = trainingProjectsCache
+    .filter(x => x.activo)
+    .map(x => `<option value="proyecto:${x.id}">Proyecto · ${escapeHtml(x.nombre)}${x.cliente ? ` — ${escapeHtml(x.cliente)}` : ''}</option>`)
+    .join('');
+  trainingUnit.innerHTML = `<option value="">Seleccione una sede o proyecto</option>${siteOptions}${projectOptions}`;
+  if ([...trainingUnit.options].some(o => o.value === current)) trainingUnit.value = current;
+}
+
+async function loadTrainingCatalogs() {
+  if (!client) return;
+  const [sites, projects] = await Promise.all([
+    client.from('sedes').select('id,nombre,activo').order('nombre'),
+    client.from('proyectos').select('id,nombre,cliente,activo').order('nombre')
+  ]);
+  if (sites.error) console.error(sites.error);
+  if (projects.error) console.error(projects.error);
+  trainingSitesCache = sites.data || [];
+  trainingProjectsCache = projects.data || [];
+  renderTrainingUnitOptions();
+  trainingCatalogLoaded = true;
+}
+
+function prefillResponsible() {
+  const name = document.getElementById('responsibleName');
+  const position = document.getElementById('responsiblePosition');
+  if (name && !name.value.trim()) {
+    name.value = [currentProfile?.nombres, currentProfile?.apellidos].filter(Boolean).join(' ').trim();
+  }
+  if (position && !position.value.trim()) position.value = currentProfile?.cargo || '';
+}
+
+async function loadTrainingModule() {
+  if (!client || !currentProfile) return;
+  setTrainingMessage('');
+  if (!trainingCatalogLoaded) await loadTrainingCatalogs();
+  const date = document.getElementById('trainingDate');
+  if (date && !date.value) date.value = todayISO();
+  prefillResponsible();
+}
+
+async function lookupTrainerByDni() {
+  if (!client) return;
+  const dniEl = document.getElementById('trainerDni');
+  const dni = (dniEl?.value || '').replace(/\D/g, '');
+  if (dni.length !== 8) return;
+  const { data, error } = await client
+    .from('trabajadores')
+    .select('dni,nombres,apellidos,cargo,area,empresa,sede_id,activo')
+    .eq('dni', dni)
+    .maybeSingle();
+  if (error) { console.error(error); return; }
+  if (!data) return;
+  document.getElementById('trainerName').value = `${data.apellidos || ''} ${data.nombres || ''}`.trim();
+  document.getElementById('trainerPosition').value = data.cargo || '';
+  document.getElementById('trainerArea').value = data.area || '';
+  if (data.empresa) document.getElementById('trainingCompany').value = data.empresa;
+  if (data.sede_id && trainingUnit && !trainingUnit.value) {
+    const val = `sede:${data.sede_id}`;
+    if ([...trainingUnit.options].some(o => o.value === val)) trainingUnit.value = val;
+  }
+  setTrainingMessage(`Datos del expositor completados desde la base de trabajadores${data.activo ? '.' : ' (trabajador inactivo).'} `, data.activo ? 'success' : 'error');
+}
+
+function resetSignatureCanvas() {
+  if (!signatureCanvas || !signatureCtx) return;
+  signatureCtx.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+  signatureCtx.fillStyle = '#ffffff';
+  signatureCtx.fillRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+  signatureCtx.strokeStyle = '#17263c';
+  signatureCtx.lineWidth = 4;
+  signatureCtx.lineCap = 'round';
+  signatureCtx.lineJoin = 'round';
+  signatureHasStroke = false;
+}
+
+function openSignatureModal(target) {
+  activeSignatureTarget = target;
+  document.getElementById('signatureModalTitle').textContent = target === 'trainer' ? 'Firma del Expositor' : 'Firma del Responsable';
+  resetSignatureCanvas();
+  const existing = document.getElementById(target === 'trainer' ? 'trainerSignatureData' : 'responsibleSignatureData')?.value;
+  if (existing && signatureCtx && signatureCanvas) {
+    const img = new Image();
+    img.onload = () => { resetSignatureCanvas(); signatureCtx.drawImage(img, 0, 0, signatureCanvas.width, signatureCanvas.height); signatureHasStroke = true; };
+    img.src = existing;
+  }
+  signatureModal?.classList.remove('hidden');
+}
+
+function closeSignatureModal() {
+  signatureModal?.classList.add('hidden');
+  activeSignatureTarget = null;
+  signatureDrawing = false;
+}
+
+function canvasPoint(event) {
+  const rect = signatureCanvas.getBoundingClientRect();
+  const source = event.touches?.[0] || event.changedTouches?.[0] || event;
+  return {
+    x: (source.clientX - rect.left) * (signatureCanvas.width / rect.width),
+    y: (source.clientY - rect.top) * (signatureCanvas.height / rect.height)
+  };
+}
+
+function startSignature(event) {
+  if (!signatureCtx || !signatureCanvas) return;
+  event.preventDefault();
+  signatureDrawing = true;
+  signatureHasStroke = true;
+  const p = canvasPoint(event);
+  signatureCtx.beginPath();
+  signatureCtx.moveTo(p.x, p.y);
+}
+
+function drawSignature(event) {
+  if (!signatureDrawing || !signatureCtx) return;
+  event.preventDefault();
+  const p = canvasPoint(event);
+  signatureCtx.lineTo(p.x, p.y);
+  signatureCtx.stroke();
+}
+
+function stopSignature(event) {
+  if (!signatureDrawing) return;
+  event?.preventDefault?.();
+  signatureDrawing = false;
+  signatureCtx?.closePath();
+}
+
+function setSignature(target, dataUrl = '') {
+  const input = document.getElementById(target === 'trainer' ? 'trainerSignatureData' : 'responsibleSignatureData');
+  const preview = document.getElementById(target === 'trainer' ? 'trainerSignaturePreview' : 'responsibleSignaturePreview');
+  const empty = document.getElementById(target === 'trainer' ? 'trainerSignatureEmpty' : 'responsibleSignatureEmpty');
+  const clear = document.getElementById(target === 'trainer' ? 'clearTrainerSignature' : 'clearResponsibleSignature');
+  if (input) input.value = dataUrl;
+  if (preview) {
+    preview.src = dataUrl || '';
+    preview.classList.toggle('hidden', !dataUrl);
+  }
+  empty?.classList.toggle('hidden', !!dataUrl);
+  clear?.classList.toggle('hidden', !dataUrl);
+}
+
+function saveCurrentSignature() {
+  if (!activeSignatureTarget || !signatureCanvas || !signatureHasStroke) {
+    alert('Registra una firma antes de guardar.');
+    return;
+  }
+  setSignature(activeSignatureTarget, signatureCanvas.toDataURL('image/png'));
+  closeSignatureModal();
+}
+
+function parseTrainingUnit() {
+  const value = trainingUnit?.value || '';
+  if (!value.includes(':')) return { sede_id: null, proyecto_id: null };
+  const [type, id] = value.split(':');
+  return type === 'sede' ? { sede_id: id, proyecto_id: null } : { sede_id: null, proyecto_id: id };
+}
+
+function collectTrainingPayload() {
+  const location = parseTrainingUnit();
+  return {
+    clasificacion: document.getElementById('trainingClassification').value,
+    ...location,
+    tema: document.getElementById('trainingTopic').value.trim(),
+    expositor_nombre: document.getElementById('trainerName').value.trim(),
+    expositor_dni: document.getElementById('trainerDni').value.replace(/\D/g, ''),
+    expositor_cargo: document.getElementById('trainerPosition').value.trim(),
+    empresa: document.getElementById('trainingCompany').value.trim(),
+    area: document.getElementById('trainerArea').value.trim(),
+    fecha: document.getElementById('trainingDate').value,
+    tiempo_texto: document.getElementById('trainingDuration').value.trim(),
+    firma_expositor: document.getElementById('trainerSignatureData').value,
+    responsable_nombre: document.getElementById('responsibleName').value.trim(),
+    responsable_cargo: document.getElementById('responsiblePosition').value.trim(),
+    responsable_dni: document.getElementById('responsibleDni').value.replace(/\D/g, ''),
+    firma_responsable: document.getElementById('responsibleSignatureData').value,
+    estado: 'BORRADOR',
+    created_by: currentProfile?.id || null
+  };
+}
+
+function validateTrainingPayload(payload) {
+  if (!payload.clasificacion || (!payload.sede_id && !payload.proyecto_id) || !payload.tema || !payload.expositor_nombre || !payload.expositor_cargo || !payload.empresa || !payload.area || !payload.fecha || !payload.tiempo_texto || !payload.responsable_nombre || !payload.responsable_cargo) {
+    return 'Completa todos los campos obligatorios.';
+  }
+  if (!/^\d{8}$/.test(payload.expositor_dni)) return 'El DNI del expositor debe contener exactamente 8 dígitos.';
+  if (!/^\d{8}$/.test(payload.responsable_dni)) return 'El DNI del responsable debe contener exactamente 8 dígitos.';
+  if (!payload.firma_expositor) return 'Registra la firma del expositor.';
+  if (!payload.firma_responsable) return 'Registra la firma del responsable.';
+  return '';
+}
+
+async function persistTraining({ continueNext = false } = {}) {
+  if (!client || !currentProfile) return;
+  const payload = collectTrainingPayload();
+  const validation = validateTrainingPayload(payload);
+  if (validation) { setTrainingFormMessage(validation); return; }
+
+  const id = document.getElementById('trainingId').value || null;
+  const button = continueNext ? document.getElementById('continueTrainingButton') : document.getElementById('saveTrainingDraftButton');
+  const oldLabel = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Guardando…'; }
+  setTrainingFormMessage('');
+
+  let response;
+  if (id) {
+    const { created_by, ...updatePayload } = payload;
+    response = await client.from('capacitaciones').update(updatePayload).eq('id', id).select('id,codigo').single();
+  } else {
+    response = await client.from('capacitaciones').insert(payload).select('id,codigo').single();
+  }
+
+  if (button) { button.disabled = false; button.textContent = oldLabel; }
+
+  if (response.error) {
+    console.error(response.error);
+    const missingTable = /capacitaciones/i.test(response.error.message || '') && /schema cache|does not exist|relation/i.test(response.error.message || '');
+    setTrainingFormMessage(missingTable ? 'Primero ejecuta el SQL de la Etapa 5 en Supabase para crear la tabla capacitaciones.' : 'No fue posible guardar la capacitación. Revisa los datos y permisos.');
+    return;
+  }
+
+  document.getElementById('trainingId').value = response.data.id;
+  setTrainingMessage(`Borrador ${response.data.codigo || ''} guardado correctamente.`, 'success');
+  if (continueNext) {
+    setTrainingFormMessage('Datos del capacitador guardados. El siguiente módulo será la configuración del examen.', 'success');
+    document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    setTrainingFormMessage('Borrador guardado correctamente.', 'success');
+  }
+}
+
+function clearTrainingForm() {
+  if (!window.confirm('¿Deseas limpiar el formulario actual? Los cambios no guardados se perderán.')) return;
+  trainingForm?.reset();
+  document.getElementById('trainingId').value = '';
+  document.getElementById('trainingCompany').value = 'EXPLO DRILLING PERU S.R.L.';
+  document.getElementById('trainingDate').value = todayISO();
+  setSignature('trainer', '');
+  setSignature('responsible', '');
+  setTrainingFormMessage('');
+  setTrainingMessage('');
+  renderTrainingUnitOptions();
+  prefillResponsible();
+}
+
+document.querySelectorAll('.signature-open').forEach(button => button.addEventListener('click', () => openSignatureModal(button.dataset.signatureTarget)));
+document.getElementById('closeSignatureModal')?.addEventListener('click', closeSignatureModal);
+document.getElementById('cancelSignatureModal')?.addEventListener('click', closeSignatureModal);
+document.getElementById('clearSignatureCanvas')?.addEventListener('click', resetSignatureCanvas);
+document.getElementById('saveSignatureButton')?.addEventListener('click', saveCurrentSignature);
+signatureModal?.addEventListener('click', e => { if (e.target === signatureModal) closeSignatureModal(); });
+
+signatureCanvas?.addEventListener('pointerdown', startSignature);
+signatureCanvas?.addEventListener('pointermove', drawSignature);
+signatureCanvas?.addEventListener('pointerup', stopSignature);
+signatureCanvas?.addEventListener('pointerleave', stopSignature);
+signatureCanvas?.addEventListener('pointercancel', stopSignature);
+
+document.getElementById('clearTrainerSignature')?.addEventListener('click', () => setSignature('trainer', ''));
+document.getElementById('clearResponsibleSignature')?.addEventListener('click', () => setSignature('responsible', ''));
+document.getElementById('trainerDni')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8); });
+document.getElementById('trainerDni')?.addEventListener('blur', lookupTrainerByDni);
+document.getElementById('responsibleDni')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8); });
+document.getElementById('clearTrainingButton')?.addEventListener('click', clearTrainingForm);
+document.getElementById('saveTrainingDraftButton')?.addEventListener('click', () => persistTraining({ continueNext: false }));
+trainingForm?.addEventListener('submit', e => { e.preventDefault(); persistTraining({ continueNext: true }); });
 
 initializeAuth();

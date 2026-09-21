@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-3" />
+  <link rel="stylesheet" href="styles.css?v=20260921-4" />
 </head>
 <body>
   <div id="authLoading" class="auth-loading">
@@ -94,7 +94,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 2 · Autenticación</small>
+        <small>Etapa 3 · Sedes y proyectos</small>
       </div>
     </aside>
 
@@ -170,7 +170,96 @@
       </section>
 
       <section id="trabajadores" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Trabajadores</h2><p>Consulta mediante DNI y base maestra del personal.</p></div><div class="coming-card"><span>♟</span><h3>Próxima etapa</h3><p>Registro individual, carga masiva y consulta segura por DNI.</p></div></section>
-      <section id="sedes-proyectos" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Sedes y proyectos</h2><p>Sede Lima y administración de proyectos operativos.</p></div><div class="coming-card"><span>◆</span><h3>Próxima etapa</h3><p>Catálogo de sedes, proyectos, cliente, vigencia y responsables.</p></div></section>
+      <section id="sedes-proyectos" class="page-section">
+        <div class="section-title section-title-row">
+          <div>
+            <span class="eyebrow">ADMINISTRACIÓN</span>
+            <h2>Sedes y proyectos</h2>
+            <p>Catálogo corporativo de sedes y proyectos disponibles en el sistema.</p>
+          </div>
+          <div class="catalog-actions admin-only" id="catalogAdminActions">
+            <button class="secondary-btn" id="newSiteButton" type="button">+ Nueva sede</button>
+            <button class="primary-btn" id="newProjectButton" type="button">+ Nuevo proyecto</button>
+          </div>
+        </div>
+
+        <div id="catalogMessage" class="module-message" role="alert"></div>
+
+        <div class="catalog-stats">
+          <article><span>Sedes</span><strong id="catalogSiteCount">0</strong><small>registradas</small></article>
+          <article><span>Proyectos</span><strong id="catalogProjectCount">0</strong><small>visibles según tu rol</small></article>
+          <article><span>Proyectos activos</span><strong id="catalogActiveProjectCount">0</strong><small>en operación / habilitados</small></article>
+        </div>
+
+        <div class="catalog-grid">
+          <article class="catalog-panel">
+            <div class="catalog-panel-head">
+              <div><span class="eyebrow">CATÁLOGO</span><h3>Sedes</h3></div>
+              <button class="icon-refresh" id="refreshSitesButton" type="button" title="Actualizar sedes">↻</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Código</th><th>Sede</th><th>Ubicación</th><th>Estado</th><th class="admin-only-col">Acciones</th></tr></thead>
+                <tbody id="sitesTableBody"><tr><td colspan="5" class="table-empty">Cargando…</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="catalog-panel catalog-panel-projects">
+            <div class="catalog-panel-head catalog-panel-head-wrap">
+              <div><span class="eyebrow">CATÁLOGO</span><h3>Proyectos</h3></div>
+              <div class="catalog-filter">
+                <input id="projectSearch" type="search" placeholder="Buscar proyecto o cliente…" />
+                <select id="projectStatusFilter" aria-label="Filtrar por estado">
+                  <option value="all">Todos</option>
+                  <option value="active">Activos</option>
+                  <option value="inactive">Inactivos</option>
+                </select>
+                <button class="icon-refresh" id="refreshProjectsButton" type="button" title="Actualizar proyectos">↻</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Código</th><th>Proyecto</th><th>Cliente</th><th>Ubicación</th><th>Inicio</th><th>Fin</th><th>Estado</th><th class="admin-only-col">Acciones</th></tr></thead>
+                <tbody id="projectsTableBody"><tr><td colspan="8" class="table-empty">Cargando…</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div id="catalogModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="catalogModalTitle">
+          <div class="modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow" id="catalogModalEyebrow">REGISTRO</span><h3 id="catalogModalTitle">Nuevo registro</h3></div>
+              <button id="closeCatalogModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <form id="catalogForm">
+              <input type="hidden" id="catalogEntity" />
+              <input type="hidden" id="catalogId" />
+              <div id="siteFields" class="form-grid hidden">
+                <label><span>Código *</span><input id="siteCode" maxlength="30" placeholder="Ej. LIMA" /></label>
+                <label><span>Nombre de la sede *</span><input id="siteName" maxlength="120" placeholder="Ej. Lima" /></label>
+                <label class="form-span-2"><span>Ubicación</span><input id="siteLocation" maxlength="180" placeholder="Ciudad / dirección referencial" /></label>
+                <label class="check-field form-span-2"><input id="siteActive" type="checkbox" checked /><span>Sede activa</span></label>
+              </div>
+              <div id="projectFields" class="form-grid hidden">
+                <label><span>Código</span><input id="projectCode" maxlength="30" placeholder="Ej. ZAF-001" /></label>
+                <label><span>Nombre del proyecto *</span><input id="projectName" maxlength="160" placeholder="Nombre del proyecto" /></label>
+                <label><span>Cliente</span><input id="projectClient" maxlength="160" placeholder="Cliente" /></label>
+                <label><span>Ubicación</span><input id="projectLocation" maxlength="180" placeholder="Ubicación" /></label>
+                <label><span>Fecha de inicio</span><input id="projectStart" type="date" /></label>
+                <label><span>Fecha de fin</span><input id="projectEnd" type="date" /></label>
+                <label class="check-field form-span-2"><input id="projectActive" type="checkbox" checked /><span>Proyecto activo</span></label>
+              </div>
+              <div id="catalogFormMessage" class="form-message"></div>
+              <div class="modal-actions">
+                <button id="cancelCatalogModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveCatalogButton" class="primary-btn" type="submit">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
       <section id="inducciones" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Inducciones</h2><p>Contenido, videos, evaluación y constancia.</p></div><div class="coming-card"><span>▶</span><h3>Próximamente</h3><p>Rutas de inducción con control de avance y evaluación.</p></div></section>
       <section id="practicar" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Practicar</h2><p>Quizzes didácticos estilo Kahoot.</p></div><div class="coming-card"><span>★</span><h3>Próximamente</h3><p>Preguntas temporizadas, alternativas, puntaje y ranking.</p></div></section>
       <section id="comite" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Comité SST</h2><p>Capacitación y seguimiento de los integrantes.</p></div><div class="coming-card"><span>◎</span><h3>Próximamente</h3><p>Videos, documentos, exámenes y avance de los integrantes.</p></div></section>
@@ -181,7 +270,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-3"></script>
-  <script src="app.js?v=20260921-3"></script>
+  <script src="config.js?v=20260921-4"></script>
+  <script src="app.js?v=20260921-4"></script>
 </body>
 </html>

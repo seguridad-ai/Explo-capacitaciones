@@ -56,6 +56,7 @@ function showSection(sectionId) {
   menuItems.forEach(item => item.classList.toggle('active', item.dataset.section === sectionId));
   sidebar?.classList.remove('open');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (sectionId === 'sedes-proyectos') loadCatalogs();
 }
 
 function roleLabel(code) {
@@ -259,5 +260,310 @@ menuItems.forEach(item => item.addEventListener('click', () => {
 
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showSection(button.dataset.go)));
 mobileMenu?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+
+// ============================== ETAPA 3 · SEDES Y PROYECTOS ==============================
+let sitesCache = [];
+let projectsCache = [];
+let catalogsLoaded = false;
+
+const catalogMessage = document.getElementById('catalogMessage');
+const sitesTableBody = document.getElementById('sitesTableBody');
+const projectsTableBody = document.getElementById('projectsTableBody');
+const catalogModal = document.getElementById('catalogModal');
+const catalogForm = document.getElementById('catalogForm');
+const catalogEntity = document.getElementById('catalogEntity');
+const catalogId = document.getElementById('catalogId');
+const siteFields = document.getElementById('siteFields');
+const projectFields = document.getElementById('projectFields');
+const projectSearch = document.getElementById('projectSearch');
+const projectStatusFilter = document.getElementById('projectStatusFilter');
+
+function isAdminUser() {
+  return currentProfile?.rol_codigo === 'ADMIN';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const [y,m,d] = value.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : value;
+}
+
+function setCatalogMessage(message = '', type = 'error') {
+  if (!catalogMessage) return;
+  catalogMessage.textContent = message;
+  catalogMessage.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function setFormMessage(message = '', type = 'error') {
+  const el = document.getElementById('catalogFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function applyCatalogPermissions() {
+  const admin = isAdminUser();
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !admin));
+  document.querySelectorAll('.admin-only-col').forEach(el => el.classList.toggle('hidden', !admin));
+}
+
+function renderSites() {
+  if (!sitesTableBody) return;
+  const admin = isAdminUser();
+  if (!sitesCache.length) {
+    sitesTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">No hay sedes registradas.</td></tr>`;
+    return;
+  }
+  sitesTableBody.innerHTML = sitesCache.map(site => `
+    <tr>
+      <td><span class="code-badge">${escapeHtml(site.codigo)}</span></td>
+      <td><strong>${escapeHtml(site.nombre)}</strong></td>
+      <td>${escapeHtml(site.ubicacion || '—')}</td>
+      <td><span class="status-badge ${site.activo ? 'active' : 'inactive'}">${site.activo ? 'Activa' : 'Inactiva'}</span></td>
+      <td class="admin-only-col ${admin ? '' : 'hidden'}">
+        <div class="row-actions">
+          <button type="button" data-edit-site="${site.id}">Editar</button>
+          <button type="button" class="${site.activo ? 'danger-link' : 'success-link'}" data-toggle-site="${site.id}">${site.activo ? 'Desactivar' : 'Activar'}</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function filteredProjects() {
+  const q = (projectSearch?.value || '').trim().toLowerCase();
+  const status = projectStatusFilter?.value || 'all';
+  return projectsCache.filter(p => {
+    const text = `${p.codigo || ''} ${p.nombre || ''} ${p.cliente || ''} ${p.ubicacion || ''}`.toLowerCase();
+    const qOk = !q || text.includes(q);
+    const statusOk = status === 'all' || (status === 'active' ? p.activo : !p.activo);
+    return qOk && statusOk;
+  });
+}
+
+function renderProjects() {
+  if (!projectsTableBody) return;
+  const admin = isAdminUser();
+  const rows = filteredProjects();
+  if (!rows.length) {
+    projectsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No se encontraron proyectos.</td></tr>`;
+    return;
+  }
+  projectsTableBody.innerHTML = rows.map(project => `
+    <tr>
+      <td>${project.codigo ? `<span class="code-badge">${escapeHtml(project.codigo)}</span>` : '—'}</td>
+      <td><strong>${escapeHtml(project.nombre)}</strong></td>
+      <td>${escapeHtml(project.cliente || '—')}</td>
+      <td>${escapeHtml(project.ubicacion || '—')}</td>
+      <td>${formatDate(project.fecha_inicio)}</td>
+      <td>${formatDate(project.fecha_fin)}</td>
+      <td><span class="status-badge ${project.activo ? 'active' : 'inactive'}">${project.activo ? 'Activo' : 'Inactivo'}</span></td>
+      <td class="admin-only-col ${admin ? '' : 'hidden'}">
+        <div class="row-actions">
+          <button type="button" data-edit-project="${project.id}">Editar</button>
+          <button type="button" class="${project.activo ? 'danger-link' : 'success-link'}" data-toggle-project="${project.id}">${project.activo ? 'Desactivar' : 'Activar'}</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function renderCatalogStats() {
+  const siteCount = document.getElementById('catalogSiteCount');
+  const projectCount = document.getElementById('catalogProjectCount');
+  const activeCount = document.getElementById('catalogActiveProjectCount');
+  if (siteCount) siteCount.textContent = String(sitesCache.length);
+  if (projectCount) projectCount.textContent = String(projectsCache.length);
+  if (activeCount) activeCount.textContent = String(projectsCache.filter(p => p.activo).length);
+}
+
+async function loadSites() {
+  if (!client) return;
+  if (sitesTableBody) sitesTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">Cargando…</td></tr>`;
+  const { data, error } = await client.from('sedes').select('id,codigo,nombre,ubicacion,activo,created_at,updated_at').order('nombre');
+  if (error) {
+    console.error(error);
+    setCatalogMessage('No fue posible cargar las sedes.');
+    return;
+  }
+  sitesCache = data || [];
+  renderSites();
+  renderCatalogStats();
+}
+
+async function loadProjects() {
+  if (!client) return;
+  if (projectsTableBody) projectsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">Cargando…</td></tr>`;
+  const { data, error } = await client.from('proyectos').select('id,codigo,nombre,cliente,ubicacion,fecha_inicio,fecha_fin,activo,created_at,updated_at').order('nombre');
+  if (error) {
+    console.error(error);
+    setCatalogMessage('No fue posible cargar los proyectos.');
+    return;
+  }
+  projectsCache = data || [];
+  renderProjects();
+  renderCatalogStats();
+}
+
+async function loadCatalogs(force = false) {
+  if (!client || !currentProfile) return;
+  applyCatalogPermissions();
+  if (catalogsLoaded && !force) {
+    renderSites(); renderProjects(); renderCatalogStats();
+    return;
+  }
+  setCatalogMessage('');
+  await Promise.all([loadSites(), loadProjects()]);
+  catalogsLoaded = true;
+}
+
+function openCatalogModal(entity, record = null) {
+  if (!isAdminUser()) return;
+  setFormMessage('');
+  catalogForm?.reset();
+  catalogEntity.value = entity;
+  catalogId.value = record?.id || '';
+  siteFields.classList.toggle('hidden', entity !== 'site');
+  projectFields.classList.toggle('hidden', entity !== 'project');
+  document.getElementById('catalogModalEyebrow').textContent = record ? 'EDICIÓN' : 'NUEVO REGISTRO';
+  document.getElementById('catalogModalTitle').textContent = entity === 'site'
+    ? (record ? 'Editar sede' : 'Nueva sede')
+    : (record ? 'Editar proyecto' : 'Nuevo proyecto');
+
+  if (entity === 'site') {
+    document.getElementById('siteCode').value = record?.codigo || '';
+    document.getElementById('siteName').value = record?.nombre || '';
+    document.getElementById('siteLocation').value = record?.ubicacion || '';
+    document.getElementById('siteActive').checked = record ? !!record.activo : true;
+  } else {
+    document.getElementById('projectCode').value = record?.codigo || '';
+    document.getElementById('projectName').value = record?.nombre || '';
+    document.getElementById('projectClient').value = record?.cliente || '';
+    document.getElementById('projectLocation').value = record?.ubicacion || '';
+    document.getElementById('projectStart').value = record?.fecha_inicio || '';
+    document.getElementById('projectEnd').value = record?.fecha_fin || '';
+    document.getElementById('projectActive').checked = record ? !!record.activo : true;
+  }
+  catalogModal.classList.remove('hidden');
+  setTimeout(() => (entity === 'site' ? document.getElementById('siteCode') : document.getElementById('projectName'))?.focus(), 30);
+}
+
+function closeCatalogModal() {
+  catalogModal?.classList.add('hidden');
+  setFormMessage('');
+}
+
+async function saveCatalog(event) {
+  event.preventDefault();
+  if (!client || !isAdminUser()) return;
+  const entity = catalogEntity.value;
+  const id = catalogId.value || null;
+  const saveButton = document.getElementById('saveCatalogButton');
+  saveButton.disabled = true;
+  saveButton.textContent = 'Guardando…';
+  setFormMessage('');
+
+  let table, payload;
+  if (entity === 'site') {
+    const codigo = document.getElementById('siteCode').value.trim().toUpperCase();
+    const nombre = document.getElementById('siteName').value.trim();
+    if (!codigo || !nombre) {
+      setFormMessage('Completa el código y el nombre de la sede.');
+      saveButton.disabled = false; saveButton.textContent = 'Guardar'; return;
+    }
+    table = 'sedes';
+    payload = { codigo, nombre, ubicacion: document.getElementById('siteLocation').value.trim() || null, activo: document.getElementById('siteActive').checked };
+  } else {
+    const nombre = document.getElementById('projectName').value.trim();
+    if (!nombre) {
+      setFormMessage('Ingresa el nombre del proyecto.');
+      saveButton.disabled = false; saveButton.textContent = 'Guardar'; return;
+    }
+    const start = document.getElementById('projectStart').value || null;
+    const end = document.getElementById('projectEnd').value || null;
+    if (start && end && end < start) {
+      setFormMessage('La fecha de fin no puede ser anterior a la fecha de inicio.');
+      saveButton.disabled = false; saveButton.textContent = 'Guardar'; return;
+    }
+    table = 'proyectos';
+    payload = {
+      codigo: document.getElementById('projectCode').value.trim().toUpperCase() || null,
+      nombre,
+      cliente: document.getElementById('projectClient').value.trim() || null,
+      ubicacion: document.getElementById('projectLocation').value.trim() || null,
+      fecha_inicio: start,
+      fecha_fin: end,
+      activo: document.getElementById('projectActive').checked
+    };
+  }
+
+  const query = id ? client.from(table).update(payload).eq('id', id) : client.from(table).insert(payload);
+  const { error } = await query;
+  saveButton.disabled = false; saveButton.textContent = 'Guardar';
+  if (error) {
+    console.error(error);
+    const duplicate = error.code === '23505';
+    setFormMessage(duplicate ? 'Ya existe un registro con ese código o nombre.' : 'No fue posible guardar el registro.');
+    return;
+  }
+
+  closeCatalogModal();
+  setCatalogMessage(id ? 'Registro actualizado correctamente.' : 'Registro creado correctamente.', 'success');
+  catalogsLoaded = false;
+  await loadCatalogs(true);
+  await loadDashboardCounts();
+}
+
+async function toggleCatalogRecord(entity, id) {
+  if (!client || !isAdminUser()) return;
+  const record = entity === 'site' ? sitesCache.find(x => x.id === id) : projectsCache.find(x => x.id === id);
+  if (!record) return;
+  const next = !record.activo;
+  const label = entity === 'site' ? 'sede' : 'proyecto';
+  if (!window.confirm(`¿Deseas ${next ? 'activar' : 'desactivar'} ${label} "${record.nombre}"?`)) return;
+  const table = entity === 'site' ? 'sedes' : 'proyectos';
+  const { error } = await client.from(table).update({ activo: next }).eq('id', id);
+  if (error) {
+    console.error(error); setCatalogMessage(`No fue posible actualizar el estado del ${label}.`); return;
+  }
+  setCatalogMessage(`${record.nombre} quedó ${next ? 'activo' : 'inactivo'}.`, 'success');
+  catalogsLoaded = false;
+  await loadCatalogs(true);
+  await loadDashboardCounts();
+}
+
+document.getElementById('newSiteButton')?.addEventListener('click', () => openCatalogModal('site'));
+document.getElementById('newProjectButton')?.addEventListener('click', () => openCatalogModal('project'));
+document.getElementById('closeCatalogModal')?.addEventListener('click', closeCatalogModal);
+document.getElementById('cancelCatalogModal')?.addEventListener('click', closeCatalogModal);
+catalogModal?.addEventListener('click', e => { if (e.target === catalogModal) closeCatalogModal(); });
+catalogForm?.addEventListener('submit', saveCatalog);
+projectSearch?.addEventListener('input', renderProjects);
+projectStatusFilter?.addEventListener('change', renderProjects);
+document.getElementById('refreshSitesButton')?.addEventListener('click', () => loadSites());
+document.getElementById('refreshProjectsButton')?.addEventListener('click', () => loadProjects());
+
+sitesTableBody?.addEventListener('click', e => {
+  const edit = e.target.closest('[data-edit-site]');
+  const toggle = e.target.closest('[data-toggle-site]');
+  if (edit) openCatalogModal('site', sitesCache.find(x => x.id === edit.dataset.editSite));
+  if (toggle) toggleCatalogRecord('site', toggle.dataset.toggleSite);
+});
+
+projectsTableBody?.addEventListener('click', e => {
+  const edit = e.target.closest('[data-edit-project]');
+  const toggle = e.target.closest('[data-toggle-project]');
+  if (edit) openCatalogModal('project', projectsCache.find(x => x.id === edit.dataset.editProject));
+  if (toggle) toggleCatalogRecord('project', toggle.dataset.toggleProject);
+});
+
 
 initializeAuth();

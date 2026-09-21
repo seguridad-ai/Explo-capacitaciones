@@ -11,6 +11,7 @@ const loginButton = document.getElementById('loginButton');
 const loginMessage = document.getElementById('loginMessage');
 const togglePassword = document.getElementById('togglePassword');
 const logoutButton = document.getElementById('logoutButton');
+const publicExamScreen = document.getElementById('publicExamScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -33,6 +34,7 @@ function setLoginBusy(busy) {
 }
 
 function showAuthScreen() {
+  publicExamScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.remove('hidden');
   authLoading?.classList.add('hidden');
@@ -40,12 +42,14 @@ function showAuthScreen() {
 }
 
 function showLoading() {
+  publicExamScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.remove('hidden');
 }
 
 function showApp() {
+  publicExamScreen?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
@@ -181,6 +185,12 @@ async function initializeAuth() {
       }
     }
   );
+
+  const publicExamCode = new URLSearchParams(window.location.search).get('exam');
+  if (publicExamCode) {
+    await initializePublicExamMode(publicExamCode);
+    return;
+  }
 
   showLoading();
 
@@ -1124,7 +1134,7 @@ async function persistTraining({ continueNext = false } = {}) {
   setTrainingMessage(`Borrador ${response.data.codigo || ''} guardado correctamente.`, 'success');
   if (continueNext) {
     setTrainingFormMessage('Datos de la actividad guardados correctamente.', 'success');
-    await openParticipantsStep(response.data.id, response.data.codigo || '', payload);
+    await openExamStep(response.data.id, response.data.codigo || '', payload);
   } else {
     setTrainingFormMessage('Borrador guardado correctamente.', 'success');
   }
@@ -1141,6 +1151,7 @@ function clearTrainingForm() {
   setTrainingFormMessage('');
   setTrainingMessage('');
   resetParticipantsState();
+  resetExamState();
   showTrainingDataStep();
   renderTrainingUnitOptions();
   prefillResponsible();
@@ -1197,19 +1208,27 @@ function setTrainingSteps(mode = 'data') {
   const steps = [...document.querySelectorAll('.training-step')];
   steps.forEach((step, index) => {
     step.classList.remove('active', 'completed');
-    if (mode === 'participants') {
+    if (mode === 'exam') {
       if (index === 0) step.classList.add('completed');
+      if (index === 1) step.classList.add('active');
+    } else if (mode === 'participants') {
+      if (index <= 1) step.classList.add('completed');
       if (index === 2) step.classList.add('active');
+    } else if (mode === 'preview') {
+      if (index <= 2) step.classList.add('completed');
+      if (index === 3) step.classList.add('active');
     } else if (index === 0) {
       step.classList.add('active');
     }
   });
   const pill = document.getElementById('trainingStagePill');
-  if (pill) pill.textContent = mode === 'participants' ? 'Etapa 3 de 4' : 'Etapa 1 de 4';
+  if (!pill) return;
+  pill.textContent = mode === 'exam' ? 'Etapa 2 de 4' : mode === 'participants' ? 'Etapa 3 de 4' : mode === 'preview' ? 'Etapa 4 de 4' : 'Etapa 1 de 4';
 }
 
 function showTrainingDataStep() {
   trainingForm?.classList.remove('hidden');
+  document.getElementById('examPanel')?.classList.add('hidden');
   participantsPanel?.classList.add('hidden');
   setTrainingSteps('data');
 }
@@ -1232,10 +1251,12 @@ async function openParticipantsStep(trainingId, code = '', payload = null) {
   activeTrainingId = trainingId;
   activeTrainingCode = code || activeTrainingCode;
   trainingForm?.classList.add('hidden');
+  document.getElementById('examPanel')?.classList.add('hidden');
   participantsPanel?.classList.remove('hidden');
   setTrainingSteps('participants');
 
-  const currentPayload = payload || collectTrainingPayload();
+  const currentPayload = payload || activeTrainingPayload || collectTrainingPayload();
+  activeTrainingPayload = currentPayload;
   document.getElementById('participantTrainingCode').textContent = activeTrainingCode || 'Capacitación';
   document.getElementById('participantTrainingTopic').textContent = currentPayload.tema || '—';
   document.getElementById('participantTrainingDate').textContent = currentPayload.fecha || '—';
@@ -1295,7 +1316,9 @@ function renderParticipants() {
       ? `<div class="participant-signature-cell"><img src="${item.firma}" alt="Firma" class="participant-signature-thumb"><button class="table-link" type="button" data-sign-participant="${item.id}">Actualizar</button></div>`
       : `<button class="table-action" type="button" data-sign-participant="${item.id}">Firmar</button>`;
     const grade = item.nota === null || item.nota === undefined
-      ? '<span class="grade-pill pending">Pendiente</span>'
+      ? (activeExamConfig?.requiere_evaluacion === false
+          ? '<span class="grade-pill pending">N.A.</span>'
+          : '<span class="grade-pill pending">Pendiente</span>')
       : `<span class="grade-pill">${Number(item.nota).toFixed(2).replace(/\.00$/, '')}</span>`;
     return `<tr>
       <td>${index + 1}</td>
@@ -1503,9 +1526,10 @@ document.getElementById('participantSearchButton')?.addEventListener('click', lo
 addParticipantButton?.addEventListener('click', addParticipant);
 document.getElementById('refreshParticipantsButton')?.addEventListener('click', loadParticipants);
 document.getElementById('participantListSearch')?.addEventListener('input', renderParticipants);
-document.getElementById('backToTrainingData')?.addEventListener('click', showTrainingDataStep);
+document.getElementById('backToTrainingData')?.addEventListener('click', () => openExamStep(activeTrainingId, activeTrainingCode, activeTrainingPayload));
 document.getElementById('finishParticipantsButton')?.addEventListener('click', () => {
-  setTrainingMessage(`${participantsCache.length} participante(s) guardado(s). La configuración del examen se implementará en la siguiente etapa.`, 'success');
+  const examText = activeExamConfig?.requiere_evaluacion ? ' El examen quedará disponible mediante el enlace configurado.' : ' Esta capacitación no requiere evaluación.';
+  setTrainingMessage(`${participantsCache.length} participante(s) guardado(s).${examText}`, 'success');
   document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
@@ -1526,5 +1550,553 @@ document.getElementById('closeParticipantSignatureModal')?.addEventListener('cli
 document.getElementById('cancelParticipantSignatureModal')?.addEventListener('click', closeParticipantSignature);
 document.getElementById('saveParticipantSignatureButton')?.addEventListener('click', saveParticipantSignature);
 participantSignatureModal?.addEventListener('click', e => { if (e.target === participantSignatureModal) closeParticipantSignature(); });
+
+
+// ============================== ETAPA 7 · EXAMEN ==============================
+let activeTrainingPayload = null;
+let activeExamId = null;
+let activeExamConfig = null;
+let examQuestionsCache = [];
+let examStructureLocked = false;
+let publicExamCode = '';
+let publicExamData = null;
+
+const examPanel = document.getElementById('examPanel');
+const examQuestionList = document.getElementById('examQuestionList');
+const examRequired = document.getElementById('examRequired');
+const examSettings = document.getElementById('examSettings');
+const examQuestionsCard = document.getElementById('examQuestionsCard');
+
+function setExamMessage(message = '', type = 'error') {
+  const el = document.getElementById('examFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function examPublicUrl() {
+  if (!activeTrainingCode) return '';
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('exam', activeTrainingCode);
+  return url.toString();
+}
+
+function updateExamLink() {
+  const link = document.getElementById('examPublicLink');
+  const copy = document.getElementById('copyExamLinkButton');
+  const copyParticipants = document.getElementById('copyExamLinkParticipantsButton');
+  const hasExam = !!activeExamId && !!activeExamConfig?.requiere_evaluacion;
+  const url = hasExam ? examPublicUrl() : '';
+  if (link) link.textContent = url || 'Guarda el examen para generar el enlace.';
+  if (copy) copy.disabled = !url;
+  copyParticipants?.classList.toggle('hidden', !url);
+}
+
+function applyExamRequiredVisibility() {
+  const required = !!examRequired?.checked;
+  examSettings?.classList.toggle('hidden', !required);
+  examQuestionsCard?.classList.toggle('hidden', !required);
+  if (!required) {
+    const published = document.getElementById('examPublished');
+    if (published) published.checked = false;
+  }
+}
+
+function defaultExamQuestion() {
+  return {
+    id: null,
+    enunciado: '',
+    opciones: [
+      { id: null, texto: '', es_correcta: true },
+      { id: null, texto: '', es_correcta: false },
+      { id: null, texto: '', es_correcta: false },
+      { id: null, texto: '', es_correcta: false }
+    ]
+  };
+}
+
+function normalizeQuestionOptions(options = []) {
+  const sorted = [...options].sort((a,b) => Number(a.orden || 0) - Number(b.orden || 0));
+  const result = sorted.slice(0,4).map(x => ({ id: x.id || null, texto: x.texto || '', es_correcta: !!x.es_correcta }));
+  while (result.length < 4) result.push({ id: null, texto: '', es_correcta: false });
+  if (!result.some(x => x.es_correcta)) result[0].es_correcta = true;
+  return result;
+}
+
+function renderExamQuestions() {
+  if (!examQuestionList) return;
+  if (!examQuestionsCache.length) {
+    examQuestionList.innerHTML = '<div class="exam-empty">Aún no hay preguntas. Pulsa <strong>+ Agregar pregunta</strong>.</div>';
+    return;
+  }
+
+  examQuestionList.innerHTML = examQuestionsCache.map((q, index) => {
+    const options = normalizeQuestionOptions(q.opciones);
+    return `<article class="exam-question-card" data-question-index="${index}">
+      <div class="exam-question-top">
+        <div class="exam-question-number"><b>${index + 1}</b><span>Pregunta ${index + 1}</span></div>
+        <button class="exam-question-remove" type="button" data-remove-exam-question="${index}" ${examStructureLocked ? 'disabled' : ''}>Eliminar</button>
+      </div>
+      <textarea class="exam-question-text" maxlength="700" placeholder="Escribe la pregunta…" ${examStructureLocked ? 'disabled' : ''}>${escapeHtml(q.enunciado || '')}</textarea>
+      <div class="exam-options">
+        ${options.map((o, oi) => `<label class="exam-option-row">
+          <input type="radio" name="exam-correct-${index}" value="${oi}" ${o.es_correcta ? 'checked' : ''} ${examStructureLocked ? 'disabled' : ''} aria-label="Marcar alternativa correcta" />
+          <input class="exam-option-text" type="text" maxlength="350" value="${escapeHtml(o.texto || '')}" placeholder="Alternativa ${String.fromCharCode(65 + oi)}" ${examStructureLocked ? 'disabled' : ''} />
+        </label>`).join('')}
+      </div>
+    </article>`;
+  }).join('');
+
+  const addButton = document.getElementById('addExamQuestionButton');
+  if (addButton) addButton.disabled = examStructureLocked;
+}
+
+function syncQuestionsFromDom() {
+  if (!examQuestionList || !examQuestionsCache.length || examStructureLocked) return;
+  const cards = [...examQuestionList.querySelectorAll('.exam-question-card')];
+  examQuestionsCache = cards.map((card, index) => {
+    const correct = Number(card.querySelector(`input[name="exam-correct-${index}"]:checked`)?.value ?? 0);
+    const optionInputs = [...card.querySelectorAll('.exam-option-text')];
+    return {
+      id: examQuestionsCache[index]?.id || null,
+      enunciado: card.querySelector('.exam-question-text')?.value.trim() || '',
+      opciones: optionInputs.map((input, oi) => ({
+        id: examQuestionsCache[index]?.opciones?.[oi]?.id || null,
+        texto: input.value.trim(),
+        es_correcta: oi === correct
+      }))
+    };
+  });
+}
+
+function collectExamConfiguration() {
+  syncQuestionsFromDom();
+  return {
+    requiere_evaluacion: !!examRequired?.checked,
+    titulo: document.getElementById('examTitle')?.value.trim() || '',
+    nota_aprobatoria: Number(document.getElementById('examPassGrade')?.value || 16),
+    max_intentos: Number(document.getElementById('examMaxAttempts')?.value || 2),
+    mostrar_resultado: !!document.getElementById('examShowResult')?.checked,
+    publicado: !!document.getElementById('examPublished')?.checked,
+    preguntas: examQuestionsCache
+  };
+}
+
+function validateExamConfiguration(data) {
+  if (!data.requiere_evaluacion) return '';
+  if (!data.titulo) return 'Ingresa el título del examen.';
+  if (!Number.isFinite(data.nota_aprobatoria) || data.nota_aprobatoria < 0 || data.nota_aprobatoria > 20) return 'La nota aprobatoria debe estar entre 0 y 20.';
+  if (!Number.isInteger(data.max_intentos) || data.max_intentos < 1 || data.max_intentos > 10) return 'Los intentos deben estar entre 1 y 10.';
+  if (!data.preguntas.length) return 'Agrega al menos una pregunta.';
+
+  for (let i = 0; i < data.preguntas.length; i++) {
+    const q = data.preguntas[i];
+    if (!q.enunciado) return `Completa el enunciado de la pregunta ${i + 1}.`;
+    const filled = q.opciones.filter(x => x.texto);
+    if (filled.length < 2) return `La pregunta ${i + 1} debe tener al menos dos alternativas.`;
+    const correct = q.opciones.find(x => x.es_correcta);
+    if (!correct?.texto) return `Marca como correcta una alternativa con texto en la pregunta ${i + 1}.`;
+  }
+  return '';
+}
+
+async function loadExamConfiguration() {
+  if (!client || !activeTrainingId) return;
+  setExamMessage('');
+  examStructureLocked = false;
+  const { data: exam, error } = await client
+    .from('examenes')
+    .select('id,capacitacion_id,titulo,requiere_evaluacion,nota_aprobatoria,max_intentos,mostrar_resultado,publicado,activo')
+    .eq('capacitacion_id', activeTrainingId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    const missing = /examenes/i.test(error.message || '') && /schema cache|does not exist|relation/i.test(error.message || '');
+    setExamMessage(missing ? 'Primero ejecuta ETAPA7_SUPABASE.sql en Supabase.' : 'No fue posible cargar la configuración del examen.');
+    activeExamId = null;
+    activeExamConfig = null;
+    examQuestionsCache = [defaultExamQuestion()];
+    renderExamQuestions();
+    return;
+  }
+
+  if (!exam) {
+    activeExamId = null;
+    activeExamConfig = null;
+    examQuestionsCache = [defaultExamQuestion()];
+    examRequired.disabled = false;
+    examRequired.checked = true;
+    document.getElementById('examTitle').value = activeTrainingPayload?.tema ? `Evaluación - ${activeTrainingPayload.tema}` : 'Evaluación de capacitación';
+    document.getElementById('examPassGrade').value = '16';
+    document.getElementById('examMaxAttempts').value = '2';
+    document.getElementById('examShowResult').checked = true;
+    document.getElementById('examPublished').checked = false;
+    applyExamRequiredVisibility();
+    renderExamQuestions();
+    updateExamLink();
+    return;
+  }
+
+  activeExamId = exam.id;
+  activeExamConfig = exam;
+  examRequired.checked = !!exam.requiere_evaluacion;
+  document.getElementById('examTitle').value = exam.titulo || '';
+  document.getElementById('examPassGrade').value = String(exam.nota_aprobatoria ?? 16);
+  document.getElementById('examMaxAttempts').value = String(exam.max_intentos ?? 2);
+  document.getElementById('examShowResult').checked = !!exam.mostrar_resultado;
+  document.getElementById('examPublished').checked = !!exam.publicado;
+
+  if (exam.requiere_evaluacion) {
+    const [{ data: questions, error: qError }, attempts] = await Promise.all([
+      client.from('examen_preguntas')
+        .select('id,orden,enunciado,activo,examen_opciones(id,orden,texto,es_correcta)')
+        .eq('examen_id', exam.id)
+        .eq('activo', true)
+        .order('orden', { ascending: true }),
+      client.from('examen_intentos').select('*', { count: 'exact', head: true }).eq('examen_id', exam.id)
+    ]);
+    if (qError) console.error(qError);
+    examStructureLocked = (attempts.count || 0) > 0;
+    examRequired.disabled = examStructureLocked;
+    examQuestionsCache = (questions || []).map(q => ({
+      id: q.id,
+      enunciado: q.enunciado,
+      opciones: normalizeQuestionOptions(q.examen_opciones || [])
+    }));
+    if (!examQuestionsCache.length && !examStructureLocked) examQuestionsCache = [defaultExamQuestion()];
+    if (examStructureLocked) setExamMessage('El examen ya tiene intentos registrados. Las preguntas quedan bloqueadas para conservar la trazabilidad; aún puedes cambiar publicación, intentos y nota aprobatoria.', 'success');
+  } else {
+    examQuestionsCache = [];
+  }
+
+  applyExamRequiredVisibility();
+  renderExamQuestions();
+  updateExamLink();
+}
+
+async function openExamStep(trainingId, code = '', payload = null) {
+  if (!trainingId) return;
+  activeTrainingId = trainingId;
+  activeTrainingCode = code || activeTrainingCode;
+  activeTrainingPayload = payload || activeTrainingPayload || collectTrainingPayload();
+  trainingForm?.classList.add('hidden');
+  participantsPanel?.classList.add('hidden');
+  examPanel?.classList.remove('hidden');
+  setTrainingSteps('exam');
+  document.getElementById('examTrainingCode').textContent = activeTrainingCode || 'Capacitación';
+  document.getElementById('examTrainingTopic').textContent = activeTrainingPayload?.tema || '—';
+  await loadExamConfiguration();
+  document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resetExamState() {
+  activeTrainingPayload = null;
+  activeExamId = null;
+  activeExamConfig = null;
+  examQuestionsCache = [];
+  examStructureLocked = false;
+  examPanel?.classList.add('hidden');
+  if (examRequired) { examRequired.disabled = false; examRequired.checked = true; }
+  updateExamLink();
+}
+
+async function saveExamConfiguration({ continueNext = false } = {}) {
+  if (!client || !activeTrainingId || !currentProfile) return false;
+  const cfgExam = collectExamConfiguration();
+  const validation = validateExamConfiguration(cfgExam);
+  if (validation) { setExamMessage(validation); return false; }
+
+  const button = continueNext ? document.getElementById('continueToParticipantsButton') : document.getElementById('saveExamButton');
+  const oldLabel = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Guardando…'; }
+  setExamMessage('');
+
+  const header = {
+    capacitacion_id: activeTrainingId,
+    titulo: cfgExam.requiere_evaluacion ? cfgExam.titulo : `Sin evaluación - ${activeTrainingPayload?.tema || activeTrainingCode}`,
+    requiere_evaluacion: cfgExam.requiere_evaluacion,
+    nota_aprobatoria: cfgExam.requiere_evaluacion ? cfgExam.nota_aprobatoria : 16,
+    max_intentos: cfgExam.requiere_evaluacion ? cfgExam.max_intentos : 1,
+    mostrar_resultado: cfgExam.requiere_evaluacion ? cfgExam.mostrar_resultado : false,
+    publicado: false,
+    activo: true,
+    created_by: currentProfile.id
+  };
+
+  let result;
+  if (activeExamId) {
+    const { created_by, capacitacion_id, ...updateHeader } = header;
+    result = await client.from('examenes').update(updateHeader).eq('id', activeExamId).select('id').single();
+  } else {
+    result = await client.from('examenes').insert(header).select('id').single();
+  }
+
+  if (result.error) {
+    console.error(result.error);
+    if (button) { button.disabled = false; button.textContent = oldLabel; }
+    const missing = /examenes/i.test(result.error.message || '') && /schema cache|does not exist|relation/i.test(result.error.message || '');
+    setExamMessage(missing ? 'Primero ejecuta ETAPA7_SUPABASE.sql en Supabase.' : 'No fue posible guardar la configuración del examen.');
+    return false;
+  }
+
+  activeExamId = result.data.id;
+
+  if (!cfgExam.requiere_evaluacion) {
+    if (!examStructureLocked) await client.from('examen_preguntas').delete().eq('examen_id', activeExamId);
+  } else if (!examStructureLocked) {
+    const del = await client.from('examen_preguntas').delete().eq('examen_id', activeExamId);
+    if (del.error) {
+      console.error(del.error);
+      if (button) { button.disabled = false; button.textContent = oldLabel; }
+      setExamMessage('No fue posible actualizar las preguntas del examen.');
+      return false;
+    }
+
+    for (let qi = 0; qi < cfgExam.preguntas.length; qi++) {
+      const q = cfgExam.preguntas[qi];
+      const { data: savedQ, error: qError } = await client.from('examen_preguntas').insert({
+        examen_id: activeExamId,
+        orden: qi + 1,
+        enunciado: q.enunciado,
+        activo: true
+      }).select('id').single();
+      if (qError) {
+        console.error(qError);
+        if (button) { button.disabled = false; button.textContent = oldLabel; }
+        setExamMessage(`No fue posible guardar la pregunta ${qi + 1}.`);
+        return false;
+      }
+
+      const nonEmpty = q.opciones
+        .map((o, oi) => ({ ...o, originalIndex: oi }))
+        .filter(o => o.texto);
+      const optionRows = nonEmpty.map((o, oi) => ({
+        pregunta_id: savedQ.id,
+        orden: oi + 1,
+        texto: o.texto,
+        es_correcta: !!o.es_correcta
+      }));
+      const { error: oError } = await client.from('examen_opciones').insert(optionRows);
+      if (oError) {
+        console.error(oError);
+        if (button) { button.disabled = false; button.textContent = oldLabel; }
+        setExamMessage(`No fue posible guardar las alternativas de la pregunta ${qi + 1}.`);
+        return false;
+      }
+    }
+  }
+
+  let published = false;
+  if (cfgExam.requiere_evaluacion && cfgExam.publicado) {
+    const { data: validationResult, error: validationError } = await client.rpc('validar_examen_publicable', { p_examen_id: activeExamId });
+    if (validationError || !validationResult?.ok) {
+      console.error(validationError);
+      document.getElementById('examPublished').checked = false;
+      setExamMessage(validationResult?.error || 'El examen se guardó, pero no pudo publicarse. Revisa las preguntas.');
+    } else {
+      const { error: publishError } = await client.from('examenes').update({ publicado: true }).eq('id', activeExamId);
+      if (publishError) console.error(publishError); else published = true;
+    }
+  }
+
+  activeExamConfig = {
+    id: activeExamId,
+    ...header,
+    publicado: published,
+    requiere_evaluacion: cfgExam.requiere_evaluacion
+  };
+  updateExamLink();
+  if (button) { button.disabled = false; button.textContent = oldLabel; }
+
+  if (!cfgExam.requiere_evaluacion) setExamMessage('Configuración guardada: esta capacitación no tendrá evaluación.', 'success');
+  else if (published) setExamMessage('Examen guardado y habilitado para los participantes.', 'success');
+  else if (!cfgExam.publicado) setExamMessage('Examen guardado como no publicado. Puedes habilitarlo cuando estés listo.', 'success');
+
+  if (continueNext) await openParticipantsStep(activeTrainingId, activeTrainingCode, activeTrainingPayload);
+  return true;
+}
+
+async function copyText(text, successMessage = 'Enlace copiado.') {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    setTrainingMessage(successMessage, 'success');
+  } catch {
+    window.prompt('Copia este enlace:', text);
+  }
+}
+
+examRequired?.addEventListener('change', applyExamRequiredVisibility);
+document.getElementById('addExamQuestionButton')?.addEventListener('click', () => {
+  if (examStructureLocked) return;
+  syncQuestionsFromDom();
+  examQuestionsCache.push(defaultExamQuestion());
+  renderExamQuestions();
+});
+examQuestionList?.addEventListener('click', e => {
+  const button = e.target.closest('[data-remove-exam-question]');
+  if (!button || examStructureLocked) return;
+  syncQuestionsFromDom();
+  const index = Number(button.dataset.removeExamQuestion);
+  examQuestionsCache.splice(index, 1);
+  renderExamQuestions();
+});
+document.getElementById('backToTrainingFromExam')?.addEventListener('click', showTrainingDataStep);
+document.getElementById('saveExamButton')?.addEventListener('click', () => saveExamConfiguration({ continueNext: false }));
+document.getElementById('continueToParticipantsButton')?.addEventListener('click', () => saveExamConfiguration({ continueNext: true }));
+document.getElementById('copyExamLinkButton')?.addEventListener('click', () => copyText(examPublicUrl(), 'Enlace del examen copiado.'));
+document.getElementById('copyExamLinkParticipantsButton')?.addEventListener('click', () => copyText(examPublicUrl(), 'Enlace del examen copiado.'));
+
+
+// ------------------------------ EXAMEN PÚBLICO DEL TRABAJADOR ------------------------------
+function setPublicExamMessage(message = '', type = 'error', targetId = 'publicExamMessage') {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function initializePublicExamView(code) {
+  publicExamCode = (code || '').trim();
+  publicExamData = null;
+  authLoading?.classList.add('hidden');
+  authScreen?.classList.add('hidden');
+  appShell?.classList.add('hidden');
+  publicExamScreen?.classList.remove('hidden');
+  document.getElementById('publicExamHeaderCode').textContent = publicExamCode || 'Código de capacitación';
+  document.getElementById('publicExamIdentity')?.classList.remove('hidden');
+  document.getElementById('publicExamQuestions')?.classList.add('hidden');
+  document.getElementById('publicExamResult')?.classList.add('hidden');
+  setTimeout(() => document.getElementById('publicExamDni')?.focus(), 50);
+}
+
+async function initializePublicExamMode(code) {
+  initializePublicExamView(code);
+}
+
+async function lookupPublicExam() {
+  if (!client) return;
+  const dniEl = document.getElementById('publicExamDni');
+  const dni = (dniEl?.value || '').replace(/\D/g, '').slice(0,8);
+  if (dniEl) dniEl.value = dni;
+  document.getElementById('publicExamParticipantPreview')?.classList.add('hidden');
+  publicExamData = null;
+  if (!/^\d{8}$/.test(dni)) {
+    setPublicExamMessage('Ingresa un DNI de 8 dígitos.');
+    return;
+  }
+
+  const button = document.getElementById('publicExamLookupButton');
+  if (button) { button.disabled = true; button.textContent = 'Consultando…'; }
+  setPublicExamMessage('');
+  const { data, error } = await client.rpc('obtener_examen_participante', { p_codigo: publicExamCode, p_dni: dni });
+  if (button) { button.disabled = false; button.textContent = 'Continuar'; }
+  if (error) {
+    console.error(error);
+    const missing = /obtener_examen_participante|schema cache|function/i.test(error.message || '');
+    setPublicExamMessage(missing ? 'La evaluación todavía no está habilitada en el sistema. Comunícate con el responsable.' : 'No fue posible consultar la evaluación.');
+    return;
+  }
+
+  if (!data?.ok) {
+    const extra = data?.mejor_nota !== null && data?.mejor_nota !== undefined ? ` Mejor nota registrada: ${Number(data.mejor_nota).toFixed(2).replace(/\.00$/, '')}.` : '';
+    setPublicExamMessage(`${data?.error || 'No fue posible acceder a la evaluación.'}${extra}`);
+    return;
+  }
+
+  publicExamData = data;
+  document.getElementById('publicExamParticipantName').textContent = data.nombre || 'Participante';
+  document.getElementById('publicExamParticipantDetails').textContent = `${data.puesto || 'Sin puesto'} · ${data.area || 'Sin área'} · ${data.tema || ''}`;
+  document.getElementById('publicExamAttempts').textContent = `Intentos disponibles: ${data.intentos_disponibles} de ${data.max_intentos} · Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}`;
+  document.getElementById('publicExamParticipantPreview')?.classList.remove('hidden');
+  setPublicExamMessage('Participante validado correctamente.', 'success');
+}
+
+function renderPublicExamQuestions() {
+  if (!publicExamData) return;
+  document.getElementById('publicExamTopic').textContent = publicExamData.tema || publicExamData.titulo || '—';
+  document.getElementById('publicExamWorker').textContent = publicExamData.nombre || '—';
+  document.getElementById('publicExamPassGrade').textContent = Number(publicExamData.nota_aprobatoria).toFixed(2).replace(/\.00$/, '');
+  const list = document.getElementById('publicExamQuestionList');
+  const questions = Array.isArray(publicExamData.preguntas) ? publicExamData.preguntas : [];
+  list.innerHTML = questions.map((q, index) => `<article class="public-question-card">
+    <h3>${index + 1}. ${escapeHtml(q.enunciado || '')}</h3>
+    <div class="public-question-options">
+      ${(q.opciones || []).map((o, oi) => `<label class="public-option">
+        <input type="radio" name="public-q-${q.id}" value="${o.id}" />
+        <span>${String.fromCharCode(65 + oi)}. ${escapeHtml(o.texto || '')}</span>
+      </label>`).join('')}
+    </div>
+  </article>`).join('');
+}
+
+function startPublicExam() {
+  if (!publicExamData) return;
+  document.getElementById('publicExamIdentity')?.classList.add('hidden');
+  document.getElementById('publicExamResult')?.classList.add('hidden');
+  document.getElementById('publicExamQuestions')?.classList.remove('hidden');
+  renderPublicExamQuestions();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function submitPublicExam(event) {
+  event.preventDefault();
+  if (!client || !publicExamData) return;
+  const questions = Array.isArray(publicExamData.preguntas) ? publicExamData.preguntas : [];
+  const answers = [];
+  for (const q of questions) {
+    const selected = document.querySelector(`input[name="public-q-${q.id}"]:checked`);
+    if (!selected) {
+      setPublicExamMessage('Responde todas las preguntas antes de finalizar.', 'error', 'publicExamSubmitMessage');
+      return;
+    }
+    answers.push({ pregunta_id: q.id, opcion_id: selected.value });
+  }
+
+  const button = document.getElementById('publicExamSubmitButton');
+  if (button) { button.disabled = true; button.textContent = 'Calificando…'; }
+  setPublicExamMessage('', 'error', 'publicExamSubmitMessage');
+  const dni = document.getElementById('publicExamDni')?.value || '';
+  const { data, error } = await client.rpc('enviar_examen_participante', {
+    p_codigo: publicExamCode,
+    p_dni: dni,
+    p_respuestas: answers
+  });
+  if (button) { button.disabled = false; button.textContent = 'Finalizar y enviar examen'; }
+  if (error || !data?.ok) {
+    console.error(error);
+    setPublicExamMessage(data?.error || 'No fue posible registrar la evaluación. Inténtalo nuevamente.', 'error', 'publicExamSubmitMessage');
+    return;
+  }
+
+  document.getElementById('publicExamQuestions')?.classList.add('hidden');
+  document.getElementById('publicExamResult')?.classList.remove('hidden');
+  const icon = document.getElementById('publicExamResultIcon');
+  icon.textContent = data.aprobado ? '✓' : '×';
+  icon.classList.toggle('fail', !data.aprobado);
+  document.getElementById('publicExamResultTitle').textContent = data.aprobado ? 'APROBADO' : 'DESAPROBADO';
+  document.getElementById('publicExamGrade').textContent = data.mostrar_resultado ? `${Number(data.nota).toFixed(2).replace(/\.00$/, '')} / 20` : 'Registrado';
+  document.getElementById('publicExamResultText').textContent = data.mostrar_resultado
+    ? `Intento ${data.intento}. Respuestas correctas: ${data.correctas} de ${data.total_preguntas}. Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}.`
+    : `Tu evaluación fue registrada correctamente. Intento ${data.intento}.`;
+  const retry = document.getElementById('publicExamRetryButton');
+  retry.classList.toggle('hidden', data.aprobado || Number(data.intentos_restantes || 0) <= 0);
+  publicExamData.intentos_disponibles = Number(data.intentos_restantes || 0);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('publicExamDni')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0,8); });
+document.getElementById('publicExamDni')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupPublicExam(); } });
+document.getElementById('publicExamLookupButton')?.addEventListener('click', lookupPublicExam);
+document.getElementById('publicExamStartButton')?.addEventListener('click', startPublicExam);
+document.getElementById('publicExamForm')?.addEventListener('submit', submitPublicExam);
+document.getElementById('publicExamRetryButton')?.addEventListener('click', async () => {
+  document.getElementById('publicExamResult')?.classList.add('hidden');
+  await lookupPublicExam();
+  if (publicExamData) startPublicExam();
+});
 
 initializeAuth();

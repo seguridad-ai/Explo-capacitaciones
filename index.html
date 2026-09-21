@@ -9,9 +9,69 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-7" />
+  <link rel="stylesheet" href="styles.css?v=20260921-8" />
 </head>
 <body>
+  <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
+    <div class="public-exam-shell">
+      <header class="public-exam-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div>
+          <span class="eyebrow">EVALUACIÓN DE CAPACITACIÓN</span>
+          <h1>Programación de Capacitaciones</h1>
+          <p id="publicExamHeaderCode">Código de capacitación</p>
+        </div>
+      </header>
+
+      <main class="public-exam-card">
+        <section id="publicExamIdentity">
+          <div class="public-exam-title">
+            <span class="public-exam-icon">✓</span>
+            <div><h2>Identificación del participante</h2><p>Ingresa tu DNI para acceder únicamente a la evaluación asignada.</p></div>
+          </div>
+          <label class="public-exam-dni-label">
+            <span>DNI</span>
+            <div class="public-exam-dni-row">
+              <input id="publicExamDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+              <button id="publicExamLookupButton" class="primary-btn" type="button">Continuar</button>
+            </div>
+          </label>
+          <div id="publicExamMessage" class="form-message"></div>
+          <div id="publicExamParticipantPreview" class="public-participant-preview hidden">
+            <strong id="publicExamParticipantName">—</strong>
+            <span id="publicExamParticipantDetails">—</span>
+            <span id="publicExamAttempts">—</span>
+            <button id="publicExamStartButton" class="primary-btn" type="button">Comenzar examen</button>
+          </div>
+        </section>
+
+        <section id="publicExamQuestions" class="hidden">
+          <div class="public-exam-meta">
+            <div><span>Tema</span><strong id="publicExamTopic">—</strong></div>
+            <div><span>Participante</span><strong id="publicExamWorker">—</strong></div>
+            <div><span>Nota aprobatoria</span><strong id="publicExamPassGrade">—</strong></div>
+          </div>
+          <form id="publicExamForm">
+            <div id="publicExamQuestionList" class="public-question-list"></div>
+            <div id="publicExamSubmitMessage" class="form-message"></div>
+            <button id="publicExamSubmitButton" class="primary-btn public-exam-submit" type="submit">Finalizar y enviar examen</button>
+          </form>
+        </section>
+
+        <section id="publicExamResult" class="public-exam-result hidden">
+          <div id="publicExamResultIcon" class="public-result-icon">✓</div>
+          <span class="eyebrow">RESULTADO</span>
+          <h2 id="publicExamResultTitle">Evaluación finalizada</h2>
+          <div id="publicExamGrade" class="public-result-grade">—</div>
+          <p id="publicExamResultText">—</p>
+          <button id="publicExamRetryButton" class="secondary-btn hidden" type="button">Intentar nuevamente</button>
+        </section>
+      </main>
+
+      <footer class="public-exam-footer">Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</footer>
+    </div>
+  </section>
+
   <div id="authLoading" class="auth-loading">
     <div class="loading-card">
       <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
@@ -94,7 +154,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 6 · Participantes</small>
+        <small>Etapa 7 · Examen</small>
       </div>
     </aside>
 
@@ -301,9 +361,95 @@
           <div class="training-form-actions">
             <button id="clearTrainingButton" class="secondary-btn" type="button">Limpiar</button>
             <button id="saveTrainingDraftButton" class="secondary-btn" type="button">Guardar borrador</button>
-            <button id="continueTrainingButton" class="primary-btn" type="submit">Guardar y continuar a participantes</button>
+            <button id="continueTrainingButton" class="primary-btn" type="submit">Guardar y continuar al examen</button>
           </div>
         </form>
+
+        <section id="examPanel" class="exam-panel hidden" aria-label="Configuración del examen">
+          <article class="training-card participant-summary-card">
+            <div class="participant-summary-main">
+              <div>
+                <span class="eyebrow">CAPACITACIÓN SELECCIONADA</span>
+                <h3 id="examTrainingCode">—</h3>
+                <p id="examTrainingTopic">—</p>
+              </div>
+              <div class="participant-summary-actions">
+                <button id="backToTrainingFromExam" class="secondary-btn" type="button">← Volver a datos</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="training-card">
+            <div class="training-card-head">
+              <div class="training-icon">?</div>
+              <div><span class="eyebrow">ETAPA 2</span><h3>Configuración de la evaluación</h3></div>
+            </div>
+
+            <div class="exam-toggle-card">
+              <div>
+                <strong>¿Esta capacitación tendrá examen?</strong>
+                <span>Si seleccionas “No”, los participantes quedarán sin nota de evaluación.</span>
+              </div>
+              <label class="switch-control">
+                <input id="examRequired" type="checkbox" checked />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div id="examSettings" class="exam-settings">
+              <div class="training-grid">
+                <label class="training-span-2">
+                  <span>Título del examen *</span>
+                  <input id="examTitle" maxlength="240" placeholder="Ej. Evaluación - Uso adecuado de EPP" />
+                </label>
+                <label>
+                  <span>Nota aprobatoria *</span>
+                  <input id="examPassGrade" type="number" min="0" max="20" step="0.01" value="16" />
+                  <small class="field-help">Escala de 0 a 20.</small>
+                </label>
+                <label>
+                  <span>Número máximo de intentos *</span>
+                  <input id="examMaxAttempts" type="number" min="1" max="10" step="1" value="2" />
+                </label>
+                <label class="check-field">
+                  <input id="examShowResult" type="checkbox" checked />
+                  <span>Mostrar la nota al participante al finalizar</span>
+                </label>
+                <label class="check-field">
+                  <input id="examPublished" type="checkbox" />
+                  <span>Habilitar examen para los participantes</span>
+                </label>
+              </div>
+
+              <div class="exam-link-box">
+                <div>
+                  <span>Enlace para participantes</span>
+                  <strong id="examPublicLink">Guarda el examen para generar el enlace.</strong>
+                  <small>El trabajador abrirá este enlace e ingresará únicamente su DNI.</small>
+                </div>
+                <button id="copyExamLinkButton" class="secondary-btn" type="button" disabled>Copiar enlace</button>
+              </div>
+            </div>
+          </article>
+
+          <article id="examQuestionsCard" class="training-card">
+            <div class="training-card-head exam-head-actions">
+              <div class="participant-list-title">
+                <div class="training-icon">☑</div>
+                <div><span class="eyebrow">BANCO DEL EXAMEN</span><h3>Preguntas</h3></div>
+              </div>
+              <button id="addExamQuestionButton" class="primary-btn" type="button">+ Agregar pregunta</button>
+            </div>
+            <div class="exam-help">Cada pregunta vale el mismo peso. La nota final se calcula automáticamente sobre 20 puntos.</div>
+            <div id="examQuestionList" class="exam-question-list"></div>
+          </article>
+
+          <div id="examFormMessage" class="form-message"></div>
+          <div class="training-form-actions">
+            <button id="saveExamButton" class="secondary-btn" type="button">Guardar examen</button>
+            <button id="continueToParticipantsButton" class="primary-btn" type="button">Guardar y continuar a participantes</button>
+          </div>
+        </section>
 
         <section id="participantsPanel" class="participants-panel hidden" aria-label="Participantes de la capacitación">
           <article class="training-card participant-summary-card">
@@ -314,7 +460,7 @@
                 <p id="participantTrainingTopic">—</p>
               </div>
               <div class="participant-summary-actions">
-                <button id="backToTrainingData" class="secondary-btn" type="button">← Volver a datos</button>
+                <button id="backToTrainingData" class="secondary-btn" type="button">← Volver al examen</button>
               </div>
             </div>
             <div class="participant-summary-meta">
@@ -359,7 +505,7 @@
                 <button id="refreshParticipantsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
               </div>
             </div>
-            <div class="participant-note">La columna <strong>Nota</strong> queda preparada para la etapa de examen. Por ahora aparecerá como <strong>Pendiente</strong>.</div>
+            <div class="participant-note">La columna <strong>Nota</strong> se actualiza automáticamente cuando el trabajador finaliza el examen. Si la actividad no tiene evaluación aparecerá como <strong>N.A.</strong>.</div>
             <div class="table-wrap">
               <table class="data-table participant-table">
                 <thead><tr><th>N°</th><th>Apellidos y nombres</th><th>N° DNI</th><th>Puesto de trabajo</th><th>Área</th><th>Firma</th><th>Nota</th><th>Acciones</th></tr></thead>
@@ -369,6 +515,7 @@
           </article>
 
           <div class="training-form-actions participant-footer-actions">
+            <button id="copyExamLinkParticipantsButton" class="secondary-btn hidden" type="button">Copiar enlace del examen</button>
             <button id="finishParticipantsButton" class="primary-btn" type="button">Guardar participantes</button>
           </div>
         </section>
@@ -607,7 +754,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-7"></script>
-  <script src="app.js?v=20260921-7"></script>
+  <script src="config.js?v=20260921-8"></script>
+  <script src="app.js?v=20260921-8"></script>
 </body>
 </html>

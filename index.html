@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-4" />
+  <link rel="stylesheet" href="styles.css?v=20260921-5" />
 </head>
 <body>
   <div id="authLoading" class="auth-loading">
@@ -94,7 +94,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 3 · Sedes y proyectos</small>
+        <small>Etapa 4 · Trabajadores</small>
       </div>
     </aside>
 
@@ -169,7 +169,107 @@
         <div class="coming-card"><span>＋</span><h3>Formulario pendiente de implementación</h3><p>Tomaremos como referencia tus formularios y los conectaremos con trabajadores, firmas y evaluaciones.</p></div>
       </section>
 
-      <section id="trabajadores" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Trabajadores</h2><p>Consulta mediante DNI y base maestra del personal.</p></div><div class="coming-card"><span>♟</span><h3>Próxima etapa</h3><p>Registro individual, carga masiva y consulta segura por DNI.</p></div></section>
+      <section id="trabajadores" class="page-section">
+        <div class="section-title section-title-row">
+          <div>
+            <span class="eyebrow">BASE MAESTRA</span>
+            <h2>Trabajadores</h2>
+            <p>Registro y actualización del personal por DNI, puesto, área, sede y estado.</p>
+          </div>
+          <div class="catalog-actions admin-only" id="workerAdminActions">
+            <button class="primary-btn" id="newWorkerButton" type="button">+ Nuevo trabajador</button>
+          </div>
+        </div>
+
+        <div id="workerMessage" class="module-message" role="alert"></div>
+
+        <div class="catalog-stats worker-stats">
+          <article><span>Total trabajadores</span><strong id="workerTotalCount">0</strong><small>visibles según tus permisos</small></article>
+          <article><span>Activos</span><strong id="workerActiveCount">0</strong><small>habilitados</small></article>
+          <article><span>Inactivos</span><strong id="workerInactiveCount">0</strong><small>conservados en historial</small></article>
+        </div>
+
+        <article class="catalog-panel worker-panel">
+          <div class="catalog-panel-head catalog-panel-head-wrap">
+            <div><span class="eyebrow">PERSONAL</span><h3>Base de trabajadores</h3></div>
+            <div class="worker-filters">
+              <input id="workerSearch" type="search" placeholder="Buscar DNI, nombre, puesto o área…" />
+              <select id="workerSiteFilter" aria-label="Filtrar por sede">
+                <option value="all">Todas las sedes</option>
+              </select>
+              <select id="workerStatusFilter" aria-label="Filtrar por estado">
+                <option value="all">Todos los estados</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+              </select>
+              <button class="icon-refresh" id="refreshWorkersButton" type="button" title="Actualizar trabajadores">↻</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table worker-table">
+              <thead>
+                <tr>
+                  <th>DNI</th>
+                  <th>Apellidos y nombres</th>
+                  <th>Puesto</th>
+                  <th>Área</th>
+                  <th>Sede</th>
+                  <th>Estado</th>
+                  <th class="admin-only-col">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="workersTableBody"><tr><td colspan="7" class="table-empty">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div id="workerModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="workerModalTitle">
+          <div class="modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow" id="workerModalEyebrow">NUEVO REGISTRO</span><h3 id="workerModalTitle">Nuevo trabajador</h3></div>
+              <button id="closeWorkerModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+
+            <form id="workerForm" novalidate>
+              <input type="hidden" id="workerId" />
+              <div class="form-grid">
+                <label>
+                  <span>DNI *</span>
+                  <input id="workerDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+                </label>
+                <label>
+                  <span>Sede *</span>
+                  <select id="workerSite"><option value="">Seleccione una sede</option></select>
+                </label>
+                <label>
+                  <span>Apellidos *</span>
+                  <input id="workerLastName" maxlength="160" placeholder="Apellidos" />
+                </label>
+                <label>
+                  <span>Nombres *</span>
+                  <input id="workerFirstName" maxlength="160" placeholder="Nombres" />
+                </label>
+                <label>
+                  <span>Puesto *</span>
+                  <input id="workerPosition" maxlength="160" placeholder="Ej. Ayudante de perforación" />
+                </label>
+                <label>
+                  <span>Área *</span>
+                  <input id="workerArea" maxlength="160" placeholder="Ej. Operaciones" />
+                </label>
+                <label class="check-field form-span-2"><input id="workerActive" type="checkbox" checked /><span>Trabajador activo</span></label>
+              </div>
+
+              <div id="workerFormMessage" class="form-message"></div>
+              <div class="modal-actions">
+                <button id="cancelWorkerModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveWorkerButton" class="primary-btn" type="submit">Guardar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
       <section id="sedes-proyectos" class="page-section">
         <div class="section-title section-title-row">
           <div>
@@ -270,7 +370,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-4"></script>
-  <script src="app.js?v=20260921-4"></script>
+  <script src="config.js?v=20260921-5"></script>
+  <script src="app.js?v=20260921-5"></script>
 </body>
 </html>

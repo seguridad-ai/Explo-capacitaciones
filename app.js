@@ -57,6 +57,7 @@ function showSection(sectionId) {
   sidebar?.classList.remove('open');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (sectionId === 'sedes-proyectos') loadCatalogs();
+  if (sectionId === 'trabajadores') loadWorkersModule();
 }
 
 function roleLabel(code) {
@@ -80,6 +81,8 @@ function applyRoleVisibility(profile) {
 
   if (usersMenu) usersMenu.classList.toggle('role-hidden', !isAdmin);
   if (usersSection) usersSection.dataset.allowed = isAdmin ? 'true' : 'false';
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !isAdmin));
+  document.querySelectorAll('.admin-only-col').forEach(el => el.classList.toggle('hidden', !isAdmin));
 
   if (!isAdmin && usersSection?.classList.contains('active-section')) {
     showSection('inicio');
@@ -563,6 +566,292 @@ projectsTableBody?.addEventListener('click', e => {
   const toggle = e.target.closest('[data-toggle-project]');
   if (edit) openCatalogModal('project', projectsCache.find(x => x.id === edit.dataset.editProject));
   if (toggle) toggleCatalogRecord('project', toggle.dataset.toggleProject);
+});
+
+
+// ============================== ETAPA 4 · TRABAJADORES ==============================
+let workersCache = [];
+let workerSitesCache = [];
+let workersLoaded = false;
+
+const workerMessage = document.getElementById('workerMessage');
+const workersTableBody = document.getElementById('workersTableBody');
+const workerSearch = document.getElementById('workerSearch');
+const workerSiteFilter = document.getElementById('workerSiteFilter');
+const workerStatusFilter = document.getElementById('workerStatusFilter');
+const workerModal = document.getElementById('workerModal');
+const workerForm = document.getElementById('workerForm');
+
+function setWorkerMessage(message = '', type = 'error') {
+  if (!workerMessage) return;
+  workerMessage.textContent = message;
+  workerMessage.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function setWorkerFormMessage(message = '', type = 'error') {
+  const el = document.getElementById('workerFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function siteNameById(id) {
+  const site = workerSitesCache.find(x => x.id === id);
+  return site?.nombre || '—';
+}
+
+function renderWorkerSiteOptions() {
+  const formSelect = document.getElementById('workerSite');
+  const currentFormValue = formSelect?.value || '';
+  const currentFilterValue = workerSiteFilter?.value || 'all';
+  const options = workerSitesCache.map(site =>
+    `<option value="${site.id}">${escapeHtml(site.nombre)}${site.activo ? '' : ' (Inactiva)'}</option>`
+  ).join('');
+
+  if (formSelect) {
+    formSelect.innerHTML = `<option value="">Seleccione una sede</option>${options}`;
+    if ([...formSelect.options].some(o => o.value === currentFormValue)) formSelect.value = currentFormValue;
+  }
+
+  if (workerSiteFilter) {
+    workerSiteFilter.innerHTML = `<option value="all">Todas las sedes</option>${options}`;
+    if ([...workerSiteFilter.options].some(o => o.value === currentFilterValue)) workerSiteFilter.value = currentFilterValue;
+  }
+}
+
+function filteredWorkers() {
+  const q = (workerSearch?.value || '').trim().toLowerCase();
+  const site = workerSiteFilter?.value || 'all';
+  const status = workerStatusFilter?.value || 'all';
+
+  return workersCache.filter(worker => {
+    const searchable = `${worker.dni || ''} ${worker.apellidos || ''} ${worker.nombres || ''} ${worker.cargo || ''} ${worker.area || ''} ${siteNameById(worker.sede_id)}`.toLowerCase();
+    const qOk = !q || searchable.includes(q);
+    const siteOk = site === 'all' || worker.sede_id === site;
+    const statusOk = status === 'all' || (status === 'active' ? worker.activo : !worker.activo);
+    return qOk && siteOk && statusOk;
+  });
+}
+
+function renderWorkerStats() {
+  const total = document.getElementById('workerTotalCount');
+  const active = document.getElementById('workerActiveCount');
+  const inactive = document.getElementById('workerInactiveCount');
+  if (total) total.textContent = String(workersCache.length);
+  if (active) active.textContent = String(workersCache.filter(x => x.activo).length);
+  if (inactive) inactive.textContent = String(workersCache.filter(x => !x.activo).length);
+}
+
+function renderWorkers() {
+  if (!workersTableBody) return;
+  const admin = isAdminUser();
+  const rows = filteredWorkers();
+
+  if (!rows.length) {
+    workersTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">No se encontraron trabajadores.</td></tr>`;
+    return;
+  }
+
+  workersTableBody.innerHTML = rows.map(worker => {
+    const fullName = `${worker.apellidos || ''} ${worker.nombres || ''}`.trim() || '—';
+    return `
+      <tr>
+        <td><span class="code-badge">${escapeHtml(worker.dni)}</span></td>
+        <td><strong>${escapeHtml(fullName)}</strong></td>
+        <td>${escapeHtml(worker.cargo || '—')}</td>
+        <td>${escapeHtml(worker.area || '—')}</td>
+        <td>${escapeHtml(siteNameById(worker.sede_id))}</td>
+        <td><span class="status-badge ${worker.activo ? 'active' : 'inactive'}">${worker.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td class="admin-only-col ${admin ? '' : 'hidden'}">
+          <div class="row-actions">
+            <button type="button" data-edit-worker="${worker.id}">Editar</button>
+            <button type="button" class="${worker.activo ? 'danger-link' : 'success-link'}" data-toggle-worker="${worker.id}">${worker.activo ? 'Desactivar' : 'Activar'}</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+async function loadWorkerSites() {
+  if (!client) return;
+  const { data, error } = await client
+    .from('sedes')
+    .select('id,codigo,nombre,activo')
+    .order('nombre');
+
+  if (error) {
+    console.error(error);
+    setWorkerMessage('No fue posible cargar las sedes para los trabajadores.');
+    return;
+  }
+
+  workerSitesCache = data || [];
+  renderWorkerSiteOptions();
+}
+
+async function loadWorkers() {
+  if (!client) return;
+  if (workersTableBody) workersTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">Cargando…</td></tr>`;
+
+  const { data, error } = await client
+    .from('trabajadores')
+    .select('id,dni,nombres,apellidos,cargo,area,sede_id,activo,created_at,updated_at')
+    .order('apellidos')
+    .order('nombres');
+
+  if (error) {
+    console.error(error);
+    setWorkerMessage('No fue posible cargar la base de trabajadores.');
+    return;
+  }
+
+  workersCache = data || [];
+  renderWorkers();
+  renderWorkerStats();
+}
+
+async function loadWorkersModule(force = false) {
+  if (!client || !currentProfile) return;
+  document.querySelectorAll('#trabajadores .admin-only').forEach(el => el.classList.toggle('hidden', !isAdminUser()));
+  document.querySelectorAll('#trabajadores .admin-only-col').forEach(el => el.classList.toggle('hidden', !isAdminUser()));
+
+  if (workersLoaded && !force) {
+    renderWorkerSiteOptions();
+    renderWorkers();
+    renderWorkerStats();
+    return;
+  }
+
+  setWorkerMessage('');
+  await loadWorkerSites();
+  await loadWorkers();
+  workersLoaded = true;
+}
+
+function openWorkerModal(record = null) {
+  if (!isAdminUser()) return;
+  workerForm?.reset();
+  setWorkerFormMessage('');
+  renderWorkerSiteOptions();
+
+  document.getElementById('workerId').value = record?.id || '';
+  document.getElementById('workerModalEyebrow').textContent = record ? 'EDICIÓN' : 'NUEVO REGISTRO';
+  document.getElementById('workerModalTitle').textContent = record ? 'Editar trabajador' : 'Nuevo trabajador';
+  document.getElementById('workerDni').value = record?.dni || '';
+  document.getElementById('workerLastName').value = record?.apellidos || '';
+  document.getElementById('workerFirstName').value = record?.nombres || '';
+  document.getElementById('workerPosition').value = record?.cargo || '';
+  document.getElementById('workerArea').value = record?.area || '';
+  document.getElementById('workerSite').value = record?.sede_id || '';
+  document.getElementById('workerActive').checked = record ? !!record.activo : true;
+
+  workerModal?.classList.remove('hidden');
+  setTimeout(() => document.getElementById('workerDni')?.focus(), 30);
+}
+
+function closeWorkerModal() {
+  workerModal?.classList.add('hidden');
+  setWorkerFormMessage('');
+}
+
+async function saveWorker(event) {
+  event.preventDefault();
+  if (!client || !isAdminUser()) return;
+
+  const id = document.getElementById('workerId').value || null;
+  const dni = document.getElementById('workerDni').value.replace(/\D/g, '');
+  const apellidos = document.getElementById('workerLastName').value.trim();
+  const nombres = document.getElementById('workerFirstName').value.trim();
+  const cargo = document.getElementById('workerPosition').value.trim();
+  const area = document.getElementById('workerArea').value.trim();
+  const sede_id = document.getElementById('workerSite').value || null;
+  const activo = document.getElementById('workerActive').checked;
+  const saveButton = document.getElementById('saveWorkerButton');
+
+  if (!/^\d{8}$/.test(dni)) {
+    setWorkerFormMessage('El DNI debe contener exactamente 8 dígitos.');
+    return;
+  }
+  if (!apellidos || !nombres || !cargo || !area || !sede_id) {
+    setWorkerFormMessage('Completa apellidos, nombres, puesto, área y sede.');
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = 'Guardando…';
+  setWorkerFormMessage('');
+
+  const payload = { dni, apellidos, nombres, cargo, area, sede_id, activo };
+  const query = id
+    ? client.from('trabajadores').update(payload).eq('id', id)
+    : client.from('trabajadores').insert(payload);
+  const { error } = await query;
+
+  saveButton.disabled = false;
+  saveButton.textContent = 'Guardar';
+
+  if (error) {
+    console.error(error);
+    if (error.code === '23505') {
+      setWorkerFormMessage('Ya existe un trabajador registrado con ese DNI.');
+    } else if (error.code === '23514') {
+      setWorkerFormMessage('El DNI no cumple el formato requerido de 8 dígitos.');
+    } else {
+      setWorkerFormMessage('No fue posible guardar al trabajador.');
+    }
+    return;
+  }
+
+  closeWorkerModal();
+  setWorkerMessage(id ? 'Trabajador actualizado correctamente.' : 'Trabajador registrado correctamente.', 'success');
+  workersLoaded = false;
+  await loadWorkersModule(true);
+  await loadDashboardCounts();
+}
+
+async function toggleWorker(id) {
+  if (!client || !isAdminUser()) return;
+  const worker = workersCache.find(x => x.id === id);
+  if (!worker) return;
+  const next = !worker.activo;
+  const fullName = `${worker.apellidos || ''} ${worker.nombres || ''}`.trim();
+
+  if (!window.confirm(`¿Deseas ${next ? 'activar' : 'desactivar'} a ${fullName}?`)) return;
+
+  const { error } = await client.from('trabajadores').update({ activo: next }).eq('id', id);
+  if (error) {
+    console.error(error);
+    setWorkerMessage('No fue posible actualizar el estado del trabajador.');
+    return;
+  }
+
+  setWorkerMessage(`${fullName} quedó ${next ? 'activo' : 'inactivo'}.`, 'success');
+  workersLoaded = false;
+  await loadWorkersModule(true);
+  await loadDashboardCounts();
+}
+
+document.getElementById('newWorkerButton')?.addEventListener('click', async () => {
+  if (!workerSitesCache.length) await loadWorkerSites();
+  openWorkerModal();
+});
+document.getElementById('closeWorkerModal')?.addEventListener('click', closeWorkerModal);
+document.getElementById('cancelWorkerModal')?.addEventListener('click', closeWorkerModal);
+workerModal?.addEventListener('click', e => { if (e.target === workerModal) closeWorkerModal(); });
+workerForm?.addEventListener('submit', saveWorker);
+workerSearch?.addEventListener('input', renderWorkers);
+workerSiteFilter?.addEventListener('change', renderWorkers);
+workerStatusFilter?.addEventListener('change', renderWorkers);
+document.getElementById('refreshWorkersButton')?.addEventListener('click', () => loadWorkersModule(true));
+document.getElementById('workerDni')?.addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8);
+});
+
+workersTableBody?.addEventListener('click', e => {
+  const edit = e.target.closest('[data-edit-worker]');
+  const toggle = e.target.closest('[data-toggle-worker]');
+  if (edit) openWorkerModal(workersCache.find(x => x.id === edit.dataset.editWorker));
+  if (toggle) toggleWorker(toggle.dataset.toggleWorker);
 });
 
 

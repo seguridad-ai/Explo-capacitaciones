@@ -1123,8 +1123,8 @@ async function persistTraining({ continueNext = false } = {}) {
   document.getElementById('trainingId').value = response.data.id;
   setTrainingMessage(`Borrador ${response.data.codigo || ''} guardado correctamente.`, 'success');
   if (continueNext) {
-    setTrainingFormMessage('Datos del capacitador guardados. El siguiente módulo será la configuración del examen.', 'success');
-    document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTrainingFormMessage('Datos de la actividad guardados correctamente.', 'success');
+    await openParticipantsStep(response.data.id, response.data.codigo || '', payload);
   } else {
     setTrainingFormMessage('Borrador guardado correctamente.', 'success');
   }
@@ -1140,6 +1140,8 @@ function clearTrainingForm() {
   setSignature('responsible', '');
   setTrainingFormMessage('');
   setTrainingMessage('');
+  resetParticipantsState();
+  showTrainingDataStep();
   renderTrainingUnitOptions();
   prefillResponsible();
 }
@@ -1165,5 +1167,364 @@ document.getElementById('responsibleDni')?.addEventListener('input', e => { e.ta
 document.getElementById('clearTrainingButton')?.addEventListener('click', clearTrainingForm);
 document.getElementById('saveTrainingDraftButton')?.addEventListener('click', () => persistTraining({ continueNext: false }));
 trainingForm?.addEventListener('submit', e => { e.preventDefault(); persistTraining({ continueNext: true }); });
+
+
+// ============================== ETAPA 6 · PARTICIPANTES ==============================
+let activeTrainingId = null;
+let activeTrainingCode = '';
+let participantsCache = [];
+let pendingParticipantWorker = null;
+let activeParticipantSignatureId = null;
+let participantSignatureDrawing = false;
+let participantSignatureHasStroke = false;
+
+const participantsPanel = document.getElementById('participantsPanel');
+const participantsTableBody = document.getElementById('participantsTableBody');
+const participantDniSearch = document.getElementById('participantDniSearch');
+const addParticipantButton = document.getElementById('addParticipantButton');
+const participantSignatureModal = document.getElementById('participantSignatureModal');
+const participantSignatureCanvas = document.getElementById('participantSignatureCanvas');
+const participantSignatureCtx = participantSignatureCanvas?.getContext('2d');
+
+function setParticipantMessage(message = '', type = 'error') {
+  const el = document.getElementById('participantFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function setTrainingSteps(mode = 'data') {
+  const steps = [...document.querySelectorAll('.training-step')];
+  steps.forEach((step, index) => {
+    step.classList.remove('active', 'completed');
+    if (mode === 'participants') {
+      if (index === 0) step.classList.add('completed');
+      if (index === 2) step.classList.add('active');
+    } else if (index === 0) {
+      step.classList.add('active');
+    }
+  });
+  const pill = document.getElementById('trainingStagePill');
+  if (pill) pill.textContent = mode === 'participants' ? 'Etapa 3 de 4' : 'Etapa 1 de 4';
+}
+
+function showTrainingDataStep() {
+  trainingForm?.classList.remove('hidden');
+  participantsPanel?.classList.add('hidden');
+  setTrainingSteps('data');
+}
+
+function participantUnitLabel(payload = {}) {
+  const selected = trainingUnit?.selectedOptions?.[0]?.textContent?.trim();
+  if (selected && !/^Seleccione/.test(selected)) return selected;
+  if (payload.sede_id) {
+    const item = trainingSitesCache.find(x => x.id === payload.sede_id);
+    return item ? `Sede · ${item.nombre}` : 'Sede';
+  }
+  if (payload.proyecto_id) {
+    const item = trainingProjectsCache.find(x => x.id === payload.proyecto_id);
+    return item ? `Proyecto · ${item.nombre}` : 'Proyecto';
+  }
+  return '—';
+}
+
+async function openParticipantsStep(trainingId, code = '', payload = null) {
+  activeTrainingId = trainingId;
+  activeTrainingCode = code || activeTrainingCode;
+  trainingForm?.classList.add('hidden');
+  participantsPanel?.classList.remove('hidden');
+  setTrainingSteps('participants');
+
+  const currentPayload = payload || collectTrainingPayload();
+  document.getElementById('participantTrainingCode').textContent = activeTrainingCode || 'Capacitación';
+  document.getElementById('participantTrainingTopic').textContent = currentPayload.tema || '—';
+  document.getElementById('participantTrainingDate').textContent = currentPayload.fecha || '—';
+  document.getElementById('participantTrainingUnit').textContent = participantUnitLabel(currentPayload);
+  clearParticipantLookup();
+  await loadParticipants();
+  document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resetParticipantsState() {
+  activeTrainingId = null;
+  activeTrainingCode = '';
+  participantsCache = [];
+  pendingParticipantWorker = null;
+  activeParticipantSignatureId = null;
+  if (participantsTableBody) participantsTableBody.innerHTML = '<tr><td colspan="8" class="table-empty">Aún no hay participantes registrados.</td></tr>';
+  updateParticipantCounters();
+  clearParticipantLookup();
+}
+
+function clearParticipantLookup() {
+  pendingParticipantWorker = null;
+  if (participantDniSearch) participantDniSearch.value = '';
+  const preview = document.getElementById('participantWorkerPreview');
+  preview?.classList.add('empty');
+  document.getElementById('participantWorkerName').textContent = 'Sin trabajador seleccionado';
+  document.getElementById('participantWorkerDetails').textContent = 'Ingresa un DNI para consultar la base maestra.';
+  if (addParticipantButton) addParticipantButton.disabled = true;
+  setParticipantMessage('');
+}
+
+function updateParticipantCounters() {
+  const total = participantsCache.length;
+  const signed = participantsCache.filter(x => !!x.firma).length;
+  const totalEl = document.getElementById('participantCount');
+  const signedEl = document.getElementById('participantSignedCount');
+  if (totalEl) totalEl.textContent = String(total);
+  if (signedEl) signedEl.textContent = String(signed);
+}
+
+function renderParticipants() {
+  if (!participantsTableBody) return;
+  const term = (document.getElementById('participantListSearch')?.value || '').trim().toLowerCase();
+  const filtered = participantsCache.filter(item => {
+    const haystack = `${item.dni || ''} ${item.apellidos_nombres || ''} ${item.puesto || ''} ${item.area || ''}`.toLowerCase();
+    return !term || haystack.includes(term);
+  });
+
+  updateParticipantCounters();
+  if (!filtered.length) {
+    participantsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">${participantsCache.length ? 'No hay coincidencias.' : 'Aún no hay participantes registrados.'}</td></tr>`;
+    return;
+  }
+
+  participantsTableBody.innerHTML = filtered.map((item, index) => {
+    const signature = item.firma
+      ? `<div class="participant-signature-cell"><img src="${item.firma}" alt="Firma" class="participant-signature-thumb"><button class="table-link" type="button" data-sign-participant="${item.id}">Actualizar</button></div>`
+      : `<button class="table-action" type="button" data-sign-participant="${item.id}">Firmar</button>`;
+    const grade = item.nota === null || item.nota === undefined
+      ? '<span class="grade-pill pending">Pendiente</span>'
+      : `<span class="grade-pill">${Number(item.nota).toFixed(2).replace(/\.00$/, '')}</span>`;
+    return `<tr>
+      <td>${index + 1}</td>
+      <td><strong>${escapeHtml(item.apellidos_nombres || '')}</strong></td>
+      <td>${escapeHtml(item.dni || '')}</td>
+      <td>${escapeHtml(item.puesto || '')}</td>
+      <td>${escapeHtml(item.area || '')}</td>
+      <td>${signature}</td>
+      <td>${grade}</td>
+      <td><button class="table-action danger" type="button" data-remove-participant="${item.id}">Retirar</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadParticipants() {
+  if (!client || !activeTrainingId) return;
+  if (participantsTableBody) participantsTableBody.innerHTML = '<tr><td colspan="8" class="table-empty">Cargando participantes…</td></tr>';
+  const { data, error } = await client
+    .from('capacitacion_participantes')
+    .select('id,capacitacion_id,trabajador_id,dni,apellidos_nombres,puesto,area,firma,fecha_firma,nota,created_at')
+    .eq('capacitacion_id', activeTrainingId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.error(error);
+    const missing = /capacitacion_participantes/i.test(error.message || '') && /schema cache|does not exist|relation/i.test(error.message || '');
+    setParticipantMessage(missing ? 'Primero ejecuta ETAPA6_SUPABASE.sql en Supabase.' : 'No fue posible cargar los participantes.');
+    participantsCache = [];
+    renderParticipants();
+    return;
+  }
+  participantsCache = data || [];
+  renderParticipants();
+}
+
+async function lookupParticipantWorker() {
+  if (!client) return;
+  const dni = (participantDniSearch?.value || '').replace(/\D/g, '').slice(0, 8);
+  if (participantDniSearch) participantDniSearch.value = dni;
+  pendingParticipantWorker = null;
+  if (addParticipantButton) addParticipantButton.disabled = true;
+  if (!/^\d{8}$/.test(dni)) {
+    setParticipantMessage('Ingresa un DNI de 8 dígitos.');
+    return;
+  }
+
+  setParticipantMessage('');
+  const { data, error } = await client
+    .from('trabajadores')
+    .select('id,dni,nombres,apellidos,cargo,area,sede_id,activo')
+    .eq('dni', dni)
+    .maybeSingle();
+
+  if (error) { console.error(error); setParticipantMessage('No fue posible consultar el trabajador.'); return; }
+  if (!data) {
+    document.getElementById('participantWorkerPreview')?.classList.add('empty');
+    document.getElementById('participantWorkerName').textContent = 'Trabajador no encontrado';
+    document.getElementById('participantWorkerDetails').textContent = 'Regístralo primero en el módulo Trabajadores.';
+    setParticipantMessage('El DNI no se encuentra en la base maestra.');
+    return;
+  }
+
+  const duplicate = participantsCache.some(x => x.trabajador_id === data.id);
+  const fullName = `${data.apellidos || ''} ${data.nombres || ''}`.trim();
+  const preview = document.getElementById('participantWorkerPreview');
+  preview?.classList.remove('empty');
+  document.getElementById('participantWorkerName').textContent = fullName || data.dni;
+  document.getElementById('participantWorkerDetails').textContent = `${data.cargo || 'Sin puesto'} · ${data.area || 'Sin área'}${data.activo ? '' : ' · INACTIVO'}`;
+
+  if (!data.activo) { setParticipantMessage('El trabajador está inactivo y no puede agregarse a una capacitación.'); return; }
+  if (duplicate) { setParticipantMessage('El trabajador ya está registrado en esta capacitación.'); return; }
+
+  pendingParticipantWorker = data;
+  if (addParticipantButton) addParticipantButton.disabled = false;
+  setParticipantMessage('Trabajador encontrado. Puedes agregarlo a la lista.', 'success');
+}
+
+async function addParticipant() {
+  if (!client || !activeTrainingId || !pendingParticipantWorker) return;
+  const w = pendingParticipantWorker;
+  if (addParticipantButton) { addParticipantButton.disabled = true; addParticipantButton.textContent = 'Agregando…'; }
+  const payload = {
+    capacitacion_id: activeTrainingId,
+    trabajador_id: w.id,
+    dni: w.dni,
+    apellidos_nombres: `${w.apellidos || ''} ${w.nombres || ''}`.trim(),
+    puesto: w.cargo || 'SIN PUESTO',
+    area: w.area || 'SIN ÁREA'
+  };
+  const { error } = await client.from('capacitacion_participantes').insert(payload);
+  if (addParticipantButton) addParticipantButton.textContent = 'Agregar participante';
+  if (error) {
+    console.error(error);
+    if (addParticipantButton) addParticipantButton.disabled = false;
+    setParticipantMessage(error.code === '23505' ? 'El trabajador ya está registrado en esta capacitación.' : 'No fue posible agregar al participante.');
+    return;
+  }
+  clearParticipantLookup();
+  setTrainingMessage('Participante agregado correctamente.', 'success');
+  await loadParticipants();
+}
+
+async function removeParticipant(id) {
+  const item = participantsCache.find(x => x.id === id);
+  if (!item || !client) return;
+  if (!window.confirm(`¿Retirar a ${item.apellidos_nombres} de esta capacitación?`)) return;
+  const { error } = await client.from('capacitacion_participantes').delete().eq('id', id);
+  if (error) { console.error(error); setParticipantMessage('No fue posible retirar al participante.'); return; }
+  await loadParticipants();
+}
+
+function resetParticipantSignatureCanvas() {
+  if (!participantSignatureCanvas || !participantSignatureCtx) return;
+  participantSignatureCtx.clearRect(0, 0, participantSignatureCanvas.width, participantSignatureCanvas.height);
+  participantSignatureCtx.fillStyle = '#ffffff';
+  participantSignatureCtx.fillRect(0, 0, participantSignatureCanvas.width, participantSignatureCanvas.height);
+  participantSignatureCtx.strokeStyle = '#17263c';
+  participantSignatureCtx.lineWidth = 4;
+  participantSignatureCtx.lineCap = 'round';
+  participantSignatureCtx.lineJoin = 'round';
+  participantSignatureHasStroke = false;
+}
+
+function participantCanvasPoint(event) {
+  const rect = participantSignatureCanvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * (participantSignatureCanvas.width / rect.width),
+    y: (event.clientY - rect.top) * (participantSignatureCanvas.height / rect.height)
+  };
+}
+
+function startParticipantSignature(event) {
+  if (!participantSignatureCtx || !participantSignatureCanvas) return;
+  event.preventDefault();
+  participantSignatureDrawing = true;
+  participantSignatureHasStroke = true;
+  const p = participantCanvasPoint(event);
+  participantSignatureCtx.beginPath();
+  participantSignatureCtx.moveTo(p.x, p.y);
+}
+
+function drawParticipantSignature(event) {
+  if (!participantSignatureDrawing || !participantSignatureCtx) return;
+  event.preventDefault();
+  const p = participantCanvasPoint(event);
+  participantSignatureCtx.lineTo(p.x, p.y);
+  participantSignatureCtx.stroke();
+}
+
+function stopParticipantSignature(event) {
+  if (!participantSignatureDrawing) return;
+  event?.preventDefault?.();
+  participantSignatureDrawing = false;
+  participantSignatureCtx?.closePath();
+}
+
+function openParticipantSignature(id) {
+  const item = participantsCache.find(x => x.id === id);
+  if (!item) return;
+  activeParticipantSignatureId = id;
+  document.getElementById('participantSignatureName').textContent = `${item.apellidos_nombres} · DNI ${item.dni}`;
+  resetParticipantSignatureCanvas();
+  if (item.firma) {
+    const img = new Image();
+    img.onload = () => {
+      resetParticipantSignatureCanvas();
+      participantSignatureCtx.drawImage(img, 0, 0, participantSignatureCanvas.width, participantSignatureCanvas.height);
+      participantSignatureHasStroke = true;
+    };
+    img.src = item.firma;
+  }
+  participantSignatureModal?.classList.remove('hidden');
+}
+
+function closeParticipantSignature() {
+  participantSignatureModal?.classList.add('hidden');
+  activeParticipantSignatureId = null;
+  participantSignatureDrawing = false;
+}
+
+async function saveParticipantSignature() {
+  if (!client || !activeParticipantSignatureId || !participantSignatureCanvas || !participantSignatureHasStroke) {
+    alert('Registra una firma antes de guardar.');
+    return;
+  }
+  const signature = participantSignatureCanvas.toDataURL('image/png');
+  const button = document.getElementById('saveParticipantSignatureButton');
+  if (button) { button.disabled = true; button.textContent = 'Guardando…'; }
+  const { error } = await client
+    .from('capacitacion_participantes')
+    .update({ firma: signature, fecha_firma: new Date().toISOString() })
+    .eq('id', activeParticipantSignatureId);
+  if (button) { button.disabled = false; button.textContent = 'Guardar firma'; }
+  if (error) { console.error(error); alert('No fue posible guardar la firma.'); return; }
+  closeParticipantSignature();
+  await loadParticipants();
+}
+
+participantDniSearch?.addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8);
+  pendingParticipantWorker = null;
+  if (addParticipantButton) addParticipantButton.disabled = true;
+});
+participantDniSearch?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupParticipantWorker(); } });
+document.getElementById('participantSearchButton')?.addEventListener('click', lookupParticipantWorker);
+addParticipantButton?.addEventListener('click', addParticipant);
+document.getElementById('refreshParticipantsButton')?.addEventListener('click', loadParticipants);
+document.getElementById('participantListSearch')?.addEventListener('input', renderParticipants);
+document.getElementById('backToTrainingData')?.addEventListener('click', showTrainingDataStep);
+document.getElementById('finishParticipantsButton')?.addEventListener('click', () => {
+  setTrainingMessage(`${participantsCache.length} participante(s) guardado(s). La configuración del examen se implementará en la siguiente etapa.`, 'success');
+  document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+participantsTableBody?.addEventListener('click', e => {
+  const sign = e.target.closest('[data-sign-participant]');
+  const remove = e.target.closest('[data-remove-participant]');
+  if (sign) openParticipantSignature(sign.dataset.signParticipant);
+  if (remove) removeParticipant(remove.dataset.removeParticipant);
+});
+
+participantSignatureCanvas?.addEventListener('pointerdown', startParticipantSignature);
+participantSignatureCanvas?.addEventListener('pointermove', drawParticipantSignature);
+participantSignatureCanvas?.addEventListener('pointerup', stopParticipantSignature);
+participantSignatureCanvas?.addEventListener('pointerleave', stopParticipantSignature);
+participantSignatureCanvas?.addEventListener('pointercancel', stopParticipantSignature);
+document.getElementById('clearParticipantSignatureCanvas')?.addEventListener('click', resetParticipantSignatureCanvas);
+document.getElementById('closeParticipantSignatureModal')?.addEventListener('click', closeParticipantSignature);
+document.getElementById('cancelParticipantSignatureModal')?.addEventListener('click', closeParticipantSignature);
+document.getElementById('saveParticipantSignatureButton')?.addEventListener('click', saveParticipantSignature);
+participantSignatureModal?.addEventListener('click', e => { if (e.target === participantSignatureModal) closeParticipantSignature(); });
 
 initializeAuth();

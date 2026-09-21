@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-6" />
+  <link rel="stylesheet" href="styles.css?v=20260921-7" />
 </head>
 <body>
   <div id="authLoading" class="auth-loading">
@@ -94,7 +94,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 5 · Nueva capacitación</small>
+        <small>Etapa 6 · Participantes</small>
       </div>
     </aside>
 
@@ -168,7 +168,7 @@
             <h2>Nueva capacitación</h2>
             <p>Programa y registra la actividad. La información quedará guardada como borrador para continuar con examen y participantes.</p>
           </div>
-          <span class="status-pill">Etapa 1 de 4</span>
+          <span class="status-pill" id="trainingStagePill">Etapa 1 de 4</span>
         </div>
 
         <div class="training-steps" aria-label="Etapas del registro">
@@ -195,11 +195,17 @@
               <label>
                 <span>Clasificación *</span>
                 <select id="trainingClassification">
-                  <option value="CAPACITACIÓN">CAPACITACIÓN</option>
-                  <option value="CHARLA">CHARLA</option>
-                  <option value="ENTRENAMIENTO">ENTRENAMIENTO</option>
-                  <option value="TALLER">TALLER</option>
                   <option value="INDUCCIÓN">INDUCCIÓN</option>
+                  <option value="CAPACITACIÓN">CAPACITACIÓN</option>
+                  <option value="ENTRENAMIENTO">ENTRENAMIENTO</option>
+                  <option value="SIMULACRO DE EMERGENCIA">SIMULACRO DE EMERGENCIA</option>
+                  <option value="VISITANTES">VISITANTES</option>
+                  <option value="RE-INDUCCIÓN">RE-INDUCCIÓN</option>
+                  <option value="CAMBIO DE PUESTO">CAMBIO DE PUESTO</option>
+                  <option value="REUNIÓN">REUNIÓN</option>
+                  <option value="OTROS">OTROS</option>
+                  <option value="CHARLA">CHARLA</option>
+                  <option value="TALLER">TALLER</option>
                 </select>
               </label>
               <label>
@@ -295,9 +301,77 @@
           <div class="training-form-actions">
             <button id="clearTrainingButton" class="secondary-btn" type="button">Limpiar</button>
             <button id="saveTrainingDraftButton" class="secondary-btn" type="button">Guardar borrador</button>
-            <button id="continueTrainingButton" class="primary-btn" type="submit">Guardar y continuar al examen</button>
+            <button id="continueTrainingButton" class="primary-btn" type="submit">Guardar y continuar a participantes</button>
           </div>
         </form>
+
+        <section id="participantsPanel" class="participants-panel hidden" aria-label="Participantes de la capacitación">
+          <article class="training-card participant-summary-card">
+            <div class="participant-summary-main">
+              <div>
+                <span class="eyebrow">CAPACITACIÓN SELECCIONADA</span>
+                <h3 id="participantTrainingCode">—</h3>
+                <p id="participantTrainingTopic">—</p>
+              </div>
+              <div class="participant-summary-actions">
+                <button id="backToTrainingData" class="secondary-btn" type="button">← Volver a datos</button>
+              </div>
+            </div>
+            <div class="participant-summary-meta">
+              <span><b>Fecha:</b> <em id="participantTrainingDate">—</em></span>
+              <span><b>Unidad:</b> <em id="participantTrainingUnit">—</em></span>
+              <span><b>Participantes:</b> <em id="participantCount">0</em></span>
+              <span><b>Con firma:</b> <em id="participantSignedCount">0</em></span>
+            </div>
+          </article>
+
+          <article class="training-card">
+            <div class="training-card-head">
+              <div class="training-icon">＋</div>
+              <div><span class="eyebrow">REGISTRO POR DNI</span><h3>Agregar participante</h3></div>
+            </div>
+            <div class="participant-add-grid">
+              <label>
+                <span>DNI del trabajador *</span>
+                <div class="participant-dni-row">
+                  <input id="participantDniSearch" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Ingresa 8 dígitos" />
+                  <button id="participantSearchButton" class="secondary-btn" type="button">Buscar</button>
+                </div>
+                <small class="field-help">El trabajador debe estar registrado previamente en el módulo Trabajadores.</small>
+              </label>
+              <div id="participantWorkerPreview" class="participant-worker-preview empty">
+                <strong id="participantWorkerName">Sin trabajador seleccionado</strong>
+                <span id="participantWorkerDetails">Ingresa un DNI para consultar la base maestra.</span>
+              </div>
+              <div class="participant-add-action"><button id="addParticipantButton" class="primary-btn" type="button" disabled>Agregar participante</button></div>
+            </div>
+            <div id="participantFormMessage" class="form-message"></div>
+          </article>
+
+          <article class="training-card">
+            <div class="training-card-head participant-list-head">
+              <div class="participant-list-title">
+                <div class="training-icon">♟</div>
+                <div><span class="eyebrow">LISTA DE ASISTENCIA</span><h3>Participantes registrados</h3></div>
+              </div>
+              <div class="participant-list-tools">
+                <input id="participantListSearch" type="search" placeholder="Buscar DNI o nombre…" />
+                <button id="refreshParticipantsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+              </div>
+            </div>
+            <div class="participant-note">La columna <strong>Nota</strong> queda preparada para la etapa de examen. Por ahora aparecerá como <strong>Pendiente</strong>.</div>
+            <div class="table-wrap">
+              <table class="data-table participant-table">
+                <thead><tr><th>N°</th><th>Apellidos y nombres</th><th>N° DNI</th><th>Puesto de trabajo</th><th>Área</th><th>Firma</th><th>Nota</th><th>Acciones</th></tr></thead>
+                <tbody id="participantsTableBody"><tr><td colspan="8" class="table-empty">Aún no hay participantes registrados.</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="training-form-actions participant-footer-actions">
+            <button id="finishParticipantsButton" class="primary-btn" type="button">Guardar participantes</button>
+          </div>
+        </section>
 
         <div id="signatureModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="signatureModalTitle">
           <div class="modal-card signature-modal-card">
@@ -311,6 +385,22 @@
               <button id="clearSignatureCanvas" class="secondary-btn" type="button">Limpiar firma</button>
               <button id="cancelSignatureModal" class="secondary-btn" type="button">Cancelar</button>
               <button id="saveSignatureButton" class="primary-btn" type="button">Guardar firma</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="participantSignatureModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="participantSignatureTitle">
+          <div class="modal-card signature-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">FIRMA DEL PARTICIPANTE</span><h3 id="participantSignatureTitle">Registrar firma</h3><p id="participantSignatureName" class="modal-subtitle">—</p></div>
+              <button id="closeParticipantSignatureModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <p class="signature-instruction">El trabajador debe firmar dentro del recuadro usando mouse, touchpad o pantalla táctil.</p>
+            <div class="signature-canvas-wrap"><canvas id="participantSignatureCanvas" width="900" height="300"></canvas></div>
+            <div class="modal-actions">
+              <button id="clearParticipantSignatureCanvas" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="cancelParticipantSignatureModal" class="secondary-btn" type="button">Cancelar</button>
+              <button id="saveParticipantSignatureButton" class="primary-btn" type="button">Guardar firma</button>
             </div>
           </div>
         </div>
@@ -517,7 +607,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-6"></script>
-  <script src="app.js?v=20260921-6"></script>
+  <script src="config.js?v=20260921-7"></script>
+  <script src="app.js?v=20260921-7"></script>
 </body>
 </html>

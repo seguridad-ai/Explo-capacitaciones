@@ -1,9 +1,31 @@
-# Etapa 5 · Nueva capacitación
+# Etapa 6 · Participantes
 
-1. Ejecutar primero `ETAPA5_SUPABASE.sql` completo en Supabase → SQL Editor.
-2. Confirmar que el resultado indique `Etapa 5 creada correctamente`.
-3. En GitHub, reemplazar `index.html`, `styles.css`, `app.js` y `config.js`.
-4. No reemplazar la carpeta `assets`.
-5. Esperar GitHub Pages y usar `Ctrl + F5`.
+Actualización del aplicativo **Programación de Capacitaciones – Explo Drilling Perú**.
 
-El formulario incluye: clasificación, sede/proyecto, tema, expositor, DNI, cargo, empresa, área, fecha, tiempo, firmas y responsable del registro. El DNI del expositor intenta autocompletar datos si existe en Trabajadores.
+## Antes de subir los archivos web
+En Supabase > SQL Editor > New query, ejecutar completo:
+
+`ETAPA6_SUPABASE.sql`
+
+Resultado esperado: **Etapa 6 creada correctamente**.
+
+## Luego actualizar GitHub Pages
+Reemplazar en la raíz del repositorio:
+
+- `index.html`
+- `styles.css`
+- `app.js`
+- `config.js`
+
+No reemplazar la carpeta `assets`.
+
+## Funcionalidad incorporada
+- Registro de participantes desde la base maestra de trabajadores mediante DNI.
+- Autocompletado de apellidos y nombres, puesto y área.
+- Prevención de participantes duplicados en una misma capacitación.
+- Firma individual del participante.
+- Retiro de participantes.
+- Búsqueda dentro de la lista de asistencia.
+- Columna **Nota** preparada para el módulo de examen (Etapa 7).
+- Datos históricos del trabajador guardados en la capacitación para que el registro no cambie si luego se modifica su puesto, área o nombre en la base maestra.
+- Clasificaciones ampliadas para alinearse con el formato corporativo.

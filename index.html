@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260922-21" />
+  <link rel="stylesheet" href="styles.css?v=20260922-24" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -133,6 +133,94 @@
           </div>
 
           <button id="publicExamRetryButton" class="secondary-btn hidden" type="button">Intentar nuevamente</button>
+        </section>
+      </main>
+
+      <footer class="public-exam-footer"><span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span><span>By RonyC</span></footer>
+    </div>
+  </section>
+
+  
+  <section id="publicPracticeScreen" class="public-practice-screen hidden" aria-label="Quiz de práctica">
+    <div class="public-practice-shell">
+      <header class="public-practice-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div>
+          <span class="eyebrow">PRACTICAR · QUIZ DIDÁCTICO</span>
+          <h1 id="publicPracticeHeaderTitle">Practicar</h1>
+          <p id="publicPracticeHeaderCode">Código de práctica</p>
+        </div>
+      </header>
+
+      <main class="public-practice-card">
+        <section id="publicPracticeIdentity">
+          <div class="public-practice-intro">
+            <span class="practice-star">★</span>
+            <div><h2>¿Listo para practicar?</h2><p>Ingresa tu DNI para comenzar. Responde rápido y suma más puntos.</p></div>
+          </div>
+          <label class="public-exam-dni-label">
+            <span>DNI</span>
+            <div class="public-exam-dni-row">
+              <input id="publicPracticeDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+              <button id="publicPracticeLookupButton" class="primary-btn" type="button">Continuar</button>
+            </div>
+          </label>
+          <div id="publicPracticeMessage" class="form-message"></div>
+          <div id="publicPracticeParticipantPreview" class="public-participant-preview hidden">
+            <strong id="publicPracticeParticipantName">—</strong>
+            <span id="publicPracticeParticipantDetails">—</span>
+            <span id="publicPracticeAttempts">—</span>
+            <button id="publicPracticeStartButton" class="primary-btn" type="button">¡Empezar!</button>
+          </div>
+
+          <section id="publicPracticeRegistration" class="public-registration-card hidden">
+            <div class="public-registration-head"><div><span class="eyebrow">NO ESTÁS REGISTRADO</span><h3>Regístrate para practicar</h3><p>Completa tus datos para continuar.</p></div></div>
+            <form id="publicPracticeRegistrationForm" novalidate>
+              <div class="public-registration-grid">
+                <label><span>DNI *</span><input id="publicPracticeRegDni" type="text" readonly /></label>
+                <label id="publicPracticeSiteField"><span>Sede *</span><select id="publicPracticeRegSite"><option value="">Seleccione una sede</option></select></label>
+                <label><span>Apellidos *</span><input id="publicPracticeRegLastName" maxlength="160" /></label>
+                <label><span>Nombres *</span><input id="publicPracticeRegFirstName" maxlength="160" /></label>
+                <label><span>Puesto *</span><input id="publicPracticeRegPosition" maxlength="160" /></label>
+                <label><span>Área *</span><input id="publicPracticeRegArea" maxlength="160" /></label>
+              </div>
+              <div id="publicPracticeRegistrationMessage" class="form-message"></div>
+              <div class="public-registration-actions">
+                <button id="publicPracticeRegistrationCancelButton" class="secondary-btn" type="button">Volver</button>
+                <button class="primary-btn" type="submit">Registrarme y continuar</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section id="publicPracticePlay" class="public-practice-play hidden">
+          <div class="practice-play-top">
+            <div><span id="publicPracticeProgress">Pregunta 1 de 10</span><strong id="publicPracticePlayer">—</strong></div>
+            <div class="practice-live-score"><span>Puntaje</span><strong id="publicPracticeLiveScore">0</strong></div>
+          </div>
+          <div class="practice-timer"><div id="publicPracticeTimerBar"></div><strong id="publicPracticeTimerText">20</strong></div>
+          <article class="practice-question-stage">
+            <h2 id="publicPracticeQuestionText">—</h2>
+            <div id="publicPracticeOptions" class="practice-options-grid"></div>
+            <div id="publicPracticeFeedback" class="practice-feedback hidden"></div>
+          </article>
+        </section>
+
+        <section id="publicPracticeResult" class="public-practice-result hidden">
+          <div class="practice-result-trophy">★</div>
+          <span class="eyebrow">RESULTADO DE PRÁCTICA</span>
+          <h2>¡Quiz finalizado!</h2>
+          <div class="practice-final-score" id="publicPracticeFinalScore">0 pts</div>
+          <p id="publicPracticeFinalText">—</p>
+          <div class="practice-result-grid">
+            <article><span>Correctas</span><strong id="publicPracticeCorrect">0 / 0</strong></article>
+            <article><span>Posición</span><strong id="publicPracticeRank">#1</strong></article>
+          </div>
+          <div class="practice-ranking-card">
+            <h3>Ranking</h3>
+            <div id="publicPracticeRanking"></div>
+          </div>
+          <button id="publicPracticeAgainButton" class="primary-btn" type="button">Practicar nuevamente</button>
         </section>
       </main>
 
@@ -941,7 +1029,93 @@
         </div>
       </section>
       <section id="inducciones" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Inducciones</h2><p>Contenido, videos, evaluación y constancia.</p></div><div class="coming-card"><span>▶</span><h3>Próximamente</h3><p>Rutas de inducción con control de avance y evaluación.</p></div></section>
-      <section id="practicar" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Practicar</h2><p>Quizzes didácticos estilo Kahoot.</p></div><div class="coming-card"><span>★</span><h3>Próximamente</h3><p>Preguntas temporizadas, alternativas, puntaje y ranking.</p></div></section>
+      
+      <section id="practicar" class="page-section">
+        <div id="practiceListView">
+          <div class="section-title section-title-row">
+            <div><span class="eyebrow">APRENDIZAJE DIDÁCTICO</span><h2>Practicar</h2><p>Crea quizzes temporizados tipo Kahoot, comparte el enlace y revisa el ranking.</p></div>
+            <button id="newPracticeButton" class="primary-btn" type="button">+ Nuevo quiz</button>
+          </div>
+          <div id="practiceModuleMessage" class="module-message"></div>
+
+          <div class="practice-stats">
+            <article><span>Quizzes</span><strong id="practiceTotalCount">0</strong><small>Registrados</small></article>
+            <article><span>Activos</span><strong id="practiceActiveCount">0</strong><small>Disponibles</small></article>
+            <article><span>Participaciones</span><strong id="practiceAttemptCount">0</strong><small>Intentos finalizados</small></article>
+            <article><span>Puntaje promedio</span><strong id="practiceAverageScore">0</strong><small>Puntos</small></article>
+          </div>
+
+          <article class="practice-toolbar">
+            <input id="practiceSearch" type="search" placeholder="Buscar quiz por título o código" />
+            <select id="practiceStatusFilter"><option value="">Todos los estados</option><option value="ACTIVE">Activos</option><option value="DRAFT">Borradores / inactivos</option></select>
+            <button id="refreshPracticeButton" class="secondary-btn" type="button">Actualizar</button>
+          </article>
+
+          <div id="practiceCards" class="practice-card-list"><div class="training-library-empty">Cargando quizzes…</div></div>
+        </div>
+
+        <div id="practiceEditorView" class="hidden">
+          <div class="training-detail-topbar">
+            <button id="backPracticeListButton" class="secondary-btn" type="button">← Volver a Practicar</button>
+            <div class="training-detail-actions">
+              <button id="copyPracticeLinkButton" class="secondary-btn hidden" type="button">Copiar enlace</button>
+              <button id="whatsappPracticeButton" class="primary-btn hidden" type="button">WhatsApp</button>
+            </div>
+          </div>
+
+          <article class="catalog-panel practice-editor-card">
+            <div class="catalog-panel-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h3 id="practiceEditorTitle">Nuevo quiz</h3></div><span id="practiceEditorCode" class="practice-code">NUEVO</span></div>
+            <form id="practiceForm" novalidate>
+              <input id="practiceId" type="hidden" />
+              <div class="form-grid">
+                <label class="form-span-2"><span>Título *</span><input id="practiceTitle" maxlength="180" placeholder="Ej. Identificación de peligros" required /></label>
+                <label class="form-span-2"><span>Descripción</span><input id="practiceDescription" maxlength="300" placeholder="Breve descripción del quiz" /></label>
+                <label><span>Asignación *</span><select id="practiceUnit"></select></label>
+                <label><span>Tiempo por pregunta *</span><select id="practiceTime"><option value="10">10 segundos</option><option value="15">15 segundos</option><option value="20" selected>20 segundos</option><option value="30">30 segundos</option><option value="45">45 segundos</option><option value="60">60 segundos</option></select></label>
+                <label><span>Máximo de intentos</span><select id="practiceMaxAttempts"><option value="0">Ilimitados</option><option value="1">1 intento</option><option value="2">2 intentos</option><option value="3">3 intentos</option><option value="5">5 intentos</option></select></label>
+                <label class="check-field"><input id="practiceShuffleQuestions" type="checkbox" checked /><span>Mezclar preguntas</span></label>
+                <label class="check-field"><input id="practiceShuffleOptions" type="checkbox" checked /><span>Mezclar alternativas</span></label>
+                <label class="check-field"><input id="practicePublished" type="checkbox" /><span>Publicar y habilitar enlace</span></label>
+                <label class="check-field"><input id="practiceActive" type="checkbox" checked /><span>Quiz activo</span></label>
+              </div>
+              <div id="practiceFormMessage" class="form-message"></div>
+              <div class="modal-actions"><button id="savePracticeButton" class="primary-btn" type="submit">Guardar quiz</button></div>
+            </form>
+          </article>
+
+          <article id="practiceQuestionsPanel" class="catalog-panel hidden">
+            <div class="catalog-panel-head catalog-panel-head-wrap">
+              <div><span class="eyebrow">PREGUNTAS</span><h3>Banco del quiz</h3><p class="modal-subtitle">Cada respuesta correcta puede otorgar hasta 1000 puntos según la rapidez.</p></div>
+              <button id="newPracticeQuestionButton" class="primary-btn" type="button">+ Agregar pregunta</button>
+            </div>
+            <div id="practiceQuestionList" class="practice-question-admin-list"></div>
+          </article>
+
+          <article id="practiceRankingPanel" class="catalog-panel hidden">
+            <div class="catalog-panel-head"><div><span class="eyebrow">RESULTADOS</span><h3>Ranking del quiz</h3></div></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>#</th><th>Participante</th><th>DNI</th><th>Puntaje</th><th>Correctas</th><th>Fecha</th></tr></thead><tbody id="practiceRankingBody"></tbody></table></div>
+          </article>
+        </div>
+
+        <div id="practiceQuestionModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card practice-question-modal-card">
+            <div class="modal-head"><div><span class="eyebrow">PREGUNTA</span><h3 id="practiceQuestionModalTitle">Nueva pregunta</h3></div><button id="closePracticeQuestionModal" class="modal-close" type="button">×</button></div>
+            <form id="practiceQuestionForm" novalidate>
+              <input id="practiceQuestionId" type="hidden" />
+              <label class="practice-question-text-field"><span>Enunciado *</span><textarea id="practiceQuestionText" rows="3" maxlength="500" required></textarea></label>
+              <div class="practice-option-editor">
+                <label><input type="radio" name="practiceCorrectOption" value="0" checked /><span>A</span><input class="practice-option-input" data-index="0" maxlength="250" placeholder="Alternativa A" required /></label>
+                <label><input type="radio" name="practiceCorrectOption" value="1" /><span>B</span><input class="practice-option-input" data-index="1" maxlength="250" placeholder="Alternativa B" required /></label>
+                <label><input type="radio" name="practiceCorrectOption" value="2" /><span>C</span><input class="practice-option-input" data-index="2" maxlength="250" placeholder="Alternativa C" required /></label>
+                <label><input type="radio" name="practiceCorrectOption" value="3" /><span>D</span><input class="practice-option-input" data-index="3" maxlength="250" placeholder="Alternativa D" required /></label>
+              </div>
+              <div id="practiceQuestionMessage" class="form-message"></div>
+              <div class="modal-actions"><button id="cancelPracticeQuestionModal" class="secondary-btn" type="button">Cancelar</button><button class="primary-btn" type="submit">Guardar pregunta</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
       <section id="comite" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Comité SST</h2><p>Capacitación y seguimiento de los integrantes.</p></div><div class="coming-card"><span>◎</span><h3>Próximamente</h3><p>Videos, documentos, exámenes y avance de los integrantes.</p></div></section>
       <section id="brigadas" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Brigadas</h2><p>Formación de brigadas de emergencia.</p></div><div class="coming-card"><span>⚑</span><h3>Próximamente</h3><p>Contenido por especialidad, evaluación y seguimiento.</p></div></section>
       <section id="reportes" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Reportes</h2><p>Indicadores, historial y exportaciones.</p></div><div class="coming-card"><span>▥</span><h3>Próximamente</h3><p>Dashboard, PDF, Excel e historial de capacitación por trabajador.</p></div></section>
@@ -1024,7 +1198,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20260922-21"></script>
-  <script src="app.js?v=20260922-21"></script>
+  <script src="config.js?v=20260922-24"></script>
+  <script src="app.js?v=20260922-24"></script>
 </body>
 </html>

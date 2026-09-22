@@ -12,6 +12,7 @@ const loginMessage = document.getElementById('loginMessage');
 const togglePassword = document.getElementById('togglePassword');
 const logoutButton = document.getElementById('logoutButton');
 const publicExamScreen = document.getElementById('publicExamScreen');
+const publicPracticeScreen = document.getElementById('publicPracticeScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -35,6 +36,7 @@ function setLoginBusy(busy) {
 
 function showAuthScreen() {
   publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.remove('hidden');
   authLoading?.classList.add('hidden');
@@ -43,6 +45,7 @@ function showAuthScreen() {
 
 function showLoading() {
   publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.remove('hidden');
@@ -50,6 +53,7 @@ function showLoading() {
 
 function showApp() {
   publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
@@ -64,6 +68,7 @@ function showSection(sectionId) {
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
   if (sectionId === 'nueva-capacitacion') loadTrainingModule();
+  if (sectionId === 'practicar') loadPracticeModule();
   if (sectionId === 'usuarios') loadUsersModule();
 }
 
@@ -188,9 +193,15 @@ async function initializeAuth() {
     }
   );
 
-  const publicExamCode = new URLSearchParams(window.location.search).get('exam');
+  const publicParams = new URLSearchParams(window.location.search);
+  const publicExamCode = publicParams.get('exam');
+  const publicPracticeCodeParam = publicParams.get('practice');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
+    return;
+  }
+  if (publicPracticeCodeParam) {
+    await initializePublicPracticeMode(publicPracticeCodeParam);
     return;
   }
 
@@ -4075,5 +4086,510 @@ document.getElementById('toggleSystemUserPassword')?.addEventListener('click', (
   button.textContent = show ? 'Ocultar' : 'Mostrar';
 });
 document.getElementById('userModal')?.addEventListener('click', (event) => { if (event.target?.id === 'userModal') closeSystemUserModal(); });
+
+
+// ============================================================
+// ETAPA 12 · PRACTICAR
+// ============================================================
+
+let practiceRecords = [];
+let practiceSites = [];
+let practiceProjects = [];
+let practiceQuestions = [];
+let practiceAttempts = [];
+let activePracticeId = null;
+let practiceQuestionEditId = null;
+
+function practiceCanCreate() {
+  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
+}
+
+function practiceCanManageRecord(record) {
+  if (currentProfile?.rol_codigo === 'ADMIN') return true;
+  return currentProfile?.rol_codigo === 'PROYECTO' && !!record?.proyecto_id;
+}
+
+function practiceUnitLabel(p) {
+  if (p.proyecto_id) return `Proyecto · ${practiceProjects.find(x=>x.id===p.proyecto_id)?.nombre || 'Proyecto'}`;
+  if (p.sede_id) return `Sede · ${practiceSites.find(x=>x.id===p.sede_id)?.nombre || 'Sede'}`;
+  return 'Corporativo · Todos';
+}
+
+function practicePublicUrl(p) {
+  if (!p?.codigo || !p?.activo || !p?.publicado) return '';
+  return `${window.location.origin}${window.location.pathname}?practice=${encodeURIComponent(p.codigo)}`;
+}
+
+function practiceMsg(message='', type='error') {
+  const el = document.getElementById('practiceModuleMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function renderPracticeUnitOptions(selected='') {
+  const select = document.getElementById('practiceUnit');
+  if (!select) return;
+  const options = [];
+  if (currentProfile?.rol_codigo === 'ADMIN') {
+    options.push('<option value="global">Corporativo · Todos</option>');
+    practiceSites.filter(x=>x.activo).forEach(s=>options.push(`<option value="sede:${s.id}">Sede · ${escapeHtml(s.nombre)}</option>`));
+  }
+  practiceProjects.filter(x=>x.activo).forEach(p=>options.push(`<option value="proyecto:${p.id}">Proyecto · ${escapeHtml(p.nombre)}</option>`));
+  if (!options.length) options.push('<option value="">Sin unidades disponibles</option>');
+  select.innerHTML = options.join('');
+  if (selected && [...select.options].some(o=>o.value===selected)) select.value=selected;
+}
+
+function practiceMetrics() {
+  const final = practiceAttempts.filter(a=>a.finalizado_at);
+  const avg = final.length ? final.reduce((s,a)=>s+Number(a.puntaje_total||0),0)/final.length : 0;
+  return { final, avg };
+}
+
+function renderPracticeModule() {
+  const search = (document.getElementById('practiceSearch')?.value || '').trim().toLowerCase();
+  const status = document.getElementById('practiceStatusFilter')?.value || '';
+  const { final, avg } = practiceMetrics();
+
+  document.getElementById('practiceTotalCount').textContent = String(practiceRecords.length);
+  document.getElementById('practiceActiveCount').textContent = String(practiceRecords.filter(x=>x.activo&&x.publicado).length);
+  document.getElementById('practiceAttemptCount').textContent = String(final.length);
+  document.getElementById('practiceAverageScore').textContent = String(Math.round(avg));
+  document.getElementById('newPracticeButton')?.classList.toggle('hidden', !practiceCanCreate());
+
+  let rows = practiceRecords.filter(p=>{
+    if (search && !`${p.titulo||''} ${p.codigo||''}`.toLowerCase().includes(search)) return false;
+    if (status==='ACTIVE' && !(p.activo&&p.publicado)) return false;
+    if (status==='DRAFT' && (p.activo&&p.publicado)) return false;
+    return true;
+  });
+
+  const box = document.getElementById('practiceCards');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '<div class="training-library-empty">No hay quizzes con los filtros seleccionados.</div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(p=>{
+    const qs = practiceQuestions.filter(q=>q.practica_id===p.id).length;
+    const attempts = final.filter(a=>a.practica_id===p.id);
+    const avgScore = attempts.length ? Math.round(attempts.reduce((s,a)=>s+Number(a.puntaje_total||0),0)/attempts.length) : 0;
+    const link = practicePublicUrl(p);
+    const canManage = practiceCanManageRecord(p);
+    return `<article class="practice-list-card">
+      <div class="practice-list-icon">★</div>
+      <div class="practice-list-main">
+        <div class="practice-list-title"><div><h3>${escapeHtml(p.titulo||'Sin título')}</h3><span>${escapeHtml(p.codigo||'—')} · ${escapeHtml(practiceUnitLabel(p))}</span></div><span class="practice-state ${p.activo&&p.publicado?'active':'draft'}">${p.activo&&p.publicado?'ACTIVO':'BORRADOR'}</span></div>
+        <p>${escapeHtml(p.descripcion||'Quiz didáctico')}</p>
+        <div class="practice-list-meta"><span>⏱ ${p.tiempo_pregunta_seg}s/pregunta</span><span>▤ ${qs} preguntas</span><span>♟ ${attempts.length} participaciones</span><span>★ Promedio ${avgScore} pts</span></div>
+      </div>
+      <div class="practice-list-actions">
+        ${link?`<button class="practice-share-btn" data-practice-share="${p.id}" title="Copiar enlace">Compartir</button>`:''}
+        <button class="secondary-btn" data-practice-open="${p.id}">${canManage?'Administrar':'Ver ranking'}</button>
+      </div>
+    </article>`;
+  }).join('');
+
+  box.querySelectorAll('[data-practice-open]').forEach(b=>b.addEventListener('click',()=>openPracticeEditor(b.dataset.practiceOpen)));
+  box.querySelectorAll('[data-practice-share]').forEach(b=>b.addEventListener('click',async()=>{
+    const p=practiceRecords.find(x=>x.id===b.dataset.practiceShare);
+    const link=practicePublicUrl(p);
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); practiceMsg('Enlace de práctica copiado.','success'); }
+    catch { window.prompt('Copia el enlace:',link); }
+  }));
+}
+
+async function loadPracticeModule(force=false) {
+  if (!client) return;
+  if (practiceRecords.length && !force) { renderPracticeModule(); return; }
+  practiceMsg('');
+  const box=document.getElementById('practiceCards');
+  if (box) box.innerHTML='<div class="training-library-empty">Cargando quizzes…</div>';
+
+  const [p,s,pr,q,a] = await Promise.all([
+    client.from('practicas').select('*').order('created_at',{ascending:false}),
+    client.from('sedes').select('id,nombre,activo').order('nombre'),
+    client.from('proyectos').select('id,nombre,activo').order('nombre'),
+    client.from('practica_preguntas').select('id,practica_id,orden,enunciado,activo').eq('activo',true),
+    client.from('practica_intentos').select('id,practica_id,trabajador_id,dni,apellidos_nombres,puntaje_total,correctas,total_preguntas,iniciado_at,finalizado_at').order('finalizado_at',{ascending:false})
+  ]);
+  if (p.error) { console.error(p.error); practiceMsg('No fue posible cargar Practicar. Ejecuta el SQL de la Etapa 12.'); return; }
+  practiceRecords=p.data||[]; practiceSites=s.data||[]; practiceProjects=pr.data||[];
+  practiceQuestions=q.error?[]:(q.data||[]); practiceAttempts=a.error?[]:(a.data||[]);
+  renderPracticeModule();
+}
+
+function showPracticeList() {
+  activePracticeId=null;
+  document.getElementById('practiceEditorView')?.classList.add('hidden');
+  document.getElementById('practiceListView')?.classList.remove('hidden');
+  renderPracticeModule();
+}
+
+function openPracticeQuestionModal(question=null) {
+  practiceQuestionEditId=question?.id||null;
+  document.getElementById('practiceQuestionId').value=question?.id||'';
+  document.getElementById('practiceQuestionModalTitle').textContent=question?'Editar pregunta':'Nueva pregunta';
+  document.getElementById('practiceQuestionText').value=question?.enunciado||'';
+  const inputs=[...document.querySelectorAll('.practice-option-input')];
+  inputs.forEach((input,i)=>input.value=question?.opciones?.[i]?.texto||'');
+  const correctIndex=question?.opciones?.findIndex(o=>o.es_correcta) ?? 0;
+  const radio=document.querySelector(`input[name="practiceCorrectOption"][value="${correctIndex<0?0:correctIndex}"]`);
+  if (radio) radio.checked=true;
+  document.getElementById('practiceQuestionMessage').textContent='';
+  const modal=document.getElementById('practiceQuestionModal');
+  modal?.classList.remove('hidden'); modal?.setAttribute('aria-hidden','false');
+}
+
+function closePracticeQuestionModal() {
+  const modal=document.getElementById('practiceQuestionModal');
+  modal?.classList.add('hidden'); modal?.setAttribute('aria-hidden','true');
+  practiceQuestionEditId=null;
+}
+
+async function loadPracticeQuestionsFull(practiceId) {
+  const { data,error }=await client.from('practica_preguntas')
+    .select('id,practica_id,orden,enunciado,activo,practica_opciones(id,orden,texto,es_correcta)')
+    .eq('practica_id',practiceId).eq('activo',true).order('orden');
+  if (error) { console.error(error); return []; }
+  return (data||[]).map(q=>({...q,opciones:(q.practica_opciones||[]).sort((a,b)=>a.orden-b.orden)}));
+}
+
+async function renderPracticeEditorQuestions() {
+  if (!activePracticeId) return;
+  const list=document.getElementById('practiceQuestionList');
+  const questions=await loadPracticeQuestionsFull(activePracticeId);
+  if (!questions.length) { list.innerHTML='<div class="training-library-empty">Aún no hay preguntas. Agrega la primera.</div>'; return; }
+  const rec=practiceRecords.find(x=>x.id===activePracticeId);
+  const canManage=practiceCanManageRecord(rec);
+  list.innerHTML=questions.map((q,i)=>`<article class="practice-admin-question">
+    <div><span class="practice-question-number">${i+1}</span><div><strong>${escapeHtml(q.enunciado)}</strong><div class="practice-admin-options">${q.opciones.map((o,oi)=>`<span class="${o.es_correcta?'correct':''}">${String.fromCharCode(65+oi)}) ${escapeHtml(o.texto)}</span>`).join('')}</div></div></div>
+    ${canManage?`<div class="practice-admin-question-actions"><button class="table-link" data-pq-edit="${q.id}">Editar</button><button class="table-action danger" data-pq-delete="${q.id}">Eliminar</button></div>`:''}
+  </article>`).join('');
+  list.querySelectorAll('[data-pq-edit]').forEach(b=>b.addEventListener('click',()=>{
+    const q=questions.find(x=>x.id===b.dataset.pqEdit); openPracticeQuestionModal(q);
+  }));
+  list.querySelectorAll('[data-pq-delete]').forEach(b=>b.addEventListener('click',async()=>{
+    if (!confirm('¿Eliminar esta pregunta?')) return;
+    const {error}=await client.from('practica_preguntas').delete().eq('id',b.dataset.pqDelete);
+    if (error) alert(error.message); else { practiceRecords=[]; await loadPracticeModule(true); activePracticeId=rec.id; await renderPracticeEditorQuestions(); }
+  }));
+}
+
+async function renderPracticeRanking(practiceId) {
+  const body=document.getElementById('practiceRankingBody');
+  if (!body) return;
+  const attempts=practiceAttempts.filter(a=>a.practica_id===practiceId&&a.finalizado_at);
+  const best=new Map();
+  attempts.forEach(a=>{
+    const key=a.trabajador_id||a.dni;
+    if (!best.has(key)||Number(a.puntaje_total)>Number(best.get(key).puntaje_total)) best.set(key,a);
+  });
+  const rows=[...best.values()].sort((a,b)=>Number(b.puntaje_total)-Number(a.puntaje_total));
+  if (!rows.length) { body.innerHTML='<tr><td colspan="6" class="table-empty">Todavía no hay participaciones.</td></tr>'; return; }
+  body.innerHTML=rows.map((a,i)=>`<tr><td><strong>#${i+1}</strong></td><td>${escapeHtml(a.apellidos_nombres||'—')}</td><td>${escapeHtml(a.dni||'—')}</td><td><strong>${Number(a.puntaje_total||0)}</strong></td><td>${a.correctas||0} / ${a.total_preguntas||0}</td><td>${a.finalizado_at?new Date(a.finalizado_at).toLocaleString('es-PE'):'—'}</td></tr>`).join('');
+}
+
+async function openPracticeEditor(id=null) {
+  if (!practiceRecords.length) await loadPracticeModule();
+  const rec=id?practiceRecords.find(x=>x.id===id):null;
+  const canCreate=practiceCanCreate();
+  if (!rec && !canCreate) return;
+  activePracticeId=rec?.id||null;
+  document.getElementById('practiceListView')?.classList.add('hidden');
+  document.getElementById('practiceEditorView')?.classList.remove('hidden');
+  document.getElementById('practiceId').value=rec?.id||'';
+  document.getElementById('practiceEditorTitle').textContent=rec?'Administrar quiz':'Nuevo quiz';
+  document.getElementById('practiceEditorCode').textContent=rec?.codigo||'NUEVO';
+  document.getElementById('practiceTitle').value=rec?.titulo||'';
+  document.getElementById('practiceDescription').value=rec?.descripcion||'';
+  const unit=rec?.proyecto_id?`proyecto:${rec.proyecto_id}`:(rec?.sede_id?`sede:${rec.sede_id}`:'global');
+  renderPracticeUnitOptions(unit);
+  document.getElementById('practiceTime').value=String(rec?.tiempo_pregunta_seg||20);
+  document.getElementById('practiceMaxAttempts').value=String(rec?.max_intentos||0);
+  document.getElementById('practiceShuffleQuestions').checked=rec?.mezclar_preguntas??true;
+  document.getElementById('practiceShuffleOptions').checked=rec?.mezclar_opciones??true;
+  document.getElementById('practicePublished').checked=!!rec?.publicado;
+  document.getElementById('practiceActive').checked=rec?.activo??true;
+  document.getElementById('practiceFormMessage').textContent='';
+  const canManage=rec?practiceCanManageRecord(rec):canCreate;
+  [...document.querySelectorAll('#practiceForm input,#practiceForm select')].forEach(el=>{ if(el.id!=='practiceId') el.disabled=!canManage; });
+  document.getElementById('savePracticeButton').classList.toggle('hidden',!canManage);
+  document.getElementById('newPracticeQuestionButton').classList.toggle('hidden',!canManage);
+  document.getElementById('practiceQuestionsPanel').classList.toggle('hidden',!rec);
+  document.getElementById('practiceRankingPanel').classList.toggle('hidden',!rec);
+
+  const link=rec?practicePublicUrl(rec):'';
+  document.getElementById('copyPracticeLinkButton').classList.toggle('hidden',!link);
+  document.getElementById('whatsappPracticeButton').classList.toggle('hidden',!link);
+  if (rec) { await renderPracticeEditorQuestions(); await renderPracticeRanking(rec.id); }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function savePractice(event) {
+  event.preventDefault();
+  if (!client||!practiceCanCreate()) return;
+  const id=document.getElementById('practiceId').value||null;
+  const title=document.getElementById('practiceTitle').value.trim();
+  const unit=document.getElementById('practiceUnit').value;
+  if (!title||!unit) { document.getElementById('practiceFormMessage').textContent='Completa el título y la asignación.'; return; }
+  let sede_id=null,proyecto_id=null;
+  if (unit.startsWith('sede:')) sede_id=unit.split(':')[1];
+  if (unit.startsWith('proyecto:')) proyecto_id=unit.split(':')[1];
+  const payload={
+    titulo:title,
+    descripcion:document.getElementById('practiceDescription').value.trim()||null,
+    sede_id,proyecto_id,
+    tiempo_pregunta_seg:Number(document.getElementById('practiceTime').value),
+    max_intentos:Number(document.getElementById('practiceMaxAttempts').value),
+    mezclar_preguntas:document.getElementById('practiceShuffleQuestions').checked,
+    mezclar_opciones:document.getElementById('practiceShuffleOptions').checked,
+    publicado:document.getElementById('practicePublished').checked,
+    activo:document.getElementById('practiceActive').checked,
+    created_by:currentProfile?.id||null
+  };
+  const msg=document.getElementById('practiceFormMessage'); msg.textContent='';
+  let res;
+  if (id) { delete payload.created_by; res=await client.from('practicas').update(payload).eq('id',id).select().single(); }
+  else res=await client.from('practicas').insert(payload).select().single();
+  if (res.error) { console.error(res.error); msg.textContent=res.error.message; return; }
+  practiceRecords=[];
+  await loadPracticeModule(true);
+  await openPracticeEditor(res.data.id);
+  msg.textContent='Quiz guardado correctamente.'; msg.className='form-message visible success';
+}
+
+async function savePracticeQuestion(event) {
+  event.preventDefault();
+  if (!client||!activePracticeId) return;
+  const text=document.getElementById('practiceQuestionText').value.trim();
+  const opts=[...document.querySelectorAll('.practice-option-input')].map(x=>x.value.trim());
+  const correct=Number(document.querySelector('input[name="practiceCorrectOption"]:checked')?.value||0);
+  const msg=document.getElementById('practiceQuestionMessage');
+  if (!text||opts.some(x=>!x)) { msg.textContent='Completa la pregunta y las cuatro alternativas.'; return; }
+  let questionId=practiceQuestionEditId;
+  if (questionId) {
+    const {error}=await client.from('practica_preguntas').update({enunciado:text}).eq('id',questionId);
+    if (error) {msg.textContent=error.message;return;}
+    await client.from('practica_opciones').delete().eq('pregunta_id',questionId);
+  } else {
+    const existing=await client.from('practica_preguntas').select('orden').eq('practica_id',activePracticeId).order('orden',{ascending:false}).limit(1);
+    const next=(existing.data?.[0]?.orden||0)+1;
+    const {data,error}=await client.from('practica_preguntas').insert({practica_id:activePracticeId,orden:next,enunciado:text,activo:true}).select().single();
+    if (error){msg.textContent=error.message;return;} questionId=data.id;
+  }
+  const rows=opts.map((texto,i)=>({pregunta_id:questionId,orden:i+1,texto,es_correcta:i===correct}));
+  const {error:optErr}=await client.from('practica_opciones').insert(rows);
+  if (optErr){msg.textContent=optErr.message;return;}
+  closePracticeQuestionModal();
+  practiceRecords=[];
+  await loadPracticeModule(true);
+  activePracticeId=document.getElementById('practiceId').value||activePracticeId;
+  await renderPracticeEditorQuestions();
+}
+
+async function copyActivePracticeLink() {
+  const p=practiceRecords.find(x=>x.id===activePracticeId); const link=practicePublicUrl(p);
+  if (!link) return;
+  try{await navigator.clipboard.writeText(link);alert('Enlace copiado.');}catch{window.prompt('Copia el enlace:',link);}
+}
+function whatsappActivePractice() {
+  const p=practiceRecords.find(x=>x.id===activePracticeId); const link=practicePublicUrl(p); if(!link)return;
+  const text=`Practica: ${p.titulo}\n${link}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
+}
+
+// ---------------- PUBLIC PRACTICE ----------------
+let publicPracticeCode='';
+let publicPracticeData=null;
+let publicPracticeRun=null;
+let publicPracticeIndex=0;
+let publicPracticeScore=0;
+let publicPracticeCorrect=0;
+let publicPracticeTimer=null;
+let publicPracticeStartedAt=0;
+let publicPracticeAnswering=false;
+
+function setPublicPracticeMessage(message='',type='error',id='publicPracticeMessage'){
+  const el=document.getElementById(id); if(!el)return;
+  el.textContent=message; el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+async function initializePublicPracticeMode(code) {
+  publicPracticeCode=(code||'').trim();
+  publicPracticeData=null;
+  publicExamScreen?.classList.add('hidden'); appShell?.classList.add('hidden'); authScreen?.classList.add('hidden'); authLoading?.classList.add('hidden');
+  publicPracticeScreen?.classList.remove('hidden');
+  document.getElementById('publicPracticeHeaderCode').textContent=publicPracticeCode||'Código de práctica';
+  document.getElementById('publicPracticeIdentity')?.classList.remove('hidden');
+  document.getElementById('publicPracticePlay')?.classList.add('hidden');
+  document.getElementById('publicPracticeResult')?.classList.add('hidden');
+  document.getElementById('publicPracticeRegistration')?.classList.add('hidden');
+  setTimeout(()=>document.getElementById('publicPracticeDni')?.focus(),50);
+}
+
+async function lookupPublicPractice() {
+  const dni=(document.getElementById('publicPracticeDni')?.value||'').replace(/\D/g,'').slice(0,8);
+  setPublicPracticeMessage('');
+  document.getElementById('publicPracticeParticipantPreview')?.classList.add('hidden');
+  document.getElementById('publicPracticeRegistration')?.classList.add('hidden');
+  if(!/^\d{8}$/.test(dni)){setPublicPracticeMessage('Ingresa un DNI válido de 8 dígitos.');return;}
+  const btn=document.getElementById('publicPracticeLookupButton'); btn.disabled=true; btn.textContent='Buscando…';
+  const {data,error}=await client.rpc('obtener_practica_participante',{p_codigo:publicPracticeCode,p_dni:dni});
+  btn.disabled=false; btn.textContent='Continuar';
+  if(error||!data?.ok){console.error(error);setPublicPracticeMessage(data?.error||'No fue posible consultar la práctica.');return;}
+  document.getElementById('publicPracticeHeaderTitle').textContent=data.titulo||'Practicar';
+  if(!data.registrado){
+    publicPracticeData=data;
+    document.getElementById('publicPracticeRegDni').value=dni;
+    const {data:sites}=await client.rpc('listar_sedes_registro_practica',{p_codigo:publicPracticeCode});
+    const select=document.getElementById('publicPracticeRegSite');
+    select.innerHTML='<option value="">Seleccione una sede</option>'+(sites||[]).map(s=>`<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('');
+    document.getElementById('publicPracticeSiteField').classList.toggle('hidden',!!data.sede_id||!!data.proyecto_id);
+    document.getElementById('publicPracticeRegistration')?.classList.remove('hidden');
+    setPublicPracticeMessage('No estás registrado. Regístrate para continuar.','error');
+    return;
+  }
+  publicPracticeData=data;
+  document.getElementById('publicPracticeParticipantName').textContent=data.nombre||'Participante';
+  const unit=data.proyecto?`Proyecto ${data.proyecto}`:(data.sede?`Sede ${data.sede}`:'');
+  document.getElementById('publicPracticeParticipantDetails').textContent=`DNI ${data.dni} · ${data.puesto||'Sin puesto'} · ${data.area||'Sin área'}${unit?` · ${unit}`:''}`;
+  document.getElementById('publicPracticeAttempts').textContent=data.max_intentos>0?`Intentos: ${data.intentos_realizados} de ${data.max_intentos}`:`Intentos realizados: ${data.intentos_realizados} · Sin límite`;
+  document.getElementById('publicPracticeParticipantPreview')?.classList.remove('hidden');
+}
+
+async function registerPublicPracticeWorker(event){
+  event.preventDefault();
+  const payload={
+    p_codigo:publicPracticeCode,
+    p_dni:document.getElementById('publicPracticeRegDni').value,
+    p_nombres:document.getElementById('publicPracticeRegFirstName').value.trim(),
+    p_apellidos:document.getElementById('publicPracticeRegLastName').value.trim(),
+    p_cargo:document.getElementById('publicPracticeRegPosition').value.trim(),
+    p_area:document.getElementById('publicPracticeRegArea').value.trim(),
+    p_sede_id:document.getElementById('publicPracticeRegSite').value||null
+  };
+  const {data,error}=await client.rpc('registrar_trabajador_practica',payload);
+  if(error||!data?.ok){setPublicPracticeMessage(data?.error||'No fue posible registrarte.','error','publicPracticeRegistrationMessage');return;}
+  document.getElementById('publicPracticeRegistration')?.classList.add('hidden');
+  await lookupPublicPractice();
+}
+
+async function startPublicPractice(){
+  const dni=document.getElementById('publicPracticeDni').value;
+  const btn=document.getElementById('publicPracticeStartButton');btn.disabled=true;btn.textContent='Preparando…';
+  const {data,error}=await client.rpc('iniciar_practica',{p_codigo:publicPracticeCode,p_dni:dni});
+  btn.disabled=false;btn.textContent='¡Empezar!';
+  if(error||!data?.ok){setPublicPracticeMessage(data?.error||'No fue posible iniciar.');return;}
+  publicPracticeRun=data; publicPracticeIndex=0; publicPracticeScore=0; publicPracticeCorrect=0;
+  document.getElementById('publicPracticeIdentity')?.classList.add('hidden');
+  document.getElementById('publicPracticeResult')?.classList.add('hidden');
+  document.getElementById('publicPracticePlay')?.classList.remove('hidden');
+  document.getElementById('publicPracticePlayer').textContent=data.participante||'Participante';
+  document.getElementById('publicPracticeLiveScore').textContent='0';
+  renderPublicPracticeQuestion();
+}
+
+function stopPracticeTimer(){ if(publicPracticeTimer){clearInterval(publicPracticeTimer);publicPracticeTimer=null;} }
+
+function renderPublicPracticeQuestion(){
+  stopPracticeTimer(); publicPracticeAnswering=false;
+  const qs=publicPracticeRun?.preguntas||[];
+  if(publicPracticeIndex>=qs.length){finishPublicPractice();return;}
+  const q=qs[publicPracticeIndex];
+  document.getElementById('publicPracticeProgress').textContent=`Pregunta ${publicPracticeIndex+1} de ${qs.length}`;
+  document.getElementById('publicPracticeQuestionText').textContent=q.enunciado||'—';
+  document.getElementById('publicPracticeFeedback').classList.add('hidden');
+  const colors=['red','blue','yellow','green'];
+  const shapes=['▲','◆','●','■'];
+  const box=document.getElementById('publicPracticeOptions');
+  box.innerHTML=(q.opciones||[]).map((o,i)=>`<button type="button" class="practice-option-btn ${colors[i%4]}" data-option="${o.id}"><span>${shapes[i%4]}</span><strong>${escapeHtml(o.texto||'')}</strong></button>`).join('');
+  box.querySelectorAll('[data-option]').forEach(b=>b.addEventListener('click',()=>answerPublicPractice(b.dataset.option)));
+  const total=Number(publicPracticeRun.tiempo_pregunta_seg||20);
+  publicPracticeStartedAt=performance.now();
+  document.getElementById('publicPracticeTimerText').textContent=String(total);
+  document.getElementById('publicPracticeTimerBar').style.width='100%';
+  publicPracticeTimer=setInterval(()=>{
+    const elapsed=performance.now()-publicPracticeStartedAt;
+    const remaining=Math.max(0,total-elapsed/1000);
+    document.getElementById('publicPracticeTimerText').textContent=String(Math.ceil(remaining));
+    document.getElementById('publicPracticeTimerBar').style.width=`${Math.max(0,remaining/total*100)}%`;
+    if(remaining<=0){stopPracticeTimer();answerPublicPractice(null,true);}
+  },100);
+}
+
+async function answerPublicPractice(optionId=null,timedOut=false){
+  if(publicPracticeAnswering)return; publicPracticeAnswering=true; stopPracticeTimer();
+  const q=publicPracticeRun.preguntas[publicPracticeIndex];
+  const elapsed=Math.round(performance.now()-publicPracticeStartedAt);
+  document.querySelectorAll('.practice-option-btn').forEach(b=>b.disabled=true);
+  const dni=document.getElementById('publicPracticeDni').value;
+  const {data,error}=await client.rpc('responder_practica',{
+    p_intento_id:publicPracticeRun.intento_id,p_dni:dni,p_pregunta_id:q.id,p_opcion_id:optionId,p_tiempo_ms:elapsed
+  });
+  if(error||!data?.ok){alert(data?.error||'No fue posible guardar la respuesta.');publicPracticeAnswering=false;return;}
+  const buttons=[...document.querySelectorAll('.practice-option-btn')];
+  buttons.forEach(b=>{
+    if(b.dataset.option===data.opcion_correcta_id)b.classList.add('answer-correct');
+    else if(optionId&&b.dataset.option===optionId)b.classList.add('answer-wrong');
+  });
+  if(data.es_correcta){publicPracticeCorrect++;publicPracticeScore+=Number(data.puntaje||0);}
+  document.getElementById('publicPracticeLiveScore').textContent=String(publicPracticeScore);
+  const fb=document.getElementById('publicPracticeFeedback');
+  fb.textContent=data.es_correcta?`✓ ¡Correcto! +${data.puntaje} puntos`:(timedOut?'⌛ Se acabó el tiempo':'✕ Respuesta incorrecta');
+  fb.className=`practice-feedback ${data.es_correcta?'correct':'wrong'}`;
+  setTimeout(()=>{publicPracticeIndex++;renderPublicPracticeQuestion();},1300);
+}
+
+async function finishPublicPractice(){
+  stopPracticeTimer();
+  const dni=document.getElementById('publicPracticeDni').value;
+  const {data,error}=await client.rpc('finalizar_practica',{p_intento_id:publicPracticeRun.intento_id,p_dni:dni});
+  document.getElementById('publicPracticePlay')?.classList.add('hidden');
+  document.getElementById('publicPracticeResult')?.classList.remove('hidden');
+  if(error||!data?.ok){document.getElementById('publicPracticeFinalText').textContent=data?.error||'No fue posible finalizar.';return;}
+  document.getElementById('publicPracticeFinalScore').textContent=`${data.puntaje} pts`;
+  document.getElementById('publicPracticeCorrect').textContent=`${data.correctas} / ${data.total}`;
+  document.getElementById('publicPracticeRank').textContent=`#${data.posicion}`;
+  document.getElementById('publicPracticeFinalText').textContent=`Completaste ${data.total} preguntas. ¡Sigue practicando para mejorar tu puntaje!`;
+  const board=document.getElementById('publicPracticeRanking');
+  board.innerHTML=(data.ranking||[]).map(r=>`<div class="practice-ranking-row ${r.posicion===data.posicion?'me':''}"><span>#${r.posicion}</span><strong>${escapeHtml(r.nombre)}</strong><b>${r.puntaje} pts</b></div>`).join('');
+}
+
+function resetPublicPracticeForRetry(){
+  document.getElementById('publicPracticeResult')?.classList.add('hidden');
+  document.getElementById('publicPracticeIdentity')?.classList.remove('hidden');
+  document.getElementById('publicPracticeParticipantPreview')?.classList.add('hidden');
+  lookupPublicPractice();
+}
+
+document.getElementById('newPracticeButton')?.addEventListener('click',()=>openPracticeEditor());
+document.getElementById('backPracticeListButton')?.addEventListener('click',showPracticeList);
+document.getElementById('practiceForm')?.addEventListener('submit',savePractice);
+document.getElementById('refreshPracticeButton')?.addEventListener('click',()=>{practiceRecords=[];loadPracticeModule(true);});
+document.getElementById('practiceSearch')?.addEventListener('input',renderPracticeModule);
+document.getElementById('practiceStatusFilter')?.addEventListener('change',renderPracticeModule);
+document.getElementById('newPracticeQuestionButton')?.addEventListener('click',()=>openPracticeQuestionModal());
+document.getElementById('practiceQuestionForm')?.addEventListener('submit',savePracticeQuestion);
+document.getElementById('closePracticeQuestionModal')?.addEventListener('click',closePracticeQuestionModal);
+document.getElementById('cancelPracticeQuestionModal')?.addEventListener('click',closePracticeQuestionModal);
+document.getElementById('practiceQuestionModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePracticeQuestionModal);
+document.getElementById('copyPracticeLinkButton')?.addEventListener('click',copyActivePracticeLink);
+document.getElementById('whatsappPracticeButton')?.addEventListener('click',whatsappActivePractice);
+
+document.getElementById('publicPracticeDni')?.addEventListener('input',e=>{e.target.value=e.target.value.replace(/\D/g,'').slice(0,8);});
+document.getElementById('publicPracticeDni')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupPublicPractice();}});
+document.getElementById('publicPracticeLookupButton')?.addEventListener('click',lookupPublicPractice);
+document.getElementById('publicPracticeStartButton')?.addEventListener('click',startPublicPractice);
+document.getElementById('publicPracticeRegistrationForm')?.addEventListener('submit',registerPublicPracticeWorker);
+document.getElementById('publicPracticeRegistrationCancelButton')?.addEventListener('click',()=>{
+  document.getElementById('publicPracticeRegistration')?.classList.add('hidden');
+  document.getElementById('publicPracticeDni')?.focus();
+});
+document.getElementById('publicPracticeAgainButton')?.addEventListener('click',resetPublicPracticeForRetry);
+
 
 initializeAuth();

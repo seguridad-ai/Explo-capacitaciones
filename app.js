@@ -60,6 +60,7 @@ function showSection(sectionId) {
   menuItems.forEach(item => item.classList.toggle('active', item.dataset.section === sectionId));
   sidebar?.classList.remove('open');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (sectionId === 'programacion') loadScheduleModule();
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
   if (sectionId === 'nueva-capacitacion') loadTrainingModule();
@@ -1079,13 +1080,15 @@ function collectTrainingPayload() {
     empresa: document.getElementById('trainingCompany').value.trim(),
     area: document.getElementById('trainerArea').value.trim(),
     fecha: document.getElementById('trainingDate').value,
+    hora_inicio: document.getElementById('trainingStartTime')?.value || null,
+    hora_fin: document.getElementById('trainingEndTime')?.value || null,
     tiempo_texto: document.getElementById('trainingDuration').value.trim(),
     firma_expositor: document.getElementById('trainerSignatureData').value,
     responsable_nombre: document.getElementById('responsibleName').value.trim(),
     responsable_cargo: document.getElementById('responsiblePosition').value.trim(),
     responsable_dni: document.getElementById('responsibleDni').value.replace(/\D/g, ''),
     firma_responsable: document.getElementById('responsibleSignatureData').value,
-    estado: 'BORRADOR',
+    estado: document.getElementById('trainingCurrentStatus')?.value || 'BORRADOR',
     created_by: currentProfile?.id || null
   };
 }
@@ -1144,6 +1147,9 @@ function clearTrainingForm() {
   if (!window.confirm('¿Deseas limpiar el formulario actual? Los cambios no guardados se perderán.')) return;
   trainingForm?.reset();
   document.getElementById('trainingId').value = '';
+  document.getElementById('trainingCurrentStatus').value = 'BORRADOR';
+  if (document.getElementById('trainingStartTime')) document.getElementById('trainingStartTime').value = '';
+  if (document.getElementById('trainingEndTime')) document.getElementById('trainingEndTime').value = '';
   document.getElementById('trainingCompany').value = 'EXPLO DRILLING PERU S.R.L.';
   document.getElementById('trainingDate').value = todayISO();
   setSignature('trainer', '');
@@ -1179,6 +1185,380 @@ document.getElementById('clearTrainingButton')?.addEventListener('click', clearT
 document.getElementById('saveTrainingDraftButton')?.addEventListener('click', () => persistTraining({ continueNext: false }));
 trainingForm?.addEventListener('submit', e => { e.preventDefault(); persistTraining({ continueNext: true }); });
 
+
+
+// ============================== ETAPA 9 · PROGRAMACIÓN ==============================
+let scheduleRecords = [];
+let scheduleSites = [];
+let scheduleProjects = [];
+let scheduleMonthDate = new Date();
+scheduleMonthDate.setDate(1);
+
+const scheduleCalendarGrid = document.getElementById('scheduleCalendarGrid');
+const scheduleTableBody = document.getElementById('scheduleTableBody');
+const scheduleModal = document.getElementById('scheduleModal');
+const scheduleForm = document.getElementById('scheduleForm');
+
+function scheduleMessage(message = '', type = 'error') {
+  const el = document.getElementById('scheduleMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function scheduleFormMessage(message = '', type = 'error') {
+  const el = document.getElementById('scheduleFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function scheduleMonthKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function scheduleMonthLabel(date) {
+  const label = new Intl.DateTimeFormat('es-PE', { month: 'long', year: 'numeric' }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function scheduleIsoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function scheduleFormatTime(value) {
+  if (!value) return '—';
+  return String(value).slice(0,5);
+}
+
+function scheduleUnitLabel(item) {
+  if (item.sede_id) {
+    const s = scheduleSites.find(x => x.id === item.sede_id);
+    return s ? `Sede - ${s.nombre}` : 'Sede';
+  }
+  if (item.proyecto_id) {
+    const p = scheduleProjects.find(x => x.id === item.proyecto_id);
+    return p ? `Proyecto - ${p.nombre}` : 'Proyecto';
+  }
+  return '—';
+}
+
+function scheduleEffectiveStatus(item) {
+  const state = (item.estado || 'BORRADOR').toUpperCase();
+  const today = todayISO();
+  if (item.fecha && item.fecha < today && !['FINALIZADA','CANCELADA'].includes(state)) return 'PENDIENTE';
+  return state;
+}
+
+function scheduleStatusClass(state) {
+  return {
+    'PROGRAMADA':'programmed',
+    'REPROGRAMADA':'reprogrammed',
+    'EN CURSO':'in-progress',
+    'FINALIZADA':'finished',
+    'CANCELADA':'cancelled',
+    'BORRADOR':'draft',
+    'PENDIENTE':'pending'
+  }[state] || 'draft';
+}
+
+function scheduleStatusLabel(state) {
+  return state === 'PENDIENTE' ? 'PENDIENTE' : state;
+}
+
+function scheduleCanManage() {
+  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
+}
+
+function populateScheduleFilters() {
+  const unit = document.getElementById('scheduleUnitFilter');
+  if (unit) {
+    const current = unit.value;
+    unit.innerHTML = '<option value="all">Todas las sedes y proyectos</option>'
+      + scheduleSites.map(x => `<option value="sede:${x.id}">Sede - ${escapeHtml(x.nombre)}</option>`).join('')
+      + scheduleProjects.map(x => `<option value="proyecto:${x.id}">Proyecto - ${escapeHtml(x.nombre)}</option>`).join('');
+    if ([...unit.options].some(o => o.value === current)) unit.value = current;
+  }
+  const classification = document.getElementById('scheduleClassificationFilter');
+  if (classification) {
+    const current = classification.value;
+    const values = [...new Set(scheduleRecords.map(x => x.clasificacion).filter(Boolean))].sort((a,b) => a.localeCompare(b,'es'));
+    classification.innerHTML = '<option value="all">Todas las clasificaciones</option>' + values.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+    if ([...classification.options].some(o => o.value === current)) classification.value = current;
+  }
+}
+
+function getFilteredScheduleRecords({ monthOnly = true } = {}) {
+  const unit = document.getElementById('scheduleUnitFilter')?.value || 'all';
+  const classification = document.getElementById('scheduleClassificationFilter')?.value || 'all';
+  const status = document.getElementById('scheduleStatusFilter')?.value || 'all';
+  const search = (document.getElementById('scheduleSearch')?.value || '').trim().toLowerCase();
+  const month = scheduleMonthKey(scheduleMonthDate);
+  return scheduleRecords.filter(item => {
+    if (monthOnly && !String(item.fecha || '').startsWith(month)) return false;
+    if (unit !== 'all') {
+      const [type,id] = unit.split(':');
+      if (type === 'sede' && item.sede_id !== id) return false;
+      if (type === 'proyecto' && item.proyecto_id !== id) return false;
+    }
+    if (classification !== 'all' && item.clasificacion !== classification) return false;
+    const effective = scheduleEffectiveStatus(item);
+    if (status !== 'all' && effective !== status && (status !== item.estado)) return false;
+    if (search) {
+      const haystack = [item.codigo,item.tema,item.expositor_nombre,item.clasificacion,scheduleUnitLabel(item)].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+function renderScheduleStats() {
+  const records = getFilteredScheduleRecords({ monthOnly: true });
+  const programmed = records.filter(x => ['PROGRAMADA','REPROGRAMADA','EN CURSO'].includes((x.estado || '').toUpperCase()) && scheduleEffectiveStatus(x) !== 'PENDIENTE').length;
+  const finished = records.filter(x => (x.estado || '').toUpperCase() === 'FINALIZADA').length;
+  const pending = records.filter(x => scheduleEffectiveStatus(x) === 'PENDIENTE').length;
+  const cancelled = records.filter(x => (x.estado || '').toUpperCase() === 'CANCELADA').length;
+  document.getElementById('scheduleProgrammedCount').textContent = String(programmed);
+  document.getElementById('scheduleFinishedCount').textContent = String(finished);
+  document.getElementById('schedulePendingCount').textContent = String(pending);
+  document.getElementById('scheduleCancelledCount').textContent = String(cancelled);
+}
+
+function renderScheduleCalendar() {
+  if (!scheduleCalendarGrid) return;
+  const year = scheduleMonthDate.getFullYear();
+  const month = scheduleMonthDate.getMonth();
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const mondayIndex = (first.getDay() + 6) % 7;
+  const today = todayISO();
+  const records = getFilteredScheduleRecords({ monthOnly: true });
+  const byDay = new Map();
+  records.forEach(item => {
+    const day = Number(String(item.fecha).slice(-2));
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(item);
+  });
+  byDay.forEach(list => list.sort((a,b) => String(a.hora_inicio || '99:99').localeCompare(String(b.hora_inicio || '99:99'))));
+
+  let cells = '';
+  for (let i=0; i<mondayIndex; i++) cells += '<div class="schedule-day schedule-day-empty"></div>';
+  for (let day=1; day<=daysInMonth; day++) {
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dayRecords = byDay.get(day) || [];
+    const events = dayRecords.slice(0,3).map(item => {
+      const state = scheduleEffectiveStatus(item);
+      const time = item.hora_inicio ? `<span>${scheduleFormatTime(item.hora_inicio)}</span>` : '';
+      return `<button class="schedule-event ${scheduleStatusClass(state)}" type="button" data-schedule-open="${item.id}" title="${escapeHtml(item.tema || '')}">${time}<b>${escapeHtml(item.tema || 'Sin tema')}</b></button>`;
+    }).join('');
+    const more = dayRecords.length > 3 ? `<button class="schedule-more" type="button" data-schedule-day="${iso}">+${dayRecords.length-3} más</button>` : '';
+    cells += `<div class="schedule-day ${iso === today ? 'today' : ''}"><div class="schedule-day-number"><span>${day}</span>${iso === today ? '<small>HOY</small>' : ''}</div><div class="schedule-day-events">${events}${more}</div></div>`;
+  }
+  const used = mondayIndex + daysInMonth;
+  const trailing = (7 - (used % 7)) % 7;
+  for (let i=0; i<trailing; i++) cells += '<div class="schedule-day schedule-day-empty"></div>';
+  scheduleCalendarGrid.innerHTML = cells || '<div class="schedule-calendar-loading">Sin registros.</div>';
+}
+
+function renderScheduleTable() {
+  if (!scheduleTableBody) return;
+  const records = getFilteredScheduleRecords({ monthOnly: true }).sort((a,b) => `${a.fecha || ''} ${a.hora_inicio || ''}`.localeCompare(`${b.fecha || ''} ${b.hora_inicio || ''}`));
+  document.getElementById('scheduleResultCount').textContent = `${records.length} ${records.length === 1 ? 'registro' : 'registros'}`;
+  if (!records.length) {
+    scheduleTableBody.innerHTML = '<tr><td colspan="9" class="table-empty">No hay capacitaciones para los filtros seleccionados.</td></tr>';
+    return;
+  }
+  scheduleTableBody.innerHTML = records.map(item => {
+    const state = scheduleEffectiveStatus(item);
+    const time = item.hora_inicio ? `${scheduleFormatTime(item.hora_inicio)}${item.hora_fin ? ' - '+scheduleFormatTime(item.hora_fin) : ''}` : '—';
+    return `<tr>
+      <td>${formatDatePE(item.fecha)}</td>
+      <td>${escapeHtml(time)}</td>
+      <td><strong>${escapeHtml(item.codigo || '—')}</strong></td>
+      <td>${escapeHtml(item.clasificacion || '—')}</td>
+      <td class="schedule-topic-cell">${escapeHtml(item.tema || '—')}</td>
+      <td>${escapeHtml(scheduleUnitLabel(item))}</td>
+      <td>${escapeHtml(item.expositor_nombre || '—')}</td>
+      <td><span class="schedule-status ${scheduleStatusClass(state)}">${escapeHtml(scheduleStatusLabel(state))}</span></td>
+      <td><div class="schedule-row-actions"><button class="table-link" type="button" data-schedule-open="${item.id}">${scheduleCanManage() ? 'Gestionar' : 'Ver'}</button>${scheduleCanManage() ? `<button class="table-link" type="button" data-schedule-edit="${item.id}">Editar</button>` : ''}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderScheduleModule() {
+  document.getElementById('scheduleMonthLabel').textContent = scheduleMonthLabel(scheduleMonthDate);
+  populateScheduleFilters();
+  renderScheduleStats();
+  renderScheduleCalendar();
+  renderScheduleTable();
+}
+
+async function loadScheduleModule(force = false) {
+  if (!client || !currentProfile) return;
+  if (scheduleRecords.length && !force) { renderScheduleModule(); return; }
+  scheduleMessage('');
+  if (scheduleCalendarGrid) scheduleCalendarGrid.innerHTML = '<div class="schedule-calendar-loading">Cargando calendario…</div>';
+  const [trainings, sites, projects] = await Promise.all([
+    client.from('capacitaciones').select('id,codigo,clasificacion,tema,expositor_nombre,sede_id,proyecto_id,fecha,hora_inicio,hora_fin,tiempo_texto,estado,observacion_programacion,fecha_programacion_anterior,ultima_reprogramacion').order('fecha',{ascending:true}).limit(1500),
+    client.from('sedes').select('id,nombre,activo').order('nombre'),
+    client.from('proyectos').select('id,nombre,cliente,activo').order('nombre')
+  ]);
+  if (trainings.error) {
+    console.error(trainings.error);
+    const missing = /hora_inicio|observacion_programacion|fecha_programacion_anterior/i.test(trainings.error.message || '');
+    scheduleMessage(missing ? 'Primero ejecuta el SQL de la Etapa 9 en Supabase.' : 'No fue posible cargar la programación.');
+    return;
+  }
+  scheduleRecords = trainings.data || [];
+  scheduleSites = sites.data || [];
+  scheduleProjects = projects.data || [];
+  renderScheduleModule();
+}
+
+function openScheduleModal(id) {
+  const item = scheduleRecords.find(x => x.id === id);
+  if (!item || !scheduleModal) return;
+  scheduleFormMessage('');
+  document.getElementById('scheduleTrainingId').value = item.id;
+  document.getElementById('scheduleOriginalDate').value = item.fecha || '';
+  document.getElementById('scheduleModalCode').textContent = item.codigo || '—';
+  document.getElementById('scheduleModalTopic').textContent = item.tema || '—';
+  document.getElementById('scheduleModalUnit').textContent = scheduleUnitLabel(item);
+  document.getElementById('scheduleDate').value = item.fecha || '';
+  document.getElementById('scheduleState').value = (item.estado || 'BORRADOR').toUpperCase();
+  document.getElementById('scheduleStartTime').value = item.hora_inicio ? String(item.hora_inicio).slice(0,5) : '';
+  document.getElementById('scheduleEndTime').value = item.hora_fin ? String(item.hora_fin).slice(0,5) : '';
+  document.getElementById('scheduleObservation').value = item.observacion_programacion || '';
+  const canManage = scheduleCanManage();
+  ['scheduleDate','scheduleState','scheduleStartTime','scheduleEndTime','scheduleObservation'].forEach(key => { const el=document.getElementById(key); if (el) el.disabled=!canManage; });
+  document.getElementById('saveScheduleButton')?.classList.toggle('hidden', !canManage);
+  document.getElementById('editScheduleTrainingButton')?.classList.toggle('hidden', !canManage);
+  document.getElementById('scheduleModalTitle').textContent = canManage ? 'Actualizar capacitación' : 'Detalle de capacitación';
+  scheduleModal.classList.remove('hidden');
+}
+
+function closeScheduleModal() {
+  scheduleModal?.classList.add('hidden');
+  scheduleFormMessage('');
+}
+
+async function saveScheduleChanges(event) {
+  event.preventDefault();
+  if (!client) return;
+  const id = document.getElementById('scheduleTrainingId').value;
+  const item = scheduleRecords.find(x => x.id === id);
+  if (!item) return;
+  const date = document.getElementById('scheduleDate').value;
+  let state = document.getElementById('scheduleState').value;
+  const start = document.getElementById('scheduleStartTime').value || null;
+  const end = document.getElementById('scheduleEndTime').value || null;
+  const observation = document.getElementById('scheduleObservation').value.trim() || null;
+  if (!date) { scheduleFormMessage('Selecciona la fecha de la capacitación.'); return; }
+  if (start && end && end <= start) { scheduleFormMessage('La hora de fin debe ser posterior a la hora de inicio.'); return; }
+  const dateChanged = item.fecha && item.fecha !== date;
+  if (dateChanged && state === 'PROGRAMADA') state = 'REPROGRAMADA';
+  const payload = {
+    fecha: date,
+    hora_inicio: start,
+    hora_fin: end,
+    estado: state,
+    observacion_programacion: observation
+  };
+  if (dateChanged) {
+    payload.fecha_programacion_anterior = item.fecha;
+    payload.ultima_reprogramacion = new Date().toISOString();
+  }
+  const button = document.getElementById('saveScheduleButton');
+  const label = button.textContent;
+  button.disabled = true; button.textContent = 'Guardando…';
+  const { data, error } = await client.from('capacitaciones').update(payload).eq('id', id).select('id').single();
+  button.disabled = false; button.textContent = label;
+  if (error) { console.error(error); scheduleFormMessage('No fue posible guardar los cambios. Verifica tus permisos.'); return; }
+  closeScheduleModal();
+  scheduleMessage(dateChanged ? 'Capacitación reprogramada correctamente.' : 'Programación actualizada correctamente.', 'success');
+  scheduleRecords = [];
+  await loadScheduleModule(true);
+}
+
+async function editTrainingFromSchedule(id) {
+  if (!client) return;
+  const { data, error } = await client.from('capacitaciones').select('*').eq('id', id).single();
+  if (error || !data) { console.error(error); scheduleMessage('No fue posible abrir la ficha de la capacitación.'); return; }
+  if (!trainingCatalogLoaded) await loadTrainingCatalogs();
+  showSection('nueva-capacitacion');
+  showTrainingDataStep();
+  document.getElementById('trainingId').value = data.id;
+  document.getElementById('trainingCurrentStatus').value = data.estado || 'BORRADOR';
+  document.getElementById('trainingClassification').value = data.clasificacion || 'CAPACITACIÓN';
+  renderTrainingUnitOptions();
+  const unitValue = data.sede_id ? `sede:${data.sede_id}` : (data.proyecto_id ? `proyecto:${data.proyecto_id}` : '');
+  if (unitValue) document.getElementById('trainingUnit').value = unitValue;
+  document.getElementById('trainingTopic').value = data.tema || '';
+  document.getElementById('trainerName').value = data.expositor_nombre || '';
+  document.getElementById('trainerDni').value = data.expositor_dni || '';
+  document.getElementById('trainerPosition').value = data.expositor_cargo || '';
+  document.getElementById('trainingCompany').value = data.empresa || 'EXPLO DRILLING PERU S.R.L.';
+  document.getElementById('trainerArea').value = data.area || '';
+  document.getElementById('trainingDate').value = data.fecha || '';
+  document.getElementById('trainingStartTime').value = data.hora_inicio ? String(data.hora_inicio).slice(0,5) : '';
+  document.getElementById('trainingEndTime').value = data.hora_fin ? String(data.hora_fin).slice(0,5) : '';
+  document.getElementById('trainingDuration').value = data.tiempo_texto || '';
+  document.getElementById('responsibleName').value = data.responsable_nombre || '';
+  document.getElementById('responsiblePosition').value = data.responsable_cargo || '';
+  document.getElementById('responsibleDni').value = data.responsable_dni || '';
+  setSignature('trainer', data.firma_expositor || '');
+  setSignature('responsible', data.firma_responsable || '');
+  setTrainingFormMessage(`Editando ${data.codigo || 'capacitación'}. Al guardar se conservará su estado ${data.estado || 'BORRADOR'}.`, 'success');
+}
+
+scheduleForm?.addEventListener('submit', saveScheduleChanges);
+document.getElementById('closeScheduleModal')?.addEventListener('click', closeScheduleModal);
+document.getElementById('cancelScheduleModal')?.addEventListener('click', closeScheduleModal);
+scheduleModal?.addEventListener('click', e => { if (e.target === scheduleModal) closeScheduleModal(); });
+document.getElementById('editScheduleTrainingButton')?.addEventListener('click', () => {
+  const id = document.getElementById('scheduleTrainingId').value;
+  closeScheduleModal();
+  editTrainingFromSchedule(id);
+});
+document.getElementById('scheduleNewTrainingButton')?.addEventListener('click', () => { showSection('nueva-capacitacion'); clearTrainingFormWithoutConfirm(); });
+document.getElementById('schedulePrevMonth')?.addEventListener('click', () => { scheduleMonthDate.setMonth(scheduleMonthDate.getMonth()-1); renderScheduleModule(); });
+document.getElementById('scheduleNextMonth')?.addEventListener('click', () => { scheduleMonthDate.setMonth(scheduleMonthDate.getMonth()+1); renderScheduleModule(); });
+document.getElementById('scheduleTodayButton')?.addEventListener('click', () => { const d=new Date(); scheduleMonthDate=new Date(d.getFullYear(),d.getMonth(),1); renderScheduleModule(); });
+document.getElementById('scheduleRefreshButton')?.addEventListener('click', () => { scheduleRecords=[]; loadScheduleModule(true); });
+['scheduleUnitFilter','scheduleClassificationFilter','scheduleStatusFilter'].forEach(id => document.getElementById(id)?.addEventListener('change', renderScheduleModule));
+document.getElementById('scheduleSearch')?.addEventListener('input', renderScheduleModule);
+document.getElementById('programacion')?.addEventListener('click', event => {
+  const open = event.target.closest('[data-schedule-open]');
+  if (open) { openScheduleModal(open.dataset.scheduleOpen); return; }
+  const edit = event.target.closest('[data-schedule-edit]');
+  if (edit) { editTrainingFromSchedule(edit.dataset.scheduleEdit); return; }
+  const more = event.target.closest('[data-schedule-day]');
+  if (more) {
+    document.getElementById('scheduleSearch').value = '';
+    const date = more.dataset.scheduleDay;
+    const dayRecords = getFilteredScheduleRecords({ monthOnly:true }).filter(x => x.fecha === date);
+    if (dayRecords[0]) openScheduleModal(dayRecords[0].id);
+  }
+});
+
+function clearTrainingFormWithoutConfirm() {
+  trainingForm?.reset();
+  document.getElementById('trainingId').value = '';
+  document.getElementById('trainingCurrentStatus').value = 'BORRADOR';
+  document.getElementById('trainingCompany').value = 'EXPLO DRILLING PERU S.R.L.';
+  document.getElementById('trainingDate').value = todayISO();
+  if (document.getElementById('trainingStartTime')) document.getElementById('trainingStartTime').value = '';
+  if (document.getElementById('trainingEndTime')) document.getElementById('trainingEndTime').value = '';
+  setSignature('trainer', '');
+  setSignature('responsible', '');
+  setTrainingFormMessage('');
+  setTrainingMessage('');
+  resetParticipantsState();
+  resetExamState();
+  showTrainingDataStep();
+  renderTrainingUnitOptions();
+  prefillResponsible();
+}
 
 // ============================== ETAPA 6 · PARTICIPANTES ==============================
 let activeTrainingId = null;

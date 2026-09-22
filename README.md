@@ -1,14 +1,18 @@
-# Etapa 8 · Firma del participante + registro final PDF
+# Etapa 9 · Programación de capacitaciones
 
-## 1. Supabase
-Ejecutar en SQL Editor el archivo:
+## 1. Ejecutar primero en Supabase
 
-`ETAPA8_FIRMA_Y_REGISTRO_PDF.sql`
+Abrir **SQL Editor → New query** y ejecutar todo el contenido de:
 
-Resultado esperado: **Etapa 8 aplicada correctamente**.
+`ETAPA9_PROGRAMACION.sql`
 
-## 2. GitHub
-Reemplazar en el repositorio:
+Resultado esperado:
+
+`Etapa 9 aplicada correctamente`
+
+## 2. Actualizar GitHub
+
+Subir y reemplazar:
 
 - `index.html`
 - `styles.css`
@@ -17,13 +21,27 @@ Reemplazar en el repositorio:
 
 No reemplazar la carpeta `assets/`.
 
-## 3. Qué agrega esta etapa
-- Después de enviar el examen, el trabajador firma desde el celular.
-- Si cierra el enlace antes de firmar, puede volver a ingresar con el mismo DNI y completar la firma.
-- Vista previa con Firma, Nota y Estado: EVALUADO / COMPLETADO.
-- Solo participantes COMPLETADOS (evaluación + firma) ingresan al PDF final.
-- Botón **Descargar registro PDF** con el formato corporativo solicitado.
-- El PDF incluye firma del expositor, firma del participante, nota y firma del responsable del registro.
+Commit sugerido:
 
-## 4. Nota
-El PDF utiliza jsPDF y AutoTable desde CDN. Se requiere conexión a Internet al momento de cargar la página para obtener esas librerías.
+`Etapa 9 - Programación y calendario de capacitaciones`
+
+Luego esperar la publicación de GitHub Pages y usar `Ctrl + F5`.
+
+## Funciones incluidas
+
+- calendario mensual de capacitaciones;
+- navegación mes anterior / siguiente / hoy;
+- filtros por sede/proyecto, clasificación y estado;
+- búsqueda por código, tema o expositor;
+- estados: BORRADOR, PROGRAMADA, REPROGRAMADA, EN CURSO, FINALIZADA y CANCELADA;
+- identificación automática de actividades PENDIENTES cuando la fecha ya venció y no fueron cerradas;
+- reprogramación de fecha con registro de la fecha anterior;
+- horario de inicio y fin;
+- observaciones de programación;
+- edición de la ficha completa desde el calendario;
+- vista de solo lectura para rol GERENCIA;
+- nueva capacitación directamente desde Programación.
+
+## Nota
+
+La Etapa 9 utiliza la tabla `capacitaciones` ya creada. No elimina ni modifica los registros existentes; solo agrega campos y amplía el catálogo de estados.

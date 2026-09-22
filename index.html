@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-11" />
+  <link rel="stylesheet" href="styles.css?v=20260922-12" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -217,7 +217,7 @@
 
       <div class="sidebar-footer">
         <span>Explo Drilling Perú S.R.L.</span>
-        <small>Etapa 7 · Examen</small>
+        <small>Etapa 9 · Programación</small>
       </div>
     </aside>
 
@@ -282,7 +282,111 @@
         </div>
       </section>
 
-      <section id="programacion" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Programación</h2><p>Calendario y seguimiento de las capacitaciones programadas.</p></div><div class="coming-card"><span>▣</span><h3>Próxima etapa funcional</h3><p>Implementaremos calendario, filtros por sede/proyecto, estados y trazabilidad.</p></div></section>
+      <section id="programacion" class="page-section">
+        <div class="section-title section-title-row">
+          <div>
+            <span class="eyebrow">PLANIFICACIÓN Y SEGUIMIENTO</span>
+            <h2>Programación de capacitaciones</h2>
+            <p>Consulta el calendario, filtra por sede o proyecto y actualiza el estado de cada actividad.</p>
+          </div>
+          <button id="scheduleNewTrainingButton" class="primary-btn" type="button">＋ Nueva capacitación</button>
+        </div>
+
+        <div id="scheduleMessage" class="module-message" role="alert"></div>
+
+        <div class="schedule-stats">
+          <article><span>Programadas</span><strong id="scheduleProgrammedCount">0</strong><small>Incluye reprogramadas</small></article>
+          <article><span>Finalizadas</span><strong id="scheduleFinishedCount">0</strong><small>Actividades cerradas</small></article>
+          <article><span>Pendientes</span><strong id="schedulePendingCount">0</strong><small>Fecha vencida sin cierre</small></article>
+          <article><span>Canceladas</span><strong id="scheduleCancelledCount">0</strong><small>Actividades anuladas</small></article>
+        </div>
+
+        <article class="schedule-toolbar panel">
+          <div class="schedule-month-nav">
+            <button id="schedulePrevMonth" class="icon-refresh" type="button" title="Mes anterior">‹</button>
+            <div>
+              <span class="eyebrow">CALENDARIO</span>
+              <h3 id="scheduleMonthLabel">—</h3>
+            </div>
+            <button id="scheduleNextMonth" class="icon-refresh" type="button" title="Mes siguiente">›</button>
+            <button id="scheduleTodayButton" class="secondary-btn schedule-today" type="button">Hoy</button>
+          </div>
+          <div class="schedule-filters">
+            <select id="scheduleUnitFilter" aria-label="Filtrar por sede o proyecto"><option value="all">Todas las sedes y proyectos</option></select>
+            <select id="scheduleClassificationFilter" aria-label="Filtrar por clasificación"><option value="all">Todas las clasificaciones</option></select>
+            <select id="scheduleStatusFilter" aria-label="Filtrar por estado">
+              <option value="all">Todos los estados</option>
+              <option value="BORRADOR">Borrador</option>
+              <option value="PROGRAMADA">Programada</option>
+              <option value="REPROGRAMADA">Reprogramada</option>
+              <option value="EN CURSO">En curso</option>
+              <option value="FINALIZADA">Finalizada</option>
+              <option value="CANCELADA">Cancelada</option>
+              <option value="PENDIENTE">Pendiente / vencida</option>
+            </select>
+            <input id="scheduleSearch" type="search" placeholder="Buscar código, tema o expositor…" />
+            <button id="scheduleRefreshButton" class="icon-refresh" type="button" title="Actualizar programación">↻</button>
+          </div>
+        </article>
+
+        <article class="schedule-calendar-card">
+          <div class="schedule-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
+          <div id="scheduleCalendarGrid" class="schedule-calendar-grid"><div class="schedule-calendar-loading">Cargando calendario…</div></div>
+        </article>
+
+        <article class="schedule-list-card">
+          <div class="catalog-panel-head catalog-panel-head-wrap">
+            <div><span class="eyebrow">DETALLE DEL MES</span><h3>Capacitaciones</h3></div>
+            <span id="scheduleResultCount" class="schedule-result-count">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table schedule-table">
+              <thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Clasificación</th><th>Tema</th><th>Sede / Proyecto</th><th>Expositor</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody id="scheduleTableBody"><tr><td colspan="9" class="table-empty">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div id="scheduleModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
+          <div class="modal-card schedule-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">GESTIÓN DE PROGRAMACIÓN</span><h3 id="scheduleModalTitle">Actualizar capacitación</h3></div>
+              <button id="closeScheduleModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <form id="scheduleForm">
+              <input id="scheduleTrainingId" type="hidden" />
+              <input id="scheduleOriginalDate" type="hidden" />
+              <div class="schedule-training-summary">
+                <strong id="scheduleModalCode">—</strong>
+                <span id="scheduleModalTopic">—</span>
+                <small id="scheduleModalUnit">—</small>
+              </div>
+              <div class="form-grid">
+                <label><span>Fecha *</span><input id="scheduleDate" type="date" required /></label>
+                <label><span>Estado *</span>
+                  <select id="scheduleState" required>
+                    <option value="BORRADOR">BORRADOR</option>
+                    <option value="PROGRAMADA">PROGRAMADA</option>
+                    <option value="REPROGRAMADA">REPROGRAMADA</option>
+                    <option value="EN CURSO">EN CURSO</option>
+                    <option value="FINALIZADA">FINALIZADA</option>
+                    <option value="CANCELADA">CANCELADA</option>
+                  </select>
+                </label>
+                <label><span>Hora de inicio</span><input id="scheduleStartTime" type="time" /></label>
+                <label><span>Hora de fin</span><input id="scheduleEndTime" type="time" /></label>
+                <label class="form-span-2"><span>Observación de programación</span><textarea id="scheduleObservation" rows="3" maxlength="500" placeholder="Motivo de reprogramación, cancelación u otra observación"></textarea></label>
+              </div>
+              <div id="scheduleFormMessage" class="form-message"></div>
+              <div class="modal-actions">
+                <button id="cancelScheduleModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="editScheduleTrainingButton" class="secondary-btn" type="button">Editar ficha completa</button>
+                <button id="saveScheduleButton" class="primary-btn" type="submit">Guardar cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
 
       <section id="nueva-capacitacion" class="page-section">
         <div class="section-title section-title-row">
@@ -304,6 +408,7 @@
 
         <form id="trainingForm" class="training-form" novalidate>
           <input type="hidden" id="trainingId" />
+          <input type="hidden" id="trainingCurrentStatus" value="BORRADOR" />
           <input type="hidden" id="trainerSignatureData" />
           <input type="hidden" id="responsibleSignatureData" />
 
@@ -366,6 +471,15 @@
               <label>
                 <span>Fecha *</span>
                 <input id="trainingDate" type="date" />
+              </label>
+
+              <label>
+                <span>Hora de inicio</span>
+                <input id="trainingStartTime" type="time" />
+              </label>
+              <label>
+                <span>Hora de fin</span>
+                <input id="trainingEndTime" type="time" />
               </label>
 
               <label>
@@ -808,7 +922,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="config.js?v=20260921-11"></script>
-  <script src="app.js?v=20260921-11"></script>
+  <script src="config.js?v=20260922-12"></script>
+  <script src="app.js?v=20260922-12"></script>
 </body>
 </html>

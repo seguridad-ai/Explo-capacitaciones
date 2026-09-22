@@ -64,6 +64,7 @@ function showSection(sectionId) {
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
   if (sectionId === 'nueva-capacitacion') loadTrainingModule();
+  if (sectionId === 'usuarios') loadUsersModule();
 }
 
 function roleLabel(code) {
@@ -275,6 +276,252 @@ menuItems.forEach(item => item.addEventListener('click', () => {
 
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showSection(button.dataset.go)));
 mobileMenu?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+
+
+// ============================================================
+// ETAPA 11 · USUARIOS Y PERMISOS
+// ============================================================
+let systemUsers = [];
+let systemUserAssignments = [];
+let systemUserProjects = [];
+let usersModuleLoaded = false;
+
+function usersMessage(message = '', type = 'error') {
+  const el = document.getElementById('usersModuleMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function userFormMessage(message = '', type = 'error') {
+  const el = document.getElementById('userFormMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function systemRoleLabel(role) {
+  return { ADMIN: 'Administrador', GERENCIA: 'Gerencia', PROYECTO: 'Usuario de proyecto' }[role] || role || '—';
+}
+
+function systemUserProjectNames(userId) {
+  const ids = systemUserAssignments.filter(x => x.user_id === userId && x.activo !== false).map(x => x.proyecto_id);
+  return systemUserProjects.filter(p => ids.includes(p.id)).map(p => p.nombre);
+}
+
+function updateUsersStats(records = systemUsers) {
+  const active = records.filter(x => x.activo).length;
+  const project = records.filter(x => x.rol_codigo === 'PROYECTO').length;
+  const global = records.filter(x => ['ADMIN','GERENCIA'].includes(x.rol_codigo)).length;
+  const map = {
+    usersTotalCount: records.length,
+    usersActiveCount: active,
+    usersProjectCount: project,
+    usersGlobalCount: global
+  };
+  Object.entries(map).forEach(([id,value]) => { const el=document.getElementById(id); if(el) el.textContent=String(value); });
+}
+
+function renderUsersTable() {
+  const body = document.getElementById('usersTableBody');
+  if (!body) return;
+  const q = (document.getElementById('usersSearch')?.value || '').trim().toLowerCase();
+  const role = document.getElementById('usersRoleFilter')?.value || '';
+  const status = document.getElementById('usersStatusFilter')?.value || '';
+  const rows = systemUsers.filter(u => {
+    const hay = `${u.nombres||''} ${u.apellidos||''} ${u.email||''} ${u.cargo||''}`.toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    if (role && u.rol_codigo !== role) return false;
+    if (status === 'active' && !u.activo) return false;
+    if (status === 'inactive' && u.activo) return false;
+    return true;
+  });
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="table-empty">No se encontraron usuarios.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(u => {
+    const names = [u.nombres,u.apellidos].filter(Boolean).join(' ').trim() || '—';
+    const projects = systemUserProjectNames(u.id);
+    const projectHtml = u.rol_codigo === 'PROYECTO'
+      ? (projects.length ? projects.map(x=>`<span class="user-project-chip">${escapeHtml(x)}</span>`).join('') : '<span class="user-project-missing">Sin proyecto</span>')
+      : '<span class="user-global-access">Todos</span>';
+    const isSelf = u.id === currentProfile?.id;
+    return `<tr>
+      <td><strong>${escapeHtml(names)}</strong>${isSelf ? '<small class="current-user-tag">Tu usuario</small>' : ''}</td>
+      <td>${escapeHtml(u.email || '—')}</td>
+      <td>${escapeHtml(u.cargo || '—')}</td>
+      <td><span class="user-role-badge ${String(u.rol_codigo||'').toLowerCase()}">${escapeHtml(systemRoleLabel(u.rol_codigo))}</span></td>
+      <td><div class="user-project-chips">${projectHtml}</div></td>
+      <td><span class="status-badge ${u.activo ? 'active' : 'inactive'}">${u.activo ? 'ACTIVO' : 'INACTIVO'}</span></td>
+      <td><div class="row-actions"><button type="button" onclick="openSystemUserModal('${u.id}')">Editar</button>${isSelf ? '' : `<button type="button" class="${u.activo ? 'danger-link' : 'success-link'}" onclick="toggleSystemUserStatus('${u.id}')">${u.activo ? 'Desactivar' : 'Activar'}</button>`}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadUsersModule(force = false) {
+  if (!client || currentProfile?.rol_codigo !== 'ADMIN') return;
+  if (usersModuleLoaded && !force) { renderUsersTable(); return; }
+  usersMessage('');
+  const body = document.getElementById('usersTableBody');
+  if (body) body.innerHTML = '<tr><td colspan="7" class="table-empty">Cargando usuarios…</td></tr>';
+  const [profilesRes, assignmentsRes, projectsRes] = await Promise.all([
+    client.from('profiles').select('id,email,nombres,apellidos,cargo,rol_codigo,activo,created_at,updated_at').order('nombres',{ascending:true}),
+    client.from('usuarios_proyectos').select('user_id,proyecto_id,activo,created_at'),
+    client.from('proyectos').select('id,codigo,nombre,cliente,activo').order('nombre',{ascending:true})
+  ]);
+  if (profilesRes.error) { console.error(profilesRes.error); usersMessage('No fue posible cargar los usuarios.'); return; }
+  systemUsers = profilesRes.data || [];
+  systemUserAssignments = assignmentsRes.error ? [] : (assignmentsRes.data || []);
+  systemUserProjects = projectsRes.error ? [] : (projectsRes.data || []);
+  usersModuleLoaded = true;
+  updateUsersStats();
+  renderUsersTable();
+}
+
+function renderSystemUserProjectOptions(selectedIds = []) {
+  const box = document.getElementById('systemUserProjectOptions');
+  if (!box) return;
+  const activeProjects = systemUserProjects.filter(p => p.activo !== false);
+  if (!activeProjects.length) {
+    box.innerHTML = '<span class="user-project-empty">No hay proyectos activos registrados.</span>';
+    return;
+  }
+  box.innerHTML = activeProjects.map(p => `<label class="user-project-option"><input type="checkbox" value="${p.id}" ${selectedIds.includes(p.id) ? 'checked' : ''}><span><b>${escapeHtml(p.nombre)}</b><small>${escapeHtml(p.cliente || p.codigo || '')}</small></span></label>`).join('');
+}
+
+function selectedSystemUserProjectIds() {
+  return [...document.querySelectorAll('#systemUserProjectOptions input[type="checkbox"]:checked')].map(x => x.value);
+}
+
+function updateSystemUserRoleFields() {
+  const role = document.getElementById('systemUserRole')?.value || 'PROYECTO';
+  document.getElementById('systemUserProjectsField')?.classList.toggle('hidden', role !== 'PROYECTO');
+}
+
+function openSystemUserModal(userId = '') {
+  if (currentProfile?.rol_codigo !== 'ADMIN') return;
+  const modal = document.getElementById('userModal');
+  const form = document.getElementById('userForm');
+  form?.reset();
+  userFormMessage('');
+  document.getElementById('userEditId').value = userId || '';
+  document.getElementById('systemUserActive').checked = true;
+  document.getElementById('systemUserRole').value = 'PROYECTO';
+  document.getElementById('systemUserEmail').disabled = false;
+  document.getElementById('systemUserRole').disabled = false;
+  document.getElementById('systemUserActive').disabled = false;
+  document.getElementById('systemUserPasswordField').classList.remove('hidden');
+  document.getElementById('systemUserActiveField').classList.toggle('hidden', !userId);
+  document.getElementById('userModalTitle').textContent = userId ? 'Editar usuario' : 'Nuevo usuario';
+  document.getElementById('userModalSubtitle').textContent = userId ? 'Actualiza el perfil, rol y proyectos asignados.' : 'Crea una cuenta para un usuario interno.';
+
+  if (userId) {
+    const user = systemUsers.find(x => x.id === userId);
+    if (!user) return;
+    document.getElementById('systemUserNames').value = user.nombres || '';
+    document.getElementById('systemUserLastNames').value = user.apellidos || '';
+    document.getElementById('systemUserEmail').value = user.email || '';
+    document.getElementById('systemUserEmail').disabled = true;
+    document.getElementById('systemUserPosition').value = user.cargo || '';
+    document.getElementById('systemUserRole').value = user.rol_codigo || 'PROYECTO';
+    document.getElementById('systemUserActive').checked = !!user.activo;
+    document.getElementById('systemUserPasswordField').classList.add('hidden');
+    const selected = systemUserAssignments.filter(x => x.user_id === userId && x.activo !== false).map(x => x.proyecto_id);
+    renderSystemUserProjectOptions(selected);
+    if (userId === currentProfile?.id) {
+      document.getElementById('systemUserRole').disabled = true;
+      document.getElementById('systemUserActive').disabled = true;
+      userFormMessage('Por seguridad, no puedes cambiar tu propio rol ni desactivar tu cuenta desde esta pantalla.', 'success');
+    }
+  } else {
+    renderSystemUserProjectOptions([]);
+  }
+  updateSystemUserRoleFields();
+  modal?.classList.remove('hidden');
+  setTimeout(()=>document.getElementById('systemUserNames')?.focus(),50);
+}
+
+function closeSystemUserModal() {
+  document.getElementById('userModal')?.classList.add('hidden');
+  userFormMessage('');
+}
+
+async function saveSystemUser(event) {
+  event?.preventDefault();
+  if (!client || currentProfile?.rol_codigo !== 'ADMIN') return;
+  const id = document.getElementById('userEditId').value;
+  const nombres = document.getElementById('systemUserNames').value.trim();
+  const apellidos = document.getElementById('systemUserLastNames').value.trim();
+  const email = document.getElementById('systemUserEmail').value.trim().toLowerCase();
+  const password = document.getElementById('systemUserPassword').value;
+  const cargo = document.getElementById('systemUserPosition').value.trim();
+  const role = document.getElementById('systemUserRole').value;
+  const activo = document.getElementById('systemUserActive').checked;
+  const projectIds = role === 'PROYECTO' ? selectedSystemUserProjectIds() : [];
+
+  if (!nombres || !apellidos || !cargo || !email) { userFormMessage('Completa todos los campos obligatorios.'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(email)) { userFormMessage('Ingresa un correo electrónico válido.'); return; }
+  if (!id && password.length < 8) { userFormMessage('La contraseña inicial debe tener al menos 8 caracteres.'); return; }
+  if (role === 'PROYECTO' && !projectIds.length) { userFormMessage('Selecciona al menos un proyecto para este usuario.'); return; }
+
+  const saveButton = document.getElementById('saveSystemUserButton');
+  const old = saveButton.textContent;
+  saveButton.disabled = true; saveButton.textContent = 'Guardando…';
+  try {
+    if (!id) {
+      const { data, error } = await client.functions.invoke('admin-create-user', {
+        body: { email, password, nombres, apellidos, cargo, rol_codigo: role, proyecto_ids: projectIds }
+      });
+      if (error || !data?.ok) {
+        console.error(error, data);
+        const message = error?.message || data?.error || '';
+        if (/Failed to send|not found|404|FunctionsHttpError|Edge Function/i.test(message)) {
+          throw new Error('La función segura admin-create-user todavía no está desplegada en Supabase. Revisa el archivo EDGE_FUNCTION_admin-create-user.ts incluido en esta etapa.');
+        }
+        throw new Error(data?.error || error?.message || 'No fue posible crear el usuario.');
+      }
+      usersMessage('Usuario creado correctamente.', 'success');
+    } else {
+      const isSelf = id === currentProfile?.id;
+      const user = systemUsers.find(x => x.id === id);
+      const finalRole = isSelf ? user.rol_codigo : role;
+      const finalActive = isSelf ? user.activo : activo;
+      const profileUpdate = await client.from('profiles').update({nombres,apellidos,cargo,rol_codigo:finalRole,activo:finalActive}).eq('id',id);
+      if (profileUpdate.error) throw profileUpdate.error;
+      const del = await client.from('usuarios_proyectos').delete().eq('user_id',id);
+      if (del.error) throw del.error;
+      if (finalRole === 'PROYECTO' && projectIds.length) {
+        const ins = await client.from('usuarios_proyectos').insert(projectIds.map(proyecto_id => ({user_id:id,proyecto_id,activo:true})));
+        if (ins.error) throw ins.error;
+      }
+      usersMessage('Usuario actualizado correctamente.', 'success');
+    }
+    closeSystemUserModal();
+    usersModuleLoaded = false;
+    await loadUsersModule(true);
+  } catch (err) {
+    console.error(err);
+    userFormMessage(err?.message || 'No fue posible guardar el usuario.');
+  } finally {
+    saveButton.disabled = false; saveButton.textContent = old;
+  }
+}
+
+async function toggleSystemUserStatus(userId) {
+  if (!client || currentProfile?.rol_codigo !== 'ADMIN') return;
+  if (userId === currentProfile?.id) { alert('No puedes desactivar tu propia cuenta.'); return; }
+  const user = systemUsers.find(x => x.id === userId);
+  if (!user) return;
+  const newStatus = !user.activo;
+  if (!window.confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} el acceso de ${[user.nombres,user.apellidos].filter(Boolean).join(' ')}?`)) return;
+  const { error } = await client.from('profiles').update({activo:newStatus}).eq('id',userId);
+  if (error) { console.error(error); usersMessage('No fue posible cambiar el estado del usuario.'); return; }
+  usersMessage(`Usuario ${newStatus ? 'activado' : 'desactivado'} correctamente.`, 'success');
+  usersModuleLoaded = false;
+  await loadUsersModule(true);
+}
 
 
 // ============================== ETAPA 3 · SEDES Y PROYECTOS ==============================
@@ -3781,5 +4028,26 @@ document.getElementById('publicExamRetryButton')?.addEventListener('click', asyn
   await lookupPublicExam();
   if (publicExamData) startPublicExam();
 });
+
+
+
+document.getElementById('newUserButton')?.addEventListener('click', () => openSystemUserModal(''));
+document.getElementById('closeUserModal')?.addEventListener('click', closeSystemUserModal);
+document.getElementById('cancelUserModal')?.addEventListener('click', closeSystemUserModal);
+document.getElementById('userForm')?.addEventListener('submit', saveSystemUser);
+document.getElementById('systemUserRole')?.addEventListener('change', updateSystemUserRoleFields);
+document.getElementById('usersSearch')?.addEventListener('input', renderUsersTable);
+document.getElementById('usersRoleFilter')?.addEventListener('change', renderUsersTable);
+document.getElementById('usersStatusFilter')?.addEventListener('change', renderUsersTable);
+document.getElementById('refreshUsersButton')?.addEventListener('click', () => loadUsersModule(true));
+document.getElementById('toggleSystemUserPassword')?.addEventListener('click', () => {
+  const input = document.getElementById('systemUserPassword');
+  const button = document.getElementById('toggleSystemUserPassword');
+  if (!input || !button) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  button.textContent = show ? 'Ocultar' : 'Mostrar';
+});
+document.getElementById('userModal')?.addEventListener('click', (event) => { if (event.target?.id === 'userModal') closeSystemUserModal(); });
 
 initializeAuth();

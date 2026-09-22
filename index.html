@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260922-19" />
+  <link rel="stylesheet" href="styles.css?v=20260922-20" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -945,7 +945,78 @@
       <section id="comite" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Comité SST</h2><p>Capacitación y seguimiento de los integrantes.</p></div><div class="coming-card"><span>◎</span><h3>Próximamente</h3><p>Videos, documentos, exámenes y avance de los integrantes.</p></div></section>
       <section id="brigadas" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Brigadas</h2><p>Formación de brigadas de emergencia.</p></div><div class="coming-card"><span>⚑</span><h3>Próximamente</h3><p>Contenido por especialidad, evaluación y seguimiento.</p></div></section>
       <section id="reportes" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Reportes</h2><p>Indicadores, historial y exportaciones.</p></div><div class="coming-card"><span>▥</span><h3>Próximamente</h3><p>Dashboard, PDF, Excel e historial de capacitación por trabajador.</p></div></section>
-      <section id="usuarios" class="page-section"><div class="section-title"><span class="eyebrow">ADMINISTRACIÓN</span><h2>Usuarios</h2><p>Administrador y usuarios por proyecto.</p></div><div class="coming-card"><span>⚙</span><h3>Acceso reservado al administrador</h3><p>En la siguiente etapa agregaremos creación, desactivación, asignación de rol y proyectos.</p></div></section>
+      <section id="usuarios" class="page-section">
+        <div class="section-title section-title-row">
+          <div><span class="eyebrow">ADMINISTRACIÓN</span><h2>Usuarios y permisos</h2><p>Crea usuarios internos y controla qué proyectos puede gestionar cada uno.</p></div>
+          <button id="newUserButton" class="primary-btn admin-only" type="button">+ Nuevo usuario</button>
+        </div>
+        <div id="usersModuleMessage" class="module-message"></div>
+
+        <div class="users-stats">
+          <article><span>Total usuarios</span><strong id="usersTotalCount">0</strong><small>Perfiles registrados</small></article>
+          <article><span>Activos</span><strong id="usersActiveCount">0</strong><small>Con acceso habilitado</small></article>
+          <article><span>Usuarios de proyecto</span><strong id="usersProjectCount">0</strong><small>Acceso restringido</small></article>
+          <article><span>Acceso global</span><strong id="usersGlobalCount">0</strong><small>Admin + Gerencia</small></article>
+        </div>
+
+        <article class="catalog-panel users-panel">
+          <div class="catalog-panel-head catalog-panel-head-wrap">
+            <div><span class="eyebrow">CONTROL DE ACCESO</span><h3>Usuarios registrados</h3></div>
+            <div class="catalog-filter users-filter">
+              <input id="usersSearch" type="search" placeholder="Buscar por nombre, correo o cargo" />
+              <select id="usersRoleFilter">
+                <option value="">Todos los roles</option>
+                <option value="ADMIN">Administrador</option>
+                <option value="GERENCIA">Gerencia</option>
+                <option value="PROYECTO">Usuario de proyecto</option>
+              </select>
+              <select id="usersStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+              </select>
+              <button id="refreshUsersButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table users-table">
+              <thead><tr><th>Usuario</th><th>Correo</th><th>Cargo</th><th>Rol</th><th>Proyecto(s)</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody id="usersTableBody"><tr><td colspan="7" class="table-empty">Cargando usuarios…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div id="userModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+          <div class="modal-card users-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">USUARIO DEL SISTEMA</span><h3 id="userModalTitle">Nuevo usuario</h3><p id="userModalSubtitle" class="modal-subtitle">Configura los datos y permisos de acceso.</p></div>
+              <button id="closeUserModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+            </div>
+            <form id="userForm" novalidate>
+              <input id="userEditId" type="hidden" />
+              <div class="form-grid users-form-grid">
+                <label><span>Nombres *</span><input id="systemUserNames" type="text" maxlength="100" required /></label>
+                <label><span>Apellidos *</span><input id="systemUserLastNames" type="text" maxlength="120" required /></label>
+                <label><span>Correo electrónico *</span><input id="systemUserEmail" type="email" autocomplete="off" required /></label>
+                <label id="systemUserPasswordField"><span>Contraseña inicial *</span><div class="user-password-row"><input id="systemUserPassword" type="password" minlength="8" autocomplete="new-password" /><button id="toggleSystemUserPassword" type="button">Mostrar</button></div><small>Mínimo 8 caracteres. Comparte esta contraseña de forma segura.</small></label>
+                <label><span>Cargo *</span><input id="systemUserPosition" type="text" maxlength="150" required /></label>
+                <label><span>Rol *</span><select id="systemUserRole" required><option value="PROYECTO">Usuario de proyecto</option><option value="GERENCIA">Gerencia</option><option value="ADMIN">Administrador</option></select></label>
+                <div id="systemUserProjectsField" class="form-span-2 user-project-field">
+                  <span>Proyecto(s) asignado(s) *</span>
+                  <p>El usuario de proyecto solo podrá trabajar con los proyectos seleccionados.</p>
+                  <div id="systemUserProjectOptions" class="user-project-options"><span class="user-project-empty">Cargando proyectos…</span></div>
+                </div>
+                <label id="systemUserActiveField" class="check-field form-span-2"><input id="systemUserActive" type="checkbox" checked /><span>Usuario activo</span></label>
+              </div>
+              <div id="userFormMessage" class="form-message"></div>
+              <div class="modal-actions">
+                <button id="cancelUserModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveSystemUserButton" class="primary-btn" type="submit">Guardar usuario</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -953,7 +1024,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20260922-19"></script>
-  <script src="app.js?v=20260922-19"></script>
+  <script src="config.js?v=20260922-20"></script>
+  <script src="app.js?v=20260922-20"></script>
 </body>
 </html>

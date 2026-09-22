@@ -1543,31 +1543,70 @@ function renderDocumentPreview(training, participants) {
   if (!box) return;
   const completed = participants.filter(x => !!x.firma);
   const classificationOptions = ['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
-  const rows = completed.length ? completed.map((p,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(p.apellidos_nombres||'')}</td><td>${escapeHtml(p.dni||'')}</td><td>${escapeHtml(p.puesto||'')}</td><td>${escapeHtml(p.area||'')}</td><td>${p.firma ? `<img src="${p.firma}" alt="Firma">` : ''}</td><td>${p.nota==null?'N.A.':Number(p.nota).toFixed(2).replace(/\.00$/,'')}</td></tr>`).join('') : '<tr><td colspan="7">Aún no hay participantes con firma registrada.</td></tr>';
-  box.innerHTML = `<div class="document-preview-page">
-    <div class="document-preview-header">
-      <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú">
-      <div><strong>SIG - SSOMAC</strong><span>REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA</span></div>
-      <div class="document-preview-code"><small>Código</small><b>${escapeHtml(training.codigo || '—')}</b><small>Versión 7</small></div>
-    </div>
-    <div class="document-preview-employer"><b>EXPLO DRILLING PERU S.R.L.</b><span>RUC 20572775851</span><span>Perforación Diamantina</span></div>
-    <div class="document-preview-training">
-      <div class="document-preview-classification"><b>CLASIFICACIÓN</b>${classificationOptions.map(x=>`<span>${x===training.clasificacion?'☒':'☐'} ${escapeHtml(x)}</span>`).join('')}</div>
-      <div class="document-preview-fields">
-        <p><b>TEMA:</b> ${escapeHtml(training.tema || '—')}</p>
-        <p><b>EXPOSITOR:</b> ${escapeHtml(training.expositor_nombre || '—')}</p>
-        <p><b>CARGO:</b> ${escapeHtml(training.expositor_cargo || '—')}</p>
-        <p><b>EMPRESA:</b> ${escapeHtml(training.empresa || '—')}</p>
-        <p><b>ÁREA:</b> ${escapeHtml(training.area || '—')}</p>
+  const firstPage = completed.slice(0, 25);
+  const rows = [];
+  for (let i = 0; i < 25; i += 1) {
+    const p = firstPage[i];
+    rows.push(`<tr>
+      <td>${i + 1}</td>
+      <td>${p ? escapeHtml(p.apellidos_nombres || '') : ''}</td>
+      <td>${p ? escapeHtml(p.dni || '') : ''}</td>
+      <td>${p ? escapeHtml(p.puesto || '') : ''}</td>
+      <td>${p ? escapeHtml(p.area || '') : ''}</td>
+      <td>${p?.firma ? `<img src="${p.firma}" alt="Firma">` : ''}</td>
+      <td>${p ? (p.nota == null ? 'N.A.' : Number(p.nota).toFixed(2).replace(/\.00$/, '')) : ''}</td>
+    </tr>`);
+  }
+  const trainerSignature = training.firma_expositor
+    ? `<img class="document-form-signature" src="${training.firma_expositor}" alt="Firma del expositor">`
+    : '<span class="document-form-empty">Sin firma</span>';
+  const responsibleSignature = training.firma_responsable
+    ? `<img class="document-form-signature responsible" src="${training.firma_responsable}" alt="Firma del responsable">`
+    : '<span class="document-form-empty">Sin firma</span>';
+  box.innerHTML = `<div class="official-document-wrap">
+    ${completed.length > 25 ? `<div class="official-document-note">Vista previa de la primera hoja. El PDF genera ${Math.ceil(completed.length / 25)} hojas.</div>` : ''}
+    <div class="official-document-page">
+      <div class="official-doc-header">
+        <div class="official-doc-logo"><img src="assets/logo-explo.jpg" alt="Explo Drilling Perú"></div>
+        <div class="official-doc-title"><div class="official-doc-sig">SIG - SSOMAC</div><div class="official-doc-red">REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA</div></div>
+        <div class="official-doc-meta">
+          <div><b>Código:</b><span>${PDF_EMPLOYER.codigoFormato}</span></div>
+          <div><b>N°:</b><span>${PDF_EMPLOYER.numeroFormato}</span></div>
+          <div><b>Versión:</b><span>${PDF_EMPLOYER.version}</span></div>
+          <div><b>Fecha Act:</b><span>${PDF_EMPLOYER.fechaActualizacion}</span></div>
+        </div>
       </div>
-      <div class="document-preview-fields">
-        <p><b>DNI:</b> ${escapeHtml(training.expositor_dni || '—')}</p>
-        <p><b>FECHA:</b> ${escapeHtml(formatTrainingDate(training.fecha))}</p>
-        <p><b>TIEMPO:</b> ${escapeHtml(training.tiempo_texto || '—')}</p>
+      <div class="official-doc-employer-title">DATOS DE EMPLEADOR:</div>
+      <div class="official-doc-employer-head">
+        <div>RAZÓN O DENOMINACIÓN SOCIAL</div><div>RUC</div><div>DOMICILIO<br><small>(Dirección, distrito, provincia, dpto.)</small></div><div>ACTIVIDAD ECONÓMICA</div><div>N° TRABAJADORES EN EL<br>CENTRO LABORAL</div>
+      </div>
+      <div class="official-doc-employer-values">
+        <div>${PDF_EMPLOYER.razonSocial}</div><div>${PDF_EMPLOYER.ruc}</div><div>${PDF_EMPLOYER.domicilio}</div><div>${PDF_EMPLOYER.actividad}</div><div>—</div>
+      </div>
+      <div class="official-doc-training">
+        <div class="official-doc-classification">
+          <b>CLASIFICACIÓN</b>
+          ${classificationOptions.map(x => `<span><i class="official-checkbox ${x === training.clasificacion ? 'checked' : ''}"></i>${escapeHtml(x)}</span>`).join('')}
+        </div>
+        <div class="official-doc-training-main">
+          <div class="official-topic-row"><b>TEMA:</b><span>${escapeHtml(training.tema || '—')}</span></div>
+          <div class="official-field-row"><div><b>EXPOSITOR:</b><span>${escapeHtml(training.expositor_nombre || '—')}</span></div><div class="official-signature-field"><b>FIRMA:</b>${trainerSignature}</div></div>
+          <div class="official-field-row"><div><b>CARGO:</b><span>${escapeHtml(training.expositor_cargo || '—')}</span></div><div><b>DNI:</b><span>${escapeHtml(training.expositor_dni || '—')}</span></div></div>
+          <div class="official-field-row"><div><b>EMPRESA:</b><span>${escapeHtml(training.empresa || PDF_EMPLOYER.razonSocial)}</span></div><div><b>FECHA:</b><span>${escapeHtml(formatDatePE(training.fecha))}</span></div></div>
+          <div class="official-field-row"><div><b>ÁREA:</b><span>${escapeHtml(training.area || '—')}</span></div><div><b>TIEMPO:</b><span>${escapeHtml(training.tiempo_texto || '—')}</span></div></div>
+        </div>
+      </div>
+      <table class="official-doc-participants">
+        <colgroup><col class="c-num"><col class="c-name"><col class="c-dni"><col class="c-position"><col class="c-area"><col class="c-sign"><col class="c-grade"></colgroup>
+        <thead><tr><th>N°</th><th>APELLIDOS Y NOMBRES</th><th>N° DNI</th><th>PUESTO DE TRABAJO</th><th>ÁREA</th><th>FIRMA</th><th>NOTA</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+      <div class="official-doc-responsible-title">RESPONSABLE DEL REGISTRO</div>
+      <div class="official-doc-responsible">
+        <div><p><b>NOMBRE:</b><span>${escapeHtml(training.responsable_nombre || '—')}</span></p><p><b>CARGO:</b><span>${escapeHtml(training.responsable_cargo || '—')}</span></p></div>
+        <div><p class="responsible-sign"><b>FIRMA:</b>${responsibleSignature}</p><p><b>FECHA:</b><span>${escapeHtml(formatDatePE(training.fecha))}</span></p></div>
       </div>
     </div>
-    <div class="table-wrap"><table class="document-preview-table"><thead><tr><th>N°</th><th>APELLIDOS Y NOMBRES</th><th>DNI</th><th>PUESTO</th><th>ÁREA</th><th>FIRMA</th><th>NOTA</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="document-preview-responsible"><b>RESPONSABLE DEL REGISTRO</b><span>Nombre: ${escapeHtml(training.responsable_nombre || '—')}</span><span>Cargo: ${escapeHtml(training.responsable_cargo || '—')}</span></div>
   </div>`;
 }
 
@@ -2579,10 +2618,11 @@ async function loadPreviewParticipants() {
 
 const PDF_EMPLOYER = {
   razonSocial: 'EXPLO DRILLING PERU S.R.L.',
-  ruc: '20572775851',
+  ruc: '20527775851',
   domicilio: 'Calle Las Acacias I-7, Urb. La Capitana - Huachipa - Lurigancho - Lima',
   actividad: 'Perforación Diamantina',
   codigoFormato: 'EDP-SIG-SSOMAC-RE-EA-121',
+  numeroFormato: '2',
   version: '7',
   fechaActualizacion: 'Jul-25'
 };
@@ -2668,114 +2708,220 @@ async function downloadTrainingPdf() {
     }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
     const t = data.training;
-    const black = [20,20,20], gray = [85,85,85], red = [192,0,0];
-    const pageW = 210;
+    const BLACK = [20, 20, 20];
+    const DARK = [87, 87, 87];
+    const LIGHT = [230, 230, 230];
+    const RED = [192, 0, 0];
+    const WHITE = [255, 255, 255];
     const left = 5;
     const right = 205;
+    const totalWidth = 200;
+    const pageHeight = 297;
     let logoData = null;
     try { logoData = await imageToDataUrl('assets/logo-explo.jpg'); } catch (e) { console.warn(e); }
 
-    // Cabecera corporativa
-    doc.setDrawColor(...black); doc.setLineWidth(.25);
-    doc.rect(left, 5, 200, 25);
-    doc.line(42, 5, 42, 30);
-    doc.line(162, 5, 162, 30);
-    if (logoData) doc.addImage(logoData, 'JPEG', 7, 7, 32, 21, undefined, 'FAST');
-    doc.setFont('helvetica','bold'); doc.setTextColor(...black); doc.setFontSize(9);
-    doc.text('SIG - SSOMAC', 102, 10, { align:'center' });
-    doc.setFillColor(...red); doc.rect(42, 13, 120, 17, 'F');
-    doc.setTextColor(255,255,255); doc.setFontSize(7.2);
-    doc.text('REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO', 102, 19, {align:'center'});
-    doc.text('DE EMERGENCIA', 102, 24, {align:'center'});
-    doc.setTextColor(...black); doc.setFontSize(5.7); doc.setFont('helvetica','normal');
-    const meta = [
-      ['Código:', PDF_EMPLOYER.codigoFormato],
-      ['N°:', t.codigo || '—'],
-      ['Versión:', PDF_EMPLOYER.version],
-      ['Fecha Act:', PDF_EMPLOYER.fechaActualizacion]
-    ];
-    meta.forEach((r,i)=>{
-      const y=5+i*6.25;
-      if(i>0) doc.line(162,y,205,y);
-      doc.setFont('helvetica','bold'); doc.text(r[0],164,y+4.1);
-      doc.setFont('helvetica','normal'); doc.text(String(r[1]),178,y+4.1);
-    });
-
-    // Datos del empleador
-    doc.autoTable({
-      startY: 31,
-      margin:{left,right:5},
-      theme:'grid',
-      head:[['RAZÓN O DENOMINACIÓN SOCIAL','RUC','DOMICILIO (Dirección, distrito, provincia, dpto.)','ACTIVIDAD ECONÓMICA','N° TRABAJADORES EN EL CENTRO LABORAL']],
-      body:[[PDF_EMPLOYER.razonSocial,PDF_EMPLOYER.ruc,PDF_EMPLOYER.domicilio,PDF_EMPLOYER.actividad,String(data.trabajadoresCentro)]],
-      styles:{fontSize:5.2,cellPadding:1.1,textColor:black,lineColor:black,lineWidth:.2,valign:'middle',halign:'center'},
-      headStyles:{fillColor:gray,textColor:[255,255,255],fontStyle:'bold',fontSize:5.1},
-      columnStyles:{0:{cellWidth:37},1:{cellWidth:27},2:{cellWidth:65},3:{cellWidth:37},4:{cellWidth:34}}
-    });
-
-    const classes = ['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
-    const classText = classes.map(c => `${c === t.clasificacion ? '[X]' : '[ ]'} ${c}`).join('\n');
-    const trainingStart = doc.lastAutoTable.finalY + 1;
-    doc.autoTable({
-      startY:trainingStart,
-      margin:{left,right:5},
-      theme:'grid',
-      body:[
-        [{content:`CLASIFICACIÓN\n${classText}`,rowSpan:6,styles:{fontSize:5.1,fontStyle:'bold'}}, {content:`TEMA: ${t.tema || '—'}`,colSpan:2}],
-        [`EXPOSITOR: ${t.expositor_nombre || '—'}`, {content:'FIRMA:',styles:{fontStyle:'bold'}}],
-        [`CARGO: ${t.expositor_cargo || '—'}`, `DNI: ${t.expositor_dni || '—'}`],
-        [`EMPRESA: ${t.empresa || PDF_EMPLOYER.razonSocial}`, `FECHA: ${formatDatePE(t.fecha)}`],
-        [`ÁREA: ${t.area || '—'}`, `TIEMPO: ${t.tiempo_texto || '—'}`],
-        [`UNIDAD: ${data.unidad}`, '']
-      ],
-      styles:{fontSize:5.6,cellPadding:1.2,lineColor:black,lineWidth:.2,textColor:black,minCellHeight:7,valign:'middle'},
-      columnStyles:{0:{cellWidth:36},1:{cellWidth:111},2:{cellWidth:53}},
-      didDrawCell:(cellData)=>{
-        if(cellData.row.index===1 && cellData.column.index===2 && t.firma_expositor){
-          try { doc.addImage(t.firma_expositor,'PNG',cellData.cell.x+16,cellData.cell.y+1,28,5.5,undefined,'FAST'); } catch(e){}
-        }
+    const setStroke = (width = 0.2) => { doc.setDrawColor(...BLACK); doc.setLineWidth(width); };
+    const rect = (x, y, w, h, fill = null, lineWidth = 0.2) => {
+      setStroke(lineWidth);
+      if (fill) { doc.setFillColor(...fill); doc.rect(x, y, w, h, 'FD'); }
+      else doc.rect(x, y, w, h, 'S');
+    };
+    const line = (x1, y1, x2, y2, width = 0.2) => { setStroke(width); doc.line(x1, y1, x2, y2); };
+    const text = (value, x, y, size = 5, bold = false, align = 'left', color = BLACK) => {
+      doc.setTextColor(...color);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.text(String(value ?? ''), x, y, { align });
+    };
+    const fitText = (value, x, y, maxWidth, size = 5, bold = false, align = 'left') => {
+      let s = String(value ?? '');
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      if (doc.getTextWidth(s) <= maxWidth) return text(s, x, y, size, bold, align);
+      while (s.length > 3 && doc.getTextWidth(`${s}…`) > maxWidth) s = s.slice(0, -1);
+      text(`${s}…`, x, y, size, bold, align);
+    };
+    const drawSignature = (src, x, y, w, h) => {
+      if (!src) return;
+      try { doc.addImage(src, 'PNG', x, y, w, h, undefined, 'FAST'); } catch (e) { console.warn('Firma no insertada', e); }
+    };
+    const drawCheckbox = (checked, x, y) => {
+      rect(x, y, 2.3, 2.3, null, 0.18);
+      if (checked) {
+        line(x + 0.45, y + 1.25, x + 1.0, y + 1.85, 0.35);
+        line(x + 1.0, y + 1.85, x + 1.95, y + 0.45, 0.35);
       }
-    });
+    };
 
-    const completed = data.participants;
-    const displayRows = completed.map((x,i)=>[String(i+1),x.apellidos_nombres || '',x.dni || '',x.puesto || '',x.area || '','',x.nota==null?'N.A.':Number(x.nota).toFixed(2).replace(/\.00$/,'')]);
-    while(displayRows.length < 20) displayRows.push([String(displayRows.length+1),'','','','','','']);
-    const tableStart = doc.lastAutoTable.finalY;
-    doc.autoTable({
-      startY:tableStart,
-      margin:{left,right:5},
-      theme:'grid',
-      head:[['N°','APELLIDOS Y NOMBRES','N° DNI','PUESTO DE TRABAJO','ÁREA','FIRMA','NOTA']],
-      body:displayRows,
-      styles:{fontSize:5.4,cellPadding:.8,lineColor:black,lineWidth:.2,textColor:black,minCellHeight:7.3,valign:'middle'},
-      headStyles:{fillColor:gray,textColor:[255,255,255],fontStyle:'bold',halign:'center',fontSize:5.2},
-      columnStyles:{0:{cellWidth:6,halign:'center'},1:{cellWidth:57},2:{cellWidth:18,halign:'center'},3:{cellWidth:46},4:{cellWidth:27},5:{cellWidth:31},6:{cellWidth:15,halign:'center'}},
-      didDrawCell:(cellData)=>{
-        if(cellData.section==='body' && cellData.column.index===5){
-          const participant = completed[cellData.row.index];
-          if(participant?.firma){
-            try { doc.addImage(participant.firma,'PNG',cellData.cell.x+2,cellData.cell.y+1.1,cellData.cell.width-4,cellData.cell.height-2.2,undefined,'FAST'); } catch(e){}
+    const classificationOptions = ['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
+    const chunks = [];
+    for (let i = 0; i < data.participants.length; i += 25) chunks.push(data.participants.slice(i, i + 25));
+
+    const drawPage = (participants) => {
+      // Encabezado original del formato
+      const hy = 5, hh = 19, logoW = 36, titleW = 120, metaW = 44;
+      rect(left, hy, totalWidth, hh);
+      line(left + logoW, hy, left + logoW, hy + hh);
+      line(left + logoW + titleW, hy, left + logoW + titleW, hy + hh);
+      if (logoData) doc.addImage(logoData, 'JPEG', left + 2, hy + 1, logoW - 4, hh - 2, undefined, 'FAST');
+      const tx = left + logoW;
+      line(tx, hy + 8.3, tx + titleW, hy + 8.3);
+      text('SIG - SSOMAC', tx + titleW / 2, hy + 5.7, 8.2, true, 'center');
+      rect(tx, hy + 8.3, titleW, 10.7, RED);
+      text('REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA', tx + titleW / 2, hy + 14.8, 5.5, true, 'center', WHITE);
+
+      const mx = tx + titleW;
+      const meta = [
+        ['Código:', PDF_EMPLOYER.codigoFormato],
+        ['N°:', PDF_EMPLOYER.numeroFormato],
+        ['Versión:', PDF_EMPLOYER.version],
+        ['Fecha Act:', PDF_EMPLOYER.fechaActualizacion]
+      ];
+      meta.forEach((row, i) => {
+        const y = hy + i * (hh / 4);
+        if (i > 0) line(mx, y, right, y);
+        line(mx + 13, y, mx + 13, y + hh / 4);
+        text(row[0], mx + 2, y + 3.25, 4.35, true);
+        fitText(row[1], mx + 14.5, y + 3.25, metaW - 15.5, 4.1, i < 3);
+      });
+
+      // Datos del empleador
+      let y = 24;
+      rect(left, y, totalWidth, 4.5);
+      text('DATOS DE EMPLEADOR:', left + 1, y + 3.15, 5.0, true);
+      y += 4.5;
+      const employerWidths = [36, 30, 66, 33, 35];
+      const employerHead = [
+        ['RAZÓN O DENOMINACIÓN SOCIAL'],
+        ['RUC'],
+        ['DOMICILIO', '(Dirección, distrito, provincia, dpto.)'],
+        ['ACTIVIDAD ECONÓMICA'],
+        ['N° TRABAJADORES EN EL', 'CENTRO LABORAL']
+      ];
+      let x = left;
+      employerWidths.forEach((w, i) => {
+        rect(x, y, w, 8, DARK);
+        const lines = employerHead[i];
+        lines.forEach((s, j) => text(s, x + w / 2, y + 3.15 + j * 2.45, j ? 3.45 : 3.7, true, 'center', WHITE));
+        x += w;
+      });
+      y += 8;
+      const employerValues = [PDF_EMPLOYER.razonSocial, PDF_EMPLOYER.ruc, PDF_EMPLOYER.domicilio, PDF_EMPLOYER.actividad, String(data.trabajadoresCentro || 0)];
+      x = left;
+      employerWidths.forEach((w, i) => {
+        rect(x, y, w, 7, LIGHT);
+        const val = employerValues[i];
+        if (i === 2) {
+          const lines = doc.splitTextToSize(val, w - 3).slice(0, 2);
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(3.8); doc.setTextColor(...BLACK);
+          doc.text(lines, x + w / 2, y + 2.9, { align: 'center', lineHeightFactor: 1.05 });
+        } else fitText(val, x + w / 2, y + 4.35, w - 2, 4.0, false, 'center');
+        x += w;
+      });
+      y += 7;
+
+      // Clasificación + datos del capacitador
+      const classW = 33, detailW = 167, leftDetail = 117, rightDetail = 50;
+      const trainingY = y;
+      rect(left, trainingY, classW, 38);
+      rect(left + classW, trainingY, detailW, 10);
+      text('TEMA:', left + classW + 1.5, trainingY + 6.0, 4.8, true);
+      fitText(t.tema || '—', left + classW + 14.0, trainingY + 6.0, detailW - 16, 4.7);
+      const labelsLeft = [
+        ['EXPOSITOR:', t.expositor_nombre || '—'],
+        ['CARGO:', t.expositor_cargo || '—'],
+        ['EMPRESA:', t.empresa || PDF_EMPLOYER.razonSocial],
+        ['ÁREA:', t.area || '—']
+      ];
+      const labelsRight = [
+        ['FIRMA:', ''],
+        ['DNI:', t.expositor_dni || '—'],
+        ['FECHA:', formatDatePE(t.fecha)],
+        ['TIEMPO:', t.tiempo_texto || '—']
+      ];
+      const rowY = trainingY + 10;
+      for (let i = 0; i < 4; i += 1) {
+        rect(left + classW, rowY + i * 7, leftDetail, 7);
+        rect(left + classW + leftDetail, rowY + i * 7, rightDetail, 7);
+        text(labelsLeft[i][0], left + classW + 1.5, rowY + i * 7 + 4.45, 4.6, true);
+        fitText(labelsLeft[i][1], left + classW + 18.5, rowY + i * 7 + 4.45, leftDetail - 20.5, 4.5);
+        text(labelsRight[i][0], left + classW + leftDetail + 1.5, rowY + i * 7 + 4.45, 4.6, true);
+        if (i > 0) fitText(labelsRight[i][1], left + classW + leftDetail + 17.0, rowY + i * 7 + 4.45, rightDetail - 19, 4.5);
+      }
+      drawSignature(t.firma_expositor, left + classW + leftDetail + 18.0, rowY + 0.8, 25, 5.4);
+
+      text('CLASIFICACIÓN', left + 1.6, trainingY + 4.0, 4.7, true);
+      let cy = trainingY + 7.0;
+      classificationOptions.forEach((label) => {
+        drawCheckbox(label === t.clasificacion, left + 1.6, cy - 2.15);
+        if (label === 'SIMULACRO DE EMERGENCIA') {
+          text('SIMULACRO DE', left + 5.0, cy, 4.0);
+          text('EMERGENCIA', left + 6.5, cy + 2.45, 4.0);
+          cy += 5.2;
+        } else {
+          text(label, left + 5.0, cy, 4.0);
+          cy += 3.2;
+        }
+      });
+
+      // Tabla de participantes - 25 filas por hoja
+      y = trainingY + 38;
+      const widths = [6, 59, 20, 45, 25, 33, 12];
+      const headers = ['N°', 'APELLIDOS Y NOMBRES', 'N° DNI', 'PUESTO DE TRABAJO', 'ÁREA', 'FIRMA', 'NOTA'];
+      x = left;
+      widths.forEach((w, i) => {
+        rect(x, y, w, 6.5, DARK);
+        text(headers[i], x + w / 2, y + 4.2, 4.0, true, 'center', WHITE);
+        x += w;
+      });
+      y += 6.5;
+      for (let r = 0; r < 25; r += 1) {
+        const p = participants[r];
+        x = left;
+        widths.forEach((w, ci) => {
+          rect(x, y, w, 7);
+          if (ci === 0) text(String(r + 1), x + w / 2, y + 4.55, 4.15, false, 'center');
+          if (p) {
+            if (ci === 1) fitText(p.apellidos_nombres || '', x + 1, y + 4.55, w - 2, 4.05);
+            if (ci === 2) fitText(p.dni || '', x + w / 2, y + 4.55, w - 2, 4.05, false, 'center');
+            if (ci === 3) fitText(p.puesto || '', x + 1, y + 4.55, w - 2, 4.05);
+            if (ci === 4) fitText(p.area || '', x + 1, y + 4.55, w - 2, 4.05);
+            if (ci === 5) drawSignature(p.firma, x + 4, y + 0.75, w - 8, 5.5);
+            if (ci === 6) text(p.nota == null ? 'N.A.' : Number(p.nota).toFixed(2).replace(/\.00$/, ''), x + w / 2, y + 4.55, 4.3, true, 'center');
           }
-        }
+          x += w;
+        });
+        y += 7;
       }
+
+      // Responsable del registro - exactamente en la parte inferior del formato
+      rect(left, y, totalWidth, 5.5, LIGHT);
+      text('RESPONSABLE DEL REGISTRO', left + totalWidth / 2, y + 3.75, 4.55, true, 'center');
+      y += 5.5;
+      const respLeft = 120, respRight = 80;
+      rect(left, y, respLeft, 13.5);
+      rect(left + respLeft, y, respRight, 13.5);
+      line(left, y + 6.75, left + respLeft, y + 6.75);
+      line(left + respLeft, y + 6.75, right, y + 6.75);
+      text('NOMBRE:', left + 1.5, y + 4.35, 4.35, true);
+      fitText(t.responsable_nombre || '—', left + 18.0, y + 4.35, respLeft - 20, 4.2);
+      text('CARGO:', left + 1.5, y + 11.0, 4.35, true);
+      fitText(t.responsable_cargo || '—', left + 16.0, y + 11.0, respLeft - 18, 4.0);
+      text('FIRMA:', left + respLeft + 1.5, y + 4.35, 4.35, true);
+      drawSignature(t.firma_responsable, left + respLeft + 19.5, y + 0.9, 31, 5.3);
+      text('FECHA:', left + respLeft + 1.5, y + 11.0, 4.35, true);
+      fitText(formatDatePE(t.fecha), left + respLeft + 18, y + 11.0, respRight - 20, 4.2);
+    };
+
+    chunks.forEach((chunk, index) => {
+      if (index > 0) doc.addPage();
+      drawPage(chunk);
     });
 
-    let y = doc.lastAutoTable.finalY + 1;
-    if (y > 267) { doc.addPage(); y = 12; }
-    doc.setDrawColor(...black); doc.setLineWidth(.2); doc.setFontSize(5.7); doc.setTextColor(...black);
-    doc.setFillColor(225,225,225); doc.rect(5,y,200,6,'FD'); doc.setFont('helvetica','bold'); doc.text('RESPONSABLE DEL REGISTRO',105,y+4,{align:'center'});
-    doc.setFont('helvetica','normal');
-    doc.rect(5,y+6,120,14); doc.rect(125,y+6,80,14);
-    doc.text(`NOMBRE: ${t.responsable_nombre || '—'}`,7,y+11);
-    doc.text(`CARGO: ${t.responsable_cargo || '—'}`,7,y+17);
-    doc.text(`FECHA: ${formatDatePE(t.fecha)}`,127,y+17);
-    doc.setFont('helvetica','bold'); doc.text('FIRMA:',127,y+10);
-    if(t.firma_responsable){ try { doc.addImage(t.firma_responsable,'PNG',146,y+7,34,11,undefined,'FAST'); } catch(e){} }
-
-    const safe = String(t.codigo || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g,'_');
-    doc.save(`${safe}_Registro_Capacitacion.pdf`);
+    const safe = String(t.codigo || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g, '_');
+    doc.save(`${safe}_Registro_Oficial_Capacitacion.pdf`);
   } catch (err) {
     console.error(err);
     alert(err?.message || 'No fue posible generar el registro PDF.');

@@ -3038,16 +3038,20 @@ async function downloadParticipantExamPdf(attemptId) {
     cursorY += 10;
 
     questions.forEach((question, index) => {
-      ensureSpace(30);
-      text(`${index + 1}. ${question.enunciado || ''}`, 18, cursorY, 10.5, true);
-      cursorY += 2;
+      ensureSpace(42);
+      doc.setDrawColor(228, 232, 239);
+      doc.setFillColor(252, 252, 252);
+      doc.roundedRect(16, cursorY - 5, 178, 6, 1.5, 1.5, 'F');
+      cursorY = addWrapped(`${index + 1}. ${question.enunciado || ''}`, 18, cursorY, 168, 10.3, true, BLACK, 4.8);
+      cursorY += 1.5;
       const response = responseMap.get(question.id);
       const options = (question.examen_opciones || []).slice().sort((a,b)=>Number(a.orden)-Number(b.orden));
       const selected = options.find(o => o.id === response?.opcion_id);
-      text(`Tu respuesta: ${selected ? String.fromCharCode(65 + options.indexOf(selected)) + ') ' + (selected.texto || '') : 'No respondida'}`, 21, cursorY, 8.4, false, 'left', GRAY);
-      cursorY += 5.2;
+      const answerText = selected ? `${String.fromCharCode(65 + options.indexOf(selected))}) ${selected.texto || ''}` : 'No respondida';
+      cursorY = addWrapped(`Tu respuesta: ${answerText}`, 21, cursorY, 160, 8.4, false, GRAY, 4.1);
+      cursorY += 2.2;
       options.forEach((opt, oi) => {
-        ensureSpace(8);
+        ensureSpace(9);
         const isCorrect = !!opt.es_correcta;
         const isSelected = response?.opcion_id === opt.id;
         const prefix = `${String.fromCharCode(65 + oi)}) `;
@@ -3057,13 +3061,13 @@ async function downloadParticipantExamPdf(attemptId) {
         else if (isSelected && !isCorrect) { color = RED; fontBold = true; }
         let line = prefix + (opt.texto || '');
         if (isSelected) line += '  ← tu respuesta';
-        cursorY = addWrapped(line, 24, cursorY, 165, 8.7, fontBold, color, 4.1);
-        cursorY += 0.6;
+        cursorY = addWrapped(line, 24, cursorY, 162, 8.7, fontBold, color, 4.4);
+        cursorY += 0.8;
       });
       const qPoints = response?.es_correcta ? 2 : 0;
       ensureSpace(8);
       text(`Puntos: ${qPoints} / 2`, 21, cursorY + 1, 8.8, true, 'left', response?.es_correcta ? GREEN : RED);
-      cursorY += 9;
+      cursorY += 10;
     });
 
     ensureSpace(30);

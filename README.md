@@ -1,11 +1,12 @@
-# Hotfix Etapa 10A
+# Hotfix de maquetación – Etapa 10A
 
-El botón "Descargar Examen" no aparecía porque el navegador seguía reutilizando una versión anterior de `app.js`.
+Se corrigió la maquetación del PDF de examen para evitar que el enunciado de la pregunta y la línea de "Tu respuesta" se monten entre sí.
 
-Este hotfix fuerza una nueva versión de:
-- styles.css
-- config.js
-- app.js
+## Ajustes
+- El enunciado ahora usa salto de línea automático.
+- La línea "Tu respuesta" también se envuelve correctamente.
+- Se agregó más separación vertical entre preguntas.
+- Se mejoró la legibilidad del bloque de cada pregunta.
 
 ## Instalación
 Reemplaza en GitHub:
@@ -14,4 +15,4 @@ Reemplaza en GitHub:
 - app.js
 - config.js
 
-Luego espera la publicación de GitHub Pages y actualiza con Ctrl + F5.
+Luego actualiza con Ctrl + F5.

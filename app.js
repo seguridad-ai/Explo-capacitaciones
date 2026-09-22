@@ -1506,14 +1506,9 @@ function renderDetailExam(exam, questions) {
   </article>`).join('');
 }
 
-function renderDetailResults(participants, attempts, responses, exam, totalQuestions) {
-  const body = document.getElementById('detailResultsBody');
-  if (!body) return;
-  if (!exam?.requiere_evaluacion || !attempts.length) {
-    body.innerHTML = '<tr><td colspan="6" class="table-empty">Aún no hay resultados de evaluación.</td></tr>';
-    return;
-  }
-  const participantMap = new Map(participants.map(p => [p.id,p]));
+
+function buildDetailResultRows(participants, attempts, responses, exam, totalQuestions) {
+  const participantMap = new Map(participants.map(p => [p.id, p]));
   const grouped = new Map();
   attempts.forEach(a => {
     if (!grouped.has(a.participante_id)) grouped.set(a.participante_id, []);
@@ -1525,9 +1520,20 @@ function renderDetailResults(participants, attempts, responses, exam, totalQuest
     const best = list[0];
     const p = participantMap.get(participantId) || {};
     const correct = responses.filter(r => r.intento_id === best.id && r.es_correcta).length;
-    rows.push({p,best,correct,attempts:list.length});
+    rows.push({p,best,correct,attempts:list.length,totalQuestions});
   });
   rows.sort((a,b) => String(a.p.apellidos_nombres || '').localeCompare(String(b.p.apellidos_nombres || ''),'es'));
+  return rows;
+}
+
+function renderDetailResults(participants, attempts, responses, exam, totalQuestions) {
+  const body = document.getElementById('detailResultsBody');
+  if (!body) return;
+  if (!exam?.requiere_evaluacion || !attempts.length) {
+    body.innerHTML = '<tr><td colspan="7" class="table-empty">Aún no hay resultados de evaluación.</td></tr>';
+    return;
+  }
+  const rows = buildDetailResultRows(participants, attempts, responses, exam, totalQuestions);
   body.innerHTML = rows.map(({p,best,correct,attempts:used}) => `<tr>
     <td><strong>${escapeHtml(p.apellidos_nombres || '—')}</strong><small class="result-dni">${escapeHtml(p.dni || '')}</small></td>
     <td>${correct} / ${totalQuestions}</td>
@@ -1535,6 +1541,7 @@ function renderDetailResults(participants, attempts, responses, exam, totalQuest
     <td><strong class="result-grade ${best.aprobado ? 'approved' : 'failed'}">${Number(best.nota).toFixed(1)}</strong></td>
     <td>${used} / ${exam.max_intentos}</td>
     <td><span class="result-status ${best.aprobado ? 'approved' : 'failed'}">${best.aprobado ? 'APROBADO' : 'DESAPROBADO'}</span></td>
+    <td><button type="button" class="secondary-btn result-download-btn" onclick="downloadParticipantExamPdf('${best.id}')">Descargar Examen</button></td>
   </tr>`).join('');
 }
 
@@ -2634,6 +2641,19 @@ function formatDatePE(value) {
   return value;
 }
 
+function formatLongDatePE(value) {
+  if (!value) return '—';
+  const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  const parts = String(value).split('-');
+  if (parts.length === 3) {
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    if (!Number.isNaN(y) && !Number.isNaN(m) && !Number.isNaN(d)) return `${d} de ${months[m-1] || parts[1]} de ${y}`;
+  }
+  return value;
+}
+
 async function imageToDataUrl(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2927,6 +2947,143 @@ async function downloadTrainingPdf() {
     alert(err?.message || 'No fue posible generar el registro PDF.');
   } finally {
     if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+
+async function downloadParticipantExamPdf(attemptId) {
+  const attempt = selectedTrainingDetailData?.attempts?.find(x => x.id === attemptId);
+  if (!attempt) { alert('No se encontró el intento seleccionado.'); return; }
+  if (!window.jspdf?.jsPDF) { alert('No se cargó el generador PDF. Actualiza la página e inténtalo nuevamente.'); return; }
+
+  try {
+    const exam = selectedTrainingDetailData.exam;
+    const training = selectedTrainingDetailData.training;
+    const questions = (selectedTrainingDetailData.questions || []).slice().sort((a,b)=>Number(a.orden)-Number(b.orden));
+    const attemptResponses = (selectedTrainingDetailData.responses || []).filter(r => r.intento_id === attemptId);
+    const participant = (selectedTrainingDetailData.participants || []).find(p => p.id === attempt.participante_id) || {};
+    const correctCount = attemptResponses.filter(r => r.es_correcta).length;
+    const responseMap = new Map(attemptResponses.map(r => [r.pregunta_id, r]));
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    let logoData = null;
+    try { logoData = await imageToDataUrl('assets/logo-explo.jpg'); } catch (e) { console.warn(e); }
+    const BLACK = [20,20,20], GREEN = [0,140,50], RED = [192,0,0], GRAY = [90,98,112], LIGHT = [245,245,245];
+
+    const text = (value, x, y, size = 10, bold = false, align = 'left', color = BLACK) => {
+      doc.setTextColor(...color);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.text(String(value ?? ''), x, y, { align });
+    };
+    const fitText = (value, x, y, maxWidth, size = 10, bold = false, align = 'left', color = BLACK) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.setTextColor(...color);
+      let s = String(value ?? '');
+      if (doc.getTextWidth(s) <= maxWidth) { doc.text(s, x, y, { align }); return; }
+      while (s.length > 3 && doc.getTextWidth(`${s}…`) > maxWidth) s = s.slice(0,-1);
+      doc.text(`${s}…`, x, y, { align });
+    };
+    const addWrapped = (value, x, y, maxWidth, size = 10, bold = false, color = BLACK, lineGap = 4.2) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(String(value ?? ''), maxWidth);
+      doc.text(lines, x, y, { lineHeightFactor: 1.1 });
+      return y + (lines.length * lineGap);
+    };
+    const ensureSpace = (needed = 20) => {
+      if (cursorY + needed > 285) {
+        doc.addPage();
+        cursorY = 20;
+      }
+    };
+    const drawSignature = (src, x, y, w, h) => {
+      if (!src) return;
+      try { doc.addImage(src, 'PNG', x, y, w, h, undefined, 'FAST'); } catch (e) { console.warn(e); }
+    };
+    const drawHeader = () => {
+      if (logoData) doc.addImage(logoData, 'JPEG', 14, 10, 28, 17, undefined, 'FAST');
+      text('SIG - SSOMAC', 105, 16, 10, true, 'center');
+      text('EXAMEN', 105, 25, 16, true, 'center');
+      text('Código: EDP-SIG-SSOMAC-RE-EA-122', 150, 14, 7.5, false);
+      text('N°: 8', 150, 20, 7.5, false);
+      text('Versión: 1', 150, 26, 7.5, false);
+      doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.line(14, 31, 196, 31);
+      text('RESOLUCIÓN DEL EXAMEN', 105, 40, 13, true, 'center');
+    };
+
+    drawHeader();
+    let cursorY = 52;
+    const labelX = 18, valueX = 48;
+    const metaRows = [
+      ['Participante:', participant.apellidos_nombres || '—'],
+      ['DNI:', participant.dni || '—'],
+      ['Curso:', training.tema || '—'],
+      ['Fecha:', formatLongDatePE(training.fecha)]
+    ];
+    metaRows.forEach(([label,val]) => {
+      text(label, labelX, cursorY, 9.5, true);
+      const maxW = label === 'Curso:' ? 140 : 110;
+      cursorY = addWrapped(val, valueX, cursorY, maxW, 9.3, false, BLACK, 4.2) + 1.2;
+    });
+    cursorY += 4;
+    text(`Nota Final: ${Number(attempt.nota).toFixed(1)}`, 18, cursorY, 12, true, 'left', GREEN);
+    cursorY += 7;
+    text(`Estado: ${attempt.aprobado ? 'APROBADO' : 'DESAPROBADO'}`, 18, cursorY, 12, true, 'left', attempt.aprobado ? GREEN : RED);
+    cursorY += 7;
+    text(`Preguntas Correctas: ${correctCount} / ${questions.length}`, 18, cursorY, 12, true);
+    cursorY += 10;
+
+    questions.forEach((question, index) => {
+      ensureSpace(30);
+      text(`${index + 1}. ${question.enunciado || ''}`, 18, cursorY, 10.5, true);
+      cursorY += 2;
+      const response = responseMap.get(question.id);
+      const options = (question.examen_opciones || []).slice().sort((a,b)=>Number(a.orden)-Number(b.orden));
+      const selected = options.find(o => o.id === response?.opcion_id);
+      text(`Tu respuesta: ${selected ? String.fromCharCode(65 + options.indexOf(selected)) + ') ' + (selected.texto || '') : 'No respondida'}`, 21, cursorY, 8.4, false, 'left', GRAY);
+      cursorY += 5.2;
+      options.forEach((opt, oi) => {
+        ensureSpace(8);
+        const isCorrect = !!opt.es_correcta;
+        const isSelected = response?.opcion_id === opt.id;
+        const prefix = `${String.fromCharCode(65 + oi)}) `;
+        let color = BLACK;
+        let fontBold = false;
+        if (isCorrect) { color = GREEN; fontBold = true; }
+        else if (isSelected && !isCorrect) { color = RED; fontBold = true; }
+        let line = prefix + (opt.texto || '');
+        if (isSelected) line += '  ← tu respuesta';
+        cursorY = addWrapped(line, 24, cursorY, 165, 8.7, fontBold, color, 4.1);
+        cursorY += 0.6;
+      });
+      const qPoints = response?.es_correcta ? 2 : 0;
+      ensureSpace(8);
+      text(`Puntos: ${qPoints} / 2`, 21, cursorY + 1, 8.8, true, 'left', response?.es_correcta ? GREEN : RED);
+      cursorY += 9;
+    });
+
+    ensureSpace(30);
+    doc.setDrawColor(...LIGHT); doc.setLineWidth(0.2); doc.line(18, cursorY, 190, cursorY);
+    cursorY += 8;
+    if (participant.firma) {
+      text('Firma del participante:', 18, cursorY, 9.8, true);
+      drawSignature(participant.firma, 58, cursorY - 8, 40, 16);
+      cursorY += 12;
+    }
+    text(`Nombre: ${participant.apellidos_nombres || '—'}`, 18, cursorY, 9.2, false);
+    cursorY += 6;
+    text(`Fecha: ${formatLongDatePE(training.fecha)}`, 18, cursorY, 9.2, false);
+
+    const safeCode = String(training.codigo || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g, '_');
+    const safeName = String(participant.apellidos_nombres || 'Participante').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0,40);
+    doc.save(`${safeCode}_Examen_${safeName}.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el PDF del examen.');
   }
 }
 

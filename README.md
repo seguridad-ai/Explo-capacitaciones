@@ -1,18 +1,21 @@
-# Etapa 9C - Formato oficial de registro PDF
+# Etapa 10A – Descarga del examen en PDF
 
-Esta actualización corrige la vista Documento y la descarga PDF para reproducir el formato oficial EDP-SIG-SSOMAC-RE-EA-121 suministrado en Excel.
+Esta actualización agrega en la pestaña **Resultados** el botón **Descargar Examen** por participante.
 
-## Cambios
-- Encabezado y estructura fieles al Excel original.
-- Código de formato EDP-SIG-SSOMAC-RE-EA-121, N° 2, versión 7 y fecha Jul-25.
-- RUC corregido a 20527775851 según la plantilla.
-- Firma del expositor en el campo FIRMA del bloque del capacitador.
-- Firma del responsable en RESPONSABLE DEL REGISTRO.
-- Tabla original de 25 participantes por hoja.
-- Columna NOTA añadida al lado de FIRMA.
-- Si existen más de 25 participantes, el PDF crea hojas adicionales de 25 participantes cada una.
-- No requiere ejecutar SQL.
+## Qué incluye
+- PDF de resolución del examen en formato similar al ejemplo compartido.
+- Muestra participante, DNI, curso, fecha, nota final, estado y preguntas correctas.
+- Lista cada pregunta con alternativas.
+- Resalta en **verde** la respuesta correcta.
+- Marca la respuesta elegida por el participante.
+- Muestra puntaje por pregunta.
+- Incluye, si existe, la **firma del participante** al final del PDF.
 
 ## Instalación
-En GitHub, reemplaza: index.html, styles.css, app.js y config.js. No reemplaces assets/.
-Después espera GitHub Pages y usa Ctrl+F5.
+Reemplaza en GitHub:
+- `index.html`
+- `styles.css`
+- `app.js`
+- `config.js`
+
+No necesitas ejecutar SQL para esta etapa.

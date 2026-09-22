@@ -471,16 +471,42 @@ async function saveSystemUser(event) {
   saveButton.disabled = true; saveButton.textContent = 'Guardando…';
   try {
     if (!id) {
+      const { data: sessionData } = await client.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error('Tu sesión expiró. Cierra sesión e ingresa nuevamente.');
+
       const { data, error } = await client.functions.invoke('admin-create-user', {
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: { email, password, nombres, apellidos, cargo, rol_codigo: role, proyecto_ids: projectIds }
       });
+
       if (error || !data?.ok) {
-        console.error(error, data);
-        const message = error?.message || data?.error || '';
-        if (/Failed to send|not found|404|FunctionsHttpError|Edge Function/i.test(message)) {
-          throw new Error('La función segura admin-create-user todavía no está desplegada en Supabase. Revisa el archivo EDGE_FUNCTION_admin-create-user.ts incluido en esta etapa.');
+        console.error('admin-create-user', error, data);
+        let detail = data?.error || '';
+        let status = null;
+
+        if (error?.context) {
+          try {
+            status = error.context.status;
+            const responseBody = await error.context.clone().json();
+            detail = responseBody?.error || responseBody?.message || detail;
+          } catch (_) {
+            try { detail = await error.context.clone().text() || detail; } catch (_) {}
+          }
         }
-        throw new Error(data?.error || error?.message || 'No fue posible crear el usuario.');
+
+        if (!detail) detail = error?.message || 'No fue posible crear el usuario.';
+
+        if (status === 401) {
+          throw new Error(`La función rechazó la sesión administrativa: ${detail}`);
+        }
+        if (status === 403) {
+          throw new Error(`No tienes autorización para crear usuarios: ${detail}`);
+        }
+        if (status === 404) {
+          throw new Error('Supabase no encontró la función admin-create-user. Verifica el nombre exacto y vuelve a desplegarla.');
+        }
+        throw new Error(detail);
       }
       usersMessage('Usuario creado correctamente.', 'success');
     } else {

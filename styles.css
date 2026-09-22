@@ -153,3 +153,6 @@
 .public-exam-footer{display:flex;flex-direction:column;align-items:center;gap:4px}
 .public-exam-footer strong{font-size:9px;color:#6f7884;font-weight:700}
 @media(max-width:600px){.public-certificate-actions{flex-direction:column}.public-certificate-btn{width:100%}}
+
+.sidebar-footer span{font-size:10px;color:var(--muted);line-height:1.5}
+.public-exam-footer span{font-size:9px;color:#929ba7;font-weight:400}

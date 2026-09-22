@@ -1,25 +1,15 @@
-# Etapa 10B.1 – Certificado disponible para el trabajador aprobado
+# Ajuste visual – By RonyC
 
-Esta precisión agrega dos mejoras al enlace público del examen:
+Este ajuste cambia el texto de autor a **By RonyC** y lo muestra con la misma tipografía y color de la línea institucional:
 
-1. Si el trabajador aprueba, aparece el botón **Descargar certificado** en la misma pantalla de resultado.
-2. El pie de página muestra:
-   - Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión
-   - Creado por RonyC
+- En la pantalla pública del examen, debajo de:
+  `Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión`
+- En el pie del menú lateral de la plataforma.
 
-## Instalación
-
-### 1. Supabase
-Ejecuta:
-`ETAPA10B1_CERTIFICADO_PUBLICO.sql`
-
-### 2. GitHub
-Reemplaza:
+## Reemplazar en GitHub
 - `index.html`
 - `styles.css`
 - `app.js`
 - `config.js`
 
-El archivo `assets/certificado-ssomac.pdf` debe mantenerse en el repositorio.
-
-Después espera la actualización de GitHub Pages y presiona `Ctrl + F5`.
+Luego actualizar con `Ctrl + F5`.

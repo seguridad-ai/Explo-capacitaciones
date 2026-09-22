@@ -4251,32 +4251,76 @@ function closePracticeQuestionModal() {
 }
 
 async function loadPracticeQuestionsFull(practiceId) {
-  const { data,error }=await client.from('practica_preguntas')
-    .select('id,practica_id,orden,enunciado,activo,practica_opciones(id,orden,texto,es_correcta)')
-    .eq('practica_id',practiceId).eq('activo',true).order('orden');
-  if (error) { console.error(error); return []; }
-  return (data||[]).map(q=>({...q,opciones:(q.practica_opciones||[]).sort((a,b)=>a.orden-b.orden)}));
+  const { data, error } = await client.rpc('listar_preguntas_practica_admin', {
+    p_practica_id: practiceId
+  });
+
+  if (error || !data?.ok) {
+    console.error('listar_preguntas_practica_admin', error, data);
+    throw new Error(data?.error || error?.message || 'No fue posible cargar las preguntas del quiz.');
+  }
+
+  return data.preguntas || [];
 }
 
 async function renderPracticeEditorQuestions() {
   if (!activePracticeId) return;
-  const list=document.getElementById('practiceQuestionList');
-  const questions=await loadPracticeQuestionsFull(activePracticeId);
-  if (!questions.length) { list.innerHTML='<div class="training-library-empty">Aún no hay preguntas. Agrega la primera.</div>'; return; }
-  const rec=practiceRecords.find(x=>x.id===activePracticeId);
-  const canManage=practiceCanManageRecord(rec);
-  list.innerHTML=questions.map((q,i)=>`<article class="practice-admin-question">
-    <div><span class="practice-question-number">${i+1}</span><div><strong>${escapeHtml(q.enunciado)}</strong><div class="practice-admin-options">${q.opciones.map((o,oi)=>`<span class="${o.es_correcta?'correct':''}">${String.fromCharCode(65+oi)}) ${escapeHtml(o.texto)}</span>`).join('')}</div></div></div>
-    ${canManage?`<div class="practice-admin-question-actions"><button class="table-link" data-pq-edit="${q.id}">Editar</button><button class="table-action danger" data-pq-delete="${q.id}">Eliminar</button></div>`:''}
-  </article>`).join('');
-  list.querySelectorAll('[data-pq-edit]').forEach(b=>b.addEventListener('click',()=>{
-    const q=questions.find(x=>x.id===b.dataset.pqEdit); openPracticeQuestionModal(q);
-  }));
-  list.querySelectorAll('[data-pq-delete]').forEach(b=>b.addEventListener('click',async()=>{
-    if (!confirm('¿Eliminar esta pregunta?')) return;
-    const {error}=await client.from('practica_preguntas').delete().eq('id',b.dataset.pqDelete);
-    if (error) alert(error.message); else { practiceRecords=[]; await loadPracticeModule(true); activePracticeId=rec.id; await renderPracticeEditorQuestions(); }
-  }));
+
+  const list = document.getElementById('practiceQuestionList');
+  if (!list) return;
+
+  list.innerHTML = '<div class="training-library-empty">Cargando preguntas…</div>';
+
+  try {
+    const questions = await loadPracticeQuestionsFull(activePracticeId);
+
+    if (!questions.length) {
+      list.innerHTML = '<div class="training-library-empty">Aún no hay preguntas. Agrega la primera.</div>';
+      return;
+    }
+
+    const rec = practiceRecords.find(x => x.id === activePracticeId);
+    const canManage = practiceCanManageRecord(rec);
+
+    list.innerHTML = questions.map((q,i) => `<article class="practice-admin-question">
+      <div>
+        <span class="practice-question-number">${i+1}</span>
+        <div>
+          <strong>${escapeHtml(q.enunciado)}</strong>
+          <div class="practice-admin-options">
+            ${(q.opciones || []).map((o,oi)=>`<span class="${o.es_correcta?'correct':''}">${String.fromCharCode(65+oi)}) ${escapeHtml(o.texto)}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+      ${canManage ? `<div class="practice-admin-question-actions">
+        <button class="table-link" type="button" data-pq-edit="${q.id}">Editar</button>
+        <button class="table-action danger" type="button" data-pq-delete="${q.id}">Eliminar</button>
+      </div>` : ''}
+    </article>`).join('');
+
+    list.querySelectorAll('[data-pq-edit]').forEach(b => b.addEventListener('click', () => {
+      const q = questions.find(x => x.id === b.dataset.pqEdit);
+      openPracticeQuestionModal(q);
+    }));
+
+    list.querySelectorAll('[data-pq-delete]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('¿Eliminar esta pregunta?')) return;
+
+      const { data, error } = await client.rpc('eliminar_pregunta_practica', {
+        p_pregunta_id: b.dataset.pqDelete
+      });
+
+      if (error || !data?.ok) {
+        alert(data?.error || error?.message || 'No fue posible eliminar la pregunta.');
+        return;
+      }
+
+      await renderPracticeEditorQuestions();
+    }));
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = `<div class="training-library-empty error">Error al cargar preguntas: ${escapeHtml(err?.message || 'Error desconocido')}</div>`;
+  }
 }
 
 async function renderPracticeRanking(practiceId) {
@@ -4362,18 +4406,21 @@ async function savePractice(event) {
   msg.textContent='Quiz guardado correctamente.'; msg.className='form-message visible success';
 }
 
-async function savePracticeQuestion(event) {
-  event.preventDefault();
-  if (!client || !activePracticeId) return;
+async function savePracticeQuestion() {
+  if (!client || !activePracticeId) {
+    alert('Primero guarda el quiz antes de agregar preguntas.');
+    return;
+  }
 
-  const questionText = document.getElementById('practiceQuestionText').value.trim();
+  const questionText = document.getElementById('practiceQuestionText')?.value.trim() || '';
   const optionInputs = [...document.querySelectorAll('.practice-option-input')];
   const options = optionInputs.map(x => x.value.trim());
   const correctIndex = Number(document.querySelector('input[name="practiceCorrectOption"]:checked')?.value ?? -1);
   const msg = document.getElementById('practiceQuestionMessage');
-  const submit = document.querySelector('#practiceQuestionForm button[type="submit"]');
+  const submit = document.getElementById('savePracticeQuestionButton');
 
   const showQuestionMessage = (message, type = 'error') => {
+    if (!msg) return;
     msg.textContent = message || '';
     msg.className = `form-message ${message ? 'visible' : ''} ${type}`;
   };
@@ -4382,7 +4429,7 @@ async function savePracticeQuestion(event) {
 
   if (!questionText) {
     showQuestionMessage('Ingresa el enunciado de la pregunta.');
-    document.getElementById('practiceQuestionText').focus();
+    document.getElementById('practiceQuestionText')?.focus();
     return;
   }
 
@@ -4394,7 +4441,7 @@ async function savePracticeQuestion(event) {
   }
 
   if (correctIndex < 0 || correctIndex > 3) {
-    showQuestionMessage('Selecciona cuál de las alternativas es la respuesta correcta.');
+    showQuestionMessage('Selecciona cuál alternativa es la correcta.');
     return;
   }
 
@@ -4421,14 +4468,19 @@ async function savePracticeQuestion(event) {
     }
 
     closePracticeQuestionModal();
+
     await renderPracticeEditorQuestions();
 
     const moduleMessage = document.getElementById('practiceModuleMessage');
     if (moduleMessage) {
-      moduleMessage.textContent = practiceQuestionEditId
-        ? 'Pregunta actualizada correctamente.'
-        : 'Pregunta agregada correctamente.';
+      moduleMessage.textContent = 'Pregunta guardada correctamente.';
       moduleMessage.className = 'module-message visible success';
+      setTimeout(() => {
+        if (moduleMessage.textContent === 'Pregunta guardada correctamente.') {
+          moduleMessage.textContent = '';
+          moduleMessage.className = 'module-message';
+        }
+      }, 2500);
     }
   } catch (err) {
     showQuestionMessage(err?.message || 'No fue posible guardar la pregunta.');
@@ -4622,7 +4674,7 @@ document.getElementById('refreshPracticeButton')?.addEventListener('click',()=>{
 document.getElementById('practiceSearch')?.addEventListener('input',renderPracticeModule);
 document.getElementById('practiceStatusFilter')?.addEventListener('change',renderPracticeModule);
 document.getElementById('newPracticeQuestionButton')?.addEventListener('click',()=>openPracticeQuestionModal());
-document.getElementById('practiceQuestionForm')?.addEventListener('submit',savePracticeQuestion);
+document.getElementById('savePracticeQuestionButton')?.addEventListener('click', savePracticeQuestion);
 document.getElementById('closePracticeQuestionModal')?.addEventListener('click',closePracticeQuestionModal);
 document.getElementById('cancelPracticeQuestionModal')?.addEventListener('click',closePracticeQuestionModal);
 document.getElementById('practiceQuestionModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePracticeQuestionModal);

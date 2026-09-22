@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260922-25" />
+  <link rel="stylesheet" href="styles.css?v=20260922-27" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1101,7 +1101,7 @@
           <div class="modal-backdrop"></div>
           <div class="modal-card practice-question-modal-card">
             <div class="modal-head"><div><span class="eyebrow">PREGUNTA</span><h3 id="practiceQuestionModalTitle">Nueva pregunta</h3></div><button id="closePracticeQuestionModal" class="modal-close" type="button">×</button></div>
-            <form id="practiceQuestionForm" novalidate>
+            <div id="practiceQuestionForm">
               <input id="practiceQuestionId" type="hidden" />
               <label class="practice-question-text-field"><span>Enunciado *</span><textarea id="practiceQuestionText" rows="3" maxlength="500" required></textarea></label>
               <div class="practice-option-editor">
@@ -1111,8 +1111,8 @@
                 <label><input type="radio" name="practiceCorrectOption" value="3" /><span>D</span><input class="practice-option-input" data-index="3" maxlength="250" placeholder="Alternativa D" required /></label>
               </div>
               <div id="practiceQuestionMessage" class="form-message"></div>
-              <div class="modal-actions"><button id="cancelPracticeQuestionModal" class="secondary-btn" type="button">Cancelar</button><button class="primary-btn" type="submit">Guardar pregunta</button></div>
-            </form>
+              <div class="modal-actions"><button id="cancelPracticeQuestionModal" class="secondary-btn" type="button">Cancelar</button><button id="savePracticeQuestionButton" class="primary-btn" type="button">Guardar pregunta</button></div>
+            </div>
           </div>
         </div>
       </section>
@@ -1198,7 +1198,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20260922-25"></script>
-  <script src="app.js?v=20260922-25"></script>
+  <script src="config.js?v=20260922-27"></script>
+  <script src="app.js?v=20260922-27"></script>
 </body>
 </html>

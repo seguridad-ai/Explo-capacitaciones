@@ -1,40 +1,44 @@
-# Etapa 7B · Acceso al examen por trabajador activo
+# Etapa 7C – Registro público y participantes automáticos
 
-Este ajuste cambia el flujo público del examen:
+Esta actualización modifica el flujo de la Etapa 7:
 
-1. El responsable comparte por WhatsApp el enlace específico del examen.
-2. El trabajador abre el enlace e ingresa solo su DNI.
-3. Supabase consulta directamente el maestro `trabajadores`.
-4. Solo puede continuar si `activo = true`.
-5. La pantalla muestra automáticamente apellidos y nombres, DNI, puesto, área y sede.
-6. Si el trabajador todavía no estaba en `capacitacion_participantes`, se registra automáticamente sin duplicarlo.
-7. El trabajador rinde el examen y la nota queda vinculada al registro de participantes.
+- Se elimina la etapa manual **Participantes** del registro de capacitación.
+- El flujo administrativo queda en 3 pasos: **Capacitador → Examen → Vista previa**.
+- El enlace del examen puede compartirse por WhatsApp.
+- El trabajador ingresa su DNI.
+- Si existe y está activo, se muestran automáticamente sus datos.
+- Si no existe, aparece el mensaje **“Usted no está registrado. Regístrese, por favor”** y un formulario con DNI, apellidos, nombres, puesto, área y sede.
+- El nuevo trabajador se incorpora a la base `trabajadores` con estado **Activo**.
+- Un trabajador que ya existe pero está **Inactivo** no puede autorregistrarse de nuevo; debe ser actualizado por un responsable.
+- Consultar el DNI ya no agrega a la persona como participante.
+- El participante se incorpora a `capacitacion_participantes` recién cuando envía su evaluación.
+- La Vista previa muestra automáticamente a quienes ya rindieron el examen y su nota.
 
-## Supabase
+## 1. Supabase
 
-Si ya ejecutaste la Etapa 7 anterior, ejecuta solamente:
+Ejecuta completo:
 
-`ETAPA7_AJUSTE_TRABAJADOR_ACTIVO.sql`
+`ETAPA7C_REGISTRO_PUBLICO_Y_FLUJO.sql`
 
-Ruta: **Supabase → SQL Editor → New query → pegar todo → Run**.
+Resultado esperado:
 
-Resultado esperado: `Etapa 7B aplicada correctamente`.
+`Etapa 7C aplicada correctamente`
 
-> Si todavía no ejecutaste la Etapa 7 original, primero ejecuta `ETAPA7_SUPABASE.sql` del paquete de la Etapa 7 y después este ajuste.
+> Esta actualización supone que las Etapas 5, 6, 7 y 7B ya fueron aplicadas.
 
-## GitHub
+## 2. GitHub
 
-Reemplaza:
+Reemplaza en el repositorio:
 
 - `index.html`
-- `app.js`
 - `styles.css`
+- `app.js`
 - `config.js`
 
-No reemplaces `assets/`.
+No reemplaces la carpeta `assets/`.
 
 Commit sugerido:
 
-`Etapa 7B - Acceso examen por trabajador activo`
+`Etapa 7C - Registro público y participantes automáticos`
 
-Después espera la publicación de GitHub Pages y actualiza con **Ctrl + F5**.
+Después espera la publicación de GitHub Pages y usa `Ctrl + F5`.

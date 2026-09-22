@@ -1190,6 +1190,7 @@ let participantSignatureDrawing = false;
 let participantSignatureHasStroke = false;
 
 const participantsPanel = document.getElementById('participantsPanel');
+const trainingPreviewPanel = document.getElementById('trainingPreviewPanel');
 const participantsTableBody = document.getElementById('participantsTableBody');
 const participantDniSearch = document.getElementById('participantDniSearch');
 const addParticipantButton = document.getElementById('addParticipantButton');
@@ -1211,25 +1212,23 @@ function setTrainingSteps(mode = 'data') {
     if (mode === 'exam') {
       if (index === 0) step.classList.add('completed');
       if (index === 1) step.classList.add('active');
-    } else if (mode === 'participants') {
+    } else if (mode === 'preview') {
       if (index <= 1) step.classList.add('completed');
       if (index === 2) step.classList.add('active');
-    } else if (mode === 'preview') {
-      if (index <= 2) step.classList.add('completed');
-      if (index === 3) step.classList.add('active');
     } else if (index === 0) {
       step.classList.add('active');
     }
   });
   const pill = document.getElementById('trainingStagePill');
   if (!pill) return;
-  pill.textContent = mode === 'exam' ? 'Etapa 2 de 4' : mode === 'participants' ? 'Etapa 3 de 4' : mode === 'preview' ? 'Etapa 4 de 4' : 'Etapa 1 de 4';
+  pill.textContent = mode === 'exam' ? 'Etapa 2 de 3' : mode === 'preview' ? 'Etapa 3 de 3' : 'Etapa 1 de 3';
 }
 
 function showTrainingDataStep() {
   trainingForm?.classList.remove('hidden');
   document.getElementById('examPanel')?.classList.add('hidden');
   participantsPanel?.classList.add('hidden');
+  trainingPreviewPanel?.classList.add('hidden');
   setTrainingSteps('data');
 }
 
@@ -1784,6 +1783,7 @@ async function openExamStep(trainingId, code = '', payload = null) {
   activeTrainingPayload = payload || activeTrainingPayload || collectTrainingPayload();
   trainingForm?.classList.add('hidden');
   participantsPanel?.classList.add('hidden');
+  trainingPreviewPanel?.classList.add('hidden');
   examPanel?.classList.remove('hidden');
   setTrainingSteps('exam');
   document.getElementById('examTrainingCode').textContent = activeTrainingCode || 'Capacitación';
@@ -1799,6 +1799,7 @@ function resetExamState() {
   examQuestionsCache = [];
   examStructureLocked = false;
   examPanel?.classList.add('hidden');
+  trainingPreviewPanel?.classList.add('hidden');
   if (examRequired) { examRequired.disabled = false; examRequired.checked = true; }
   updateExamLink();
 }
@@ -1809,7 +1810,7 @@ async function saveExamConfiguration({ continueNext = false } = {}) {
   const validation = validateExamConfiguration(cfgExam);
   if (validation) { setExamMessage(validation); return false; }
 
-  const button = continueNext ? document.getElementById('continueToParticipantsButton') : document.getElementById('saveExamButton');
+  const button = continueNext ? document.getElementById('continueToPreviewButton') : document.getElementById('saveExamButton');
   const oldLabel = button?.textContent;
   if (button) { button.disabled = true; button.textContent = 'Guardando…'; }
   setExamMessage('');
@@ -1915,9 +1916,91 @@ async function saveExamConfiguration({ continueNext = false } = {}) {
   else if (published) setExamMessage('Examen guardado y habilitado para los participantes.', 'success');
   else if (!cfgExam.publicado) setExamMessage('Examen guardado como no publicado. Puedes habilitarlo cuando estés listo.', 'success');
 
-  if (continueNext) await openParticipantsStep(activeTrainingId, activeTrainingCode, activeTrainingPayload);
+  if (continueNext) await openTrainingPreviewStep();
   return true;
 }
+
+
+async function loadPreviewParticipants() {
+  const body = document.getElementById('previewParticipantsTableBody');
+  if (!body || !client || !activeTrainingId) return;
+  body.innerHTML = '<tr><td colspan="6" class="table-empty">Cargando participantes…</td></tr>';
+
+  const { data, error } = await client
+    .from('capacitacion_participantes')
+    .select('id,dni,apellidos_nombres,puesto,area,nota,created_at')
+    .eq('capacitacion_id', activeTrainingId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error(error);
+    body.innerHTML = '<tr><td colspan="6" class="table-empty">No fue posible cargar el registro.</td></tr>';
+    return;
+  }
+
+  const rows = data || [];
+  const count = document.getElementById('previewParticipantCount');
+  if (count) count.textContent = String(rows.length);
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="table-empty">Aún no hay participantes evaluados.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td><strong>${escapeHtml(item.apellidos_nombres || '—')}</strong></td>
+      <td>${escapeHtml(item.dni || '—')}</td>
+      <td>${escapeHtml(item.puesto || '—')}</td>
+      <td>${escapeHtml(item.area || '—')}</td>
+      <td>${item.nota === null || item.nota === undefined
+        ? '<span class="grade-pill pending">Pendiente</span>'
+        : `<span class="grade-pill">${Number(item.nota).toFixed(2).replace(/\.00$/, '')}</span>`}</td>
+    </tr>
+  `).join('');
+}
+
+async function openTrainingPreviewStep() {
+  trainingForm?.classList.add('hidden');
+  examPanel?.classList.add('hidden');
+  participantsPanel?.classList.add('hidden');
+  trainingPreviewPanel?.classList.remove('hidden');
+  setTrainingSteps('preview');
+
+  const payload = activeTrainingPayload || collectTrainingPayload();
+  document.getElementById('previewTrainingCode').textContent = activeTrainingCode || 'Capacitación';
+  document.getElementById('previewTrainingTopic').textContent = payload?.tema || '—';
+  document.getElementById('previewTrainingDate').textContent = payload?.fecha || '—';
+  document.getElementById('previewTrainingUnit').textContent = participantUnitLabel(payload || {});
+
+  const link = activeExamConfig?.requiere_evaluacion && activeExamConfig?.publicado ? examPublicUrl() : '';
+  const linkEl = document.getElementById('previewExamPublicLink');
+  if (linkEl) {
+    linkEl.textContent = link
+      || (activeExamConfig?.requiere_evaluacion
+        ? 'El examen está guardado, pero todavía no está habilitado.'
+        : 'Esta actividad no tiene evaluación.');
+  }
+  const copyBtn = document.getElementById('copyPreviewExamLinkButton');
+  if (copyBtn) copyBtn.disabled = !link;
+
+  await loadPreviewParticipants();
+  document.querySelector('.training-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.getElementById('backToExamFromPreview')?.addEventListener('click', () => {
+  openExamStep(activeTrainingId, activeTrainingCode, activeTrainingPayload);
+});
+document.getElementById('refreshPreviewParticipantsButton')?.addEventListener('click', loadPreviewParticipants);
+document.getElementById('copyPreviewExamLinkButton')?.addEventListener('click', () => {
+  if (activeExamConfig?.requiere_evaluacion && activeExamConfig?.publicado) copyText(examPublicUrl(), 'Enlace del examen copiado.');
+});
+document.getElementById('finishTrainingConfigurationButton')?.addEventListener('click', () => {
+  setTrainingMessage('Configuración guardada. Comparte el enlace del examen; el registro de participantes se llenará automáticamente al finalizar cada evaluación.', 'success');
+  showTrainingDataStep();
+  document.getElementById('nueva-capacitacion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 async function copyText(text, successMessage = 'Enlace copiado.') {
   if (!text) return;
@@ -1946,7 +2029,7 @@ examQuestionList?.addEventListener('click', e => {
 });
 document.getElementById('backToTrainingFromExam')?.addEventListener('click', showTrainingDataStep);
 document.getElementById('saveExamButton')?.addEventListener('click', () => saveExamConfiguration({ continueNext: false }));
-document.getElementById('continueToParticipantsButton')?.addEventListener('click', () => saveExamConfiguration({ continueNext: true }));
+document.getElementById('continueToPreviewButton')?.addEventListener('click', () => saveExamConfiguration({ continueNext: true }));
 document.getElementById('copyExamLinkButton')?.addEventListener('click', () => copyText(examPublicUrl(), 'Enlace del examen copiado.'));
 document.getElementById('copyExamLinkParticipantsButton')?.addEventListener('click', () => copyText(examPublicUrl(), 'Enlace del examen copiado.'));
 
@@ -1970,11 +2053,47 @@ function initializePublicExamView(code) {
   document.getElementById('publicExamIdentity')?.classList.remove('hidden');
   document.getElementById('publicExamQuestions')?.classList.add('hidden');
   document.getElementById('publicExamResult')?.classList.add('hidden');
+  document.getElementById('publicExamRegistration')?.classList.add('hidden');
   setTimeout(() => document.getElementById('publicExamDni')?.focus(), 50);
 }
 
 async function initializePublicExamMode(code) {
   initializePublicExamView(code);
+}
+
+async function loadPublicRegistrationSites() {
+  const select = document.getElementById('publicRegSite');
+  if (!select || !client) return false;
+  select.innerHTML = '<option value="">Cargando sedes…</option>';
+
+  const { data, error } = await client.rpc('listar_sedes_registro_examen', { p_codigo: publicExamCode });
+  if (error || !data?.ok) {
+    console.error(error);
+    select.innerHTML = '<option value="">No disponible</option>';
+    setPublicExamMessage(data?.error || 'No fue posible cargar las sedes.', 'error', 'publicRegistrationMessage');
+    return false;
+  }
+
+  const sites = Array.isArray(data.sedes) ? data.sedes : [];
+  select.innerHTML = '<option value="">Seleccione una sede</option>' +
+    sites.map(site => `<option value="${site.id}">${escapeHtml(site.nombre || '')}</option>`).join('');
+  return true;
+}
+
+async function showPublicRegistration(dni) {
+  document.getElementById('publicExamParticipantPreview')?.classList.add('hidden');
+  const section = document.getElementById('publicExamRegistration');
+  section?.classList.remove('hidden');
+  const dniField = document.getElementById('publicRegDni');
+  if (dniField) dniField.value = dni;
+  document.getElementById('publicRegLastName').value = '';
+  document.getElementById('publicRegFirstName').value = '';
+  document.getElementById('publicRegPosition').value = '';
+  document.getElementById('publicRegArea').value = '';
+  setPublicExamMessage('Usted no está registrado. Regístrese, por favor, para continuar con la evaluación.');
+  setPublicExamMessage('', 'error', 'publicRegistrationMessage');
+  await loadPublicRegistrationSites();
+  setTimeout(() => document.getElementById('publicRegLastName')?.focus(), 30);
 }
 
 async function lookupPublicExam() {
@@ -1983,6 +2102,7 @@ async function lookupPublicExam() {
   const dni = (dniEl?.value || '').replace(/\D/g, '').slice(0,8);
   if (dniEl) dniEl.value = dni;
   document.getElementById('publicExamParticipantPreview')?.classList.add('hidden');
+  document.getElementById('publicExamRegistration')?.classList.add('hidden');
   publicExamData = null;
   if (!/^\d{8}$/.test(dni)) {
     setPublicExamMessage('Ingresa un DNI de 8 dígitos.');
@@ -2002,6 +2122,10 @@ async function lookupPublicExam() {
   }
 
   if (!data?.ok) {
+    if (data?.status === 'NO_REGISTRADO' && data?.allow_registro) {
+      await showPublicRegistration(dni);
+      return;
+    }
     const extra = data?.mejor_nota !== null && data?.mejor_nota !== undefined ? ` Mejor nota registrada: ${Number(data.mejor_nota).toFixed(2).replace(/\.00$/, '')}.` : '';
     setPublicExamMessage(`${data?.error || 'No fue posible acceder a la evaluación.'}${extra}`);
     return;
@@ -2012,7 +2136,50 @@ async function lookupPublicExam() {
   document.getElementById('publicExamParticipantDetails').textContent = `DNI ${data.dni || '—'} · ${data.puesto || 'Sin puesto'} · ${data.area || 'Sin área'} · ${data.sede || 'Sin sede'}`;
   document.getElementById('publicExamAttempts').textContent = `Intentos disponibles: ${data.intentos_disponibles} de ${data.max_intentos} · Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}`;
   document.getElementById('publicExamParticipantPreview')?.classList.remove('hidden');
-  setPublicExamMessage('Trabajador activo validado correctamente.', 'success');
+  setPublicExamMessage('Datos encontrados correctamente.', 'success');
+}
+
+async function registerWorkerFromPublicExam(event) {
+  event.preventDefault();
+  if (!client) return;
+
+  const dni = (document.getElementById('publicRegDni')?.value || '').replace(/\D/g, '').slice(0, 8);
+  const apellidos = (document.getElementById('publicRegLastName')?.value || '').trim();
+  const nombres = (document.getElementById('publicRegFirstName')?.value || '').trim();
+  const cargo = (document.getElementById('publicRegPosition')?.value || '').trim();
+  const area = (document.getElementById('publicRegArea')?.value || '').trim();
+  const sedeId = document.getElementById('publicRegSite')?.value || null;
+
+  if (!/^\d{8}$/.test(dni) || !apellidos || !nombres || !cargo || !area || !sedeId) {
+    setPublicExamMessage('Completa DNI, apellidos, nombres, puesto, área y sede.', 'error', 'publicRegistrationMessage');
+    return;
+  }
+
+  const button = document.getElementById('publicRegistrationSaveButton');
+  if (button) { button.disabled = true; button.textContent = 'Registrando…'; }
+  setPublicExamMessage('', 'error', 'publicRegistrationMessage');
+
+  const { data, error } = await client.rpc('registrar_trabajador_examen', {
+    p_codigo: publicExamCode,
+    p_dni: dni,
+    p_apellidos: apellidos,
+    p_nombres: nombres,
+    p_cargo: cargo,
+    p_area: area,
+    p_sede_id: sedeId
+  });
+
+  if (button) { button.disabled = false; button.textContent = 'Registrarme y continuar'; }
+
+  if (error || !data?.ok) {
+    console.error(error);
+    setPublicExamMessage(data?.error || 'No fue posible registrar tus datos.', 'error', 'publicRegistrationMessage');
+    return;
+  }
+
+  document.getElementById('publicExamRegistration')?.classList.add('hidden');
+  setPublicExamMessage('Registro realizado correctamente. Ya puedes continuar con la evaluación.', 'success');
+  await lookupPublicExam();
 }
 
 function renderPublicExamQuestions() {
@@ -2093,6 +2260,12 @@ document.getElementById('publicExamDni')?.addEventListener('keydown', e => { if 
 document.getElementById('publicExamLookupButton')?.addEventListener('click', lookupPublicExam);
 document.getElementById('publicExamStartButton')?.addEventListener('click', startPublicExam);
 document.getElementById('publicExamForm')?.addEventListener('submit', submitPublicExam);
+document.getElementById('publicRegistrationForm')?.addEventListener('submit', registerWorkerFromPublicExam);
+document.getElementById('publicRegistrationCancelButton')?.addEventListener('click', () => {
+  document.getElementById('publicExamRegistration')?.classList.add('hidden');
+  setPublicExamMessage('');
+  document.getElementById('publicExamDni')?.focus();
+});
 document.getElementById('publicExamRetryButton')?.addEventListener('click', async () => {
   document.getElementById('publicExamResult')?.classList.add('hidden');
   await lookupPublicExam();

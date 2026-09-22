@@ -3316,6 +3316,7 @@ function initializePublicExamView(code) {
   document.getElementById('publicExamResult')?.classList.add('hidden');
   document.getElementById('publicSignatureCard')?.classList.remove('hidden');
   document.getElementById('publicCompletionBox')?.classList.add('hidden');
+  document.getElementById('publicCertificateActions')?.classList.add('hidden');
   resetPublicSignatureCanvas();
   document.getElementById('publicExamRegistration')?.classList.add('hidden');
   setTimeout(() => document.getElementById('publicExamDni')?.focus(), 50);
@@ -3472,6 +3473,7 @@ function startPublicExam() {
   if (!publicExamData) return;
   document.getElementById('publicExamIdentity')?.classList.add('hidden');
   document.getElementById('publicExamResult')?.classList.add('hidden');
+  document.getElementById('publicCertificateActions')?.classList.add('hidden');
   document.getElementById('publicExamQuestions')?.classList.remove('hidden');
   renderPublicExamQuestions();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3517,6 +3519,7 @@ async function submitPublicExam(event) {
   document.getElementById('publicExamResultText').textContent = data.mostrar_resultado
     ? `Intento ${data.intento}. Respuestas correctas: ${data.correctas} de ${data.total_preguntas}. Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}.`
     : `Tu evaluación fue registrada correctamente. Intento ${data.intento}.`;
+  document.getElementById('publicCertificateActions')?.classList.toggle('hidden', !data.aprobado);
   const retry = document.getElementById('publicExamRetryButton');
   retry.classList.toggle('hidden', data.aprobado || Number(data.intentos_restantes || 0) <= 0);
   publicExamData.intentos_disponibles = Number(data.intentos_restantes || 0);
@@ -3526,6 +3529,119 @@ async function submitPublicExam(event) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+
+
+async function downloadPublicCertificatePdf() {
+  if (!client) return;
+  if (!window.PDFLib?.PDFDocument) {
+    alert('No se cargó el generador de certificados. Actualiza la página e inténtalo nuevamente.');
+    return;
+  }
+
+  const dni = (document.getElementById('publicExamDni')?.value || '').replace(/\D/g, '').slice(0,8);
+  if (!/^\d{8}$/.test(dni)) {
+    alert('No se pudo identificar el DNI del participante.');
+    return;
+  }
+
+  const button = document.getElementById('publicDownloadCertificateButton');
+  const original = button?.textContent || 'Descargar certificado';
+  if (button) { button.disabled = true; button.textContent = 'Generando…'; }
+
+  try {
+    const { data, error } = await client.rpc('obtener_certificado_publico', {
+      p_codigo: publicExamCode,
+      p_dni: dni
+    });
+
+    if (error || !data?.ok) {
+      console.error(error);
+      const missing = /obtener_certificado_publico|schema cache|function/i.test(error?.message || '');
+      throw new Error(missing
+        ? 'La descarga pública del certificado todavía no está habilitada. Ejecuta el SQL de la Etapa 10B.1.'
+        : (data?.error || 'No fue posible obtener los datos del certificado.'));
+    }
+
+    const templateResponse = await fetch('assets/certificado-ssomac.pdf?v=20260922-1', { cache: 'no-store' });
+    if (!templateResponse.ok) throw new Error('No se pudo cargar la plantilla del certificado.');
+
+    const templateBytes = await templateResponse.arrayBuffer();
+    const { PDFDocument, StandardFonts } = window.PDFLib;
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+    const form = pdfDoc.getForm();
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const workerName = String(data.nombre || '—').toUpperCase();
+    const workerDni = String(data.dni || '—');
+    const workerPosition = String(data.puesto || '—').toUpperCase();
+    const course = String(data.tema || '—').toUpperCase();
+    const unit = String(data.unidad || '—').toUpperCase();
+    const trainingDate = formatDatePE(data.fecha);
+    const hours = extractTrainingHoursOnly(data.tiempo_texto);
+    const issueDate = certificateIssueDatePE(new Date());
+
+    const fields = {
+      name: form.getTextField('Text-QQh6idkzuB'),
+      dni: form.getTextField('Text-WGoQnviAjR'),
+      position: form.getTextField('Text-Zj1fRcZFWe'),
+      course: form.getTextField('Paragraph-wrnRK3cXBm'),
+      unit: form.getTextField('Text-l5ujXqIrLl'),
+      date: form.getTextField('Text-s92wHHPxgV'),
+      hours: form.getTextField('Text-cVZ0Unv8rm'),
+      issueDate: form.getTextField('Text-qK1FcojYj_')
+    };
+
+    fields.name.setText(workerName);
+    fields.dni.setText(workerDni);
+    fields.position.setText(workerPosition);
+    fields.course.setText(course);
+    fields.unit.setText(unit);
+    fields.date.setText(trainingDate);
+    fields.hours.setText(hours);
+    fields.issueDate.setText(issueDate);
+
+    const fitField = (field, value, maxWidth, preferred, minimum) => {
+      let size = preferred;
+      while (size > minimum && font.widthOfTextAtSize(String(value || ''), size) > maxWidth) size -= 0.5;
+      field.setFontSize(size);
+    };
+
+    fitField(fields.name, workerName, 450, 20, 12);
+    fitField(fields.dni, workerDni, 180, 16, 12);
+    fitField(fields.position, workerPosition, 310, 16, 10);
+    fitField(fields.course, course, 475, 14, 9);
+    fitField(fields.unit, unit, 155, 14, 8);
+    fitField(fields.date, trainingDate, 95, 14, 9);
+    fitField(fields.hours, hours, 20, 14, 10);
+    fitField(fields.issueDate, issueDate, 270, 14, 9);
+
+    form.updateFieldAppearances(font);
+    form.flatten();
+
+    const output = await pdfDoc.save();
+    const blob = new Blob([output], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeCode = String(data.codigo || publicExamCode || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g, '_');
+    const safeName = String(data.nombre || 'Participante')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Za-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0,55);
+
+    a.href = url;
+    a.download = `${safeCode}_Certificado_${safeName || 'Participante'}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el certificado.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
 
 const publicSignatureCanvas = document.getElementById('publicSignatureCanvas');
 const publicSignatureCtx = publicSignatureCanvas?.getContext('2d');
@@ -3624,6 +3740,7 @@ async function showExistingEvaluationSignatureState(dni) {
   document.getElementById('publicExamResultText').textContent = data.mostrar_resultado
     ? `Tu evaluación ya se encuentra registrada. Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}.`
     : 'Tu evaluación ya se encuentra registrada.';
+  document.getElementById('publicCertificateActions')?.classList.toggle('hidden', !data.aprobado);
   document.getElementById('publicExamRetryButton')?.classList.add('hidden');
 
   if (data.firma_registrada) {
@@ -3646,6 +3763,7 @@ publicSignatureCanvas?.addEventListener('pointerleave', stopPublicSignature);
 publicSignatureCanvas?.addEventListener('pointercancel', stopPublicSignature);
 document.getElementById('clearPublicSignatureButton')?.addEventListener('click', resetPublicSignatureCanvas);
 document.getElementById('savePublicSignatureButton')?.addEventListener('click', savePublicParticipantSignature);
+document.getElementById('publicDownloadCertificateButton')?.addEventListener('click', downloadPublicCertificatePdf);
 
 document.getElementById('publicExamDni')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0,8); });
 document.getElementById('publicExamDni')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupPublicExam(); } });

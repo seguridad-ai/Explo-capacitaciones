@@ -1,29 +1,25 @@
-# Etapa 10B - Certificado automático en PDF
+# Etapa 10B.1 – Certificado disponible para el trabajador aprobado
 
-Se incorpora el botón **Certificado** en la pestaña Resultados para cada participante aprobado.
+Esta precisión agrega dos mejoras al enlace público del examen:
 
-El sistema usa como plantilla el PDF oficial `assets/certificado-ssomac.pdf` y rellena automáticamente:
-
-1. Apellidos y nombres del trabajador aprobado.
-2. DNI.
-3. Cargo / puesto.
-4. Tema de la capacitación.
-5. Sede o proyecto asignado al trabajador.
-6. Fecha de la capacitación en formato DD/MM/YYYY.
-7. Número de horas (solo número).
-8. Fecha de expedición en formato `LIMA, DD DE MES DEL YYYY`.
-
-El certificado se genera a partir del PDF original, se aplana antes de descargarse y no queda editable como formulario.
+1. Si el trabajador aprueba, aparece el botón **Descargar certificado** en la misma pantalla de resultado.
+2. El pie de página muestra:
+   - Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión
+   - Creado por RonyC
 
 ## Instalación
 
-En GitHub reemplaza:
+### 1. Supabase
+Ejecuta:
+`ETAPA10B1_CERTIFICADO_PUBLICO.sql`
+
+### 2. GitHub
+Reemplaza:
 - `index.html`
 - `styles.css`
 - `app.js`
 - `config.js`
 
-Y agrega dentro de la carpeta `assets`:
-- `certificado-ssomac.pdf`
+El archivo `assets/certificado-ssomac.pdf` debe mantenerse en el repositorio.
 
-No se requiere SQL adicional.
+Después espera la actualización de GitHub Pages y presiona `Ctrl + F5`.

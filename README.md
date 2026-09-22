@@ -1,21 +1,17 @@
-# Etapa 10A – Descarga del examen en PDF
+# Hotfix Etapa 10A
 
-Esta actualización agrega en la pestaña **Resultados** el botón **Descargar Examen** por participante.
+El botón "Descargar Examen" no aparecía porque el navegador seguía reutilizando una versión anterior de `app.js`.
 
-## Qué incluye
-- PDF de resolución del examen en formato similar al ejemplo compartido.
-- Muestra participante, DNI, curso, fecha, nota final, estado y preguntas correctas.
-- Lista cada pregunta con alternativas.
-- Resalta en **verde** la respuesta correcta.
-- Marca la respuesta elegida por el participante.
-- Muestra puntaje por pregunta.
-- Incluye, si existe, la **firma del participante** al final del PDF.
+Este hotfix fuerza una nueva versión de:
+- styles.css
+- config.js
+- app.js
 
 ## Instalación
 Reemplaza en GitHub:
-- `index.html`
-- `styles.css`
-- `app.js`
-- `config.js`
+- index.html
+- styles.css
+- app.js
+- config.js
 
-No necesitas ejecutar SQL para esta etapa.
+Luego espera la publicación de GitHub Pages y actualiza con Ctrl + F5.

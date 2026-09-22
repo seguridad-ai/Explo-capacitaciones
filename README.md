@@ -1,47 +1,42 @@
-# Etapa 9 · Programación de capacitaciones
+# Etapa 9B — Historial de capacitaciones
 
-## 1. Ejecutar primero en Supabase
+Esta actualización reemplaza la vista de calendario/horarios por una biblioteca de capacitaciones registradas.
 
-Abrir **SQL Editor → New query** y ejecutar todo el contenido de:
+## Cambios principales
 
-`ETAPA9_PROGRAMACION.sql`
+- La capacitación ya no vence por hora ni por fecha.
+- Se eliminaron de la interfaz **Hora de inicio** y **Hora de fin**.
+- El campo **Tiempo** se mantiene porque forma parte del registro oficial.
+- Una capacitación queda **ACTIVA** y permanece disponible hasta que un responsable la finalice manualmente.
+- La sección **Capacitaciones** muestra tarjetas con:
+  - tema, expositor, fecha, sede/proyecto y área;
+  - cantidad de participantes y preguntas;
+  - nota promedio y porcentaje de aprobación;
+  - enlace para copiar o compartir por WhatsApp;
+  - acceso a **Ver detalles**.
+- El detalle contiene cuatro pestañas:
+  1. Participantes
+  2. Examen
+  3. Resultados
+  4. Documento
+- Desde Documento se conserva la descarga del PDF oficial creada en la Etapa 8.
 
-Resultado esperado:
+## Instalación
 
-`Etapa 9 aplicada correctamente`
+1. Ejecutar `ETAPA9B_HISTORIAL_CAPACITACIONES.sql` en Supabase → SQL Editor.
+2. En GitHub reemplazar:
+   - `index.html`
+   - `styles.css`
+   - `app.js`
+   - `config.js`
+3. No reemplazar `assets/`.
+4. Esperar GitHub Pages y actualizar con `Ctrl + F5`.
 
-## 2. Actualizar GitHub
+## Estado de las capacitaciones
 
-Subir y reemplazar:
+- `BORRADOR`: todavía no se habilitó el flujo.
+- `ACTIVA`: el registro/evaluación puede seguir recibiendo participantes mientras el examen esté publicado.
+- `FINALIZADA`: cierre manual; el examen se despublica.
+- `CANCELADA`: actividad anulada.
 
-- `index.html`
-- `styles.css`
-- `app.js`
-- `config.js`
-
-No reemplazar la carpeta `assets/`.
-
-Commit sugerido:
-
-`Etapa 9 - Programación y calendario de capacitaciones`
-
-Luego esperar la publicación de GitHub Pages y usar `Ctrl + F5`.
-
-## Funciones incluidas
-
-- calendario mensual de capacitaciones;
-- navegación mes anterior / siguiente / hoy;
-- filtros por sede/proyecto, clasificación y estado;
-- búsqueda por código, tema o expositor;
-- estados: BORRADOR, PROGRAMADA, REPROGRAMADA, EN CURSO, FINALIZADA y CANCELADA;
-- identificación automática de actividades PENDIENTES cuando la fecha ya venció y no fueron cerradas;
-- reprogramación de fecha con registro de la fecha anterior;
-- horario de inicio y fin;
-- observaciones de programación;
-- edición de la ficha completa desde el calendario;
-- vista de solo lectura para rol GERENCIA;
-- nueva capacitación directamente desde Programación.
-
-## Nota
-
-La Etapa 9 utiliza la tabla `capacitaciones` ya creada. No elimina ni modifica los registros existentes; solo agrega campos y amplía el catálogo de estados.
+La fecha es informativa y no desactiva la capacitación automáticamente.

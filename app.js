@@ -1080,8 +1080,6 @@ function collectTrainingPayload() {
     empresa: document.getElementById('trainingCompany').value.trim(),
     area: document.getElementById('trainerArea').value.trim(),
     fecha: document.getElementById('trainingDate').value,
-    hora_inicio: document.getElementById('trainingStartTime')?.value || null,
-    hora_fin: document.getElementById('trainingEndTime')?.value || null,
     tiempo_texto: document.getElementById('trainingDuration').value.trim(),
     firma_expositor: document.getElementById('trainerSignatureData').value,
     responsable_nombre: document.getElementById('responsibleName').value.trim(),
@@ -1107,6 +1105,9 @@ function validateTrainingPayload(payload) {
 async function persistTraining({ continueNext = false } = {}) {
   if (!client || !currentProfile) return;
   const payload = collectTrainingPayload();
+  if (continueNext && ['BORRADOR','PROGRAMADA','REPROGRAMADA','EN CURSO'].includes(String(payload.estado || '').toUpperCase())) {
+    payload.estado = 'ACTIVA';
+  }
   const validation = validateTrainingPayload(payload);
   if (validation) { setTrainingFormMessage(validation); return; }
 
@@ -1134,7 +1135,8 @@ async function persistTraining({ continueNext = false } = {}) {
   }
 
   document.getElementById('trainingId').value = response.data.id;
-  setTrainingMessage(`Borrador ${response.data.codigo || ''} guardado correctamente.`, 'success');
+  document.getElementById('trainingCurrentStatus').value = payload.estado || 'BORRADOR';
+  setTrainingMessage(`${payload.estado === 'ACTIVA' ? 'Capacitación activa' : 'Borrador'} ${response.data.codigo || ''} guardado correctamente.`, 'success');
   if (continueNext) {
     setTrainingFormMessage('Datos de la actividad guardados correctamente.', 'success');
     await openExamStep(response.data.id, response.data.codigo || '', payload);
@@ -1148,8 +1150,6 @@ function clearTrainingForm() {
   trainingForm?.reset();
   document.getElementById('trainingId').value = '';
   document.getElementById('trainingCurrentStatus').value = 'BORRADOR';
-  if (document.getElementById('trainingStartTime')) document.getElementById('trainingStartTime').value = '';
-  if (document.getElementById('trainingEndTime')) document.getElementById('trainingEndTime').value = '';
   document.getElementById('trainingCompany').value = 'EXPLO DRILLING PERU S.R.L.';
   document.getElementById('trainingDate').value = todayISO();
   setSignature('trainer', '');
@@ -1187,17 +1187,19 @@ trainingForm?.addEventListener('submit', e => { e.preventDefault(); persistTrain
 
 
 
-// ============================== ETAPA 9 · PROGRAMACIÓN ==============================
+// ============================== ETAPA 9B · HISTORIAL DE CAPACITACIONES ==============================
 let scheduleRecords = [];
 let scheduleSites = [];
 let scheduleProjects = [];
-let scheduleMonthDate = new Date();
-scheduleMonthDate.setDate(1);
+let trainingLibraryExams = [];
+let trainingLibraryParticipants = [];
+let trainingLibraryQuestions = [];
+let selectedTrainingDetailId = null;
+let selectedTrainingDetailData = null;
 
-const scheduleCalendarGrid = document.getElementById('scheduleCalendarGrid');
-const scheduleTableBody = document.getElementById('scheduleTableBody');
-const scheduleModal = document.getElementById('scheduleModal');
-const scheduleForm = document.getElementById('scheduleForm');
+const trainingLibraryView = document.getElementById('trainingLibraryView');
+const trainingDetailView = document.getElementById('trainingDetailView');
+const trainingLibraryList = document.getElementById('trainingLibraryList');
 
 function scheduleMessage(message = '', type = 'error') {
   const el = document.getElementById('scheduleMessage');
@@ -1206,68 +1208,90 @@ function scheduleMessage(message = '', type = 'error') {
   el.className = `module-message ${message ? 'visible' : ''} ${type}`;
 }
 
-function scheduleFormMessage(message = '', type = 'error') {
-  const el = document.getElementById('scheduleFormMessage');
-  if (!el) return;
-  el.textContent = message;
-  el.className = `form-message ${message ? 'visible' : ''} ${type}`;
-}
-
-function scheduleMonthKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function scheduleMonthLabel(date) {
-  const label = new Intl.DateTimeFormat('es-PE', { month: 'long', year: 'numeric' }).format(date);
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function scheduleIsoDate(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function scheduleFormatTime(value) {
-  if (!value) return '—';
-  return String(value).slice(0,5);
+function scheduleCanManage() {
+  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
 }
 
 function scheduleUnitLabel(item) {
-  if (item.sede_id) {
+  if (item?.sede_id) {
     const s = scheduleSites.find(x => x.id === item.sede_id);
     return s ? `Sede - ${s.nombre}` : 'Sede';
   }
-  if (item.proyecto_id) {
+  if (item?.proyecto_id) {
     const p = scheduleProjects.find(x => x.id === item.proyecto_id);
     return p ? `Proyecto - ${p.nombre}` : 'Proyecto';
   }
   return '—';
 }
 
-function scheduleEffectiveStatus(item) {
-  const state = (item.estado || 'BORRADOR').toUpperCase();
-  const today = todayISO();
-  if (item.fecha && item.fecha < today && !['FINALIZADA','CANCELADA'].includes(state)) return 'PENDIENTE';
-  return state;
+function normalizeTrainingState(state) {
+  const value = String(state || 'BORRADOR').toUpperCase();
+  if (['PROGRAMADA','REPROGRAMADA','EN CURSO','EN_CURSO'].includes(value)) return 'ACTIVA';
+  return value;
 }
 
 function scheduleStatusClass(state) {
   return {
-    'PROGRAMADA':'programmed',
-    'REPROGRAMADA':'reprogrammed',
-    'EN CURSO':'in-progress',
+    'ACTIVA':'active',
     'FINALIZADA':'finished',
     'CANCELADA':'cancelled',
-    'BORRADOR':'draft',
-    'PENDIENTE':'pending'
-  }[state] || 'draft';
+    'BORRADOR':'draft'
+  }[normalizeTrainingState(state)] || 'draft';
 }
 
 function scheduleStatusLabel(state) {
-  return state === 'PENDIENTE' ? 'PENDIENTE' : state;
+  return normalizeTrainingState(state);
 }
 
-function scheduleCanManage() {
-  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
+function trainingExamFor(trainingId) {
+  return trainingLibraryExams.find(x => x.capacitacion_id === trainingId) || null;
+}
+
+function trainingParticipantsFor(trainingId) {
+  return trainingLibraryParticipants.filter(x => x.capacitacion_id === trainingId);
+}
+
+function trainingQuestionCountFor(trainingId) {
+  const exam = trainingExamFor(trainingId);
+  return exam ? trainingLibraryQuestions.filter(x => x.examen_id === exam.id).length : 0;
+}
+
+function trainingPublicUrlFor(item) {
+  const exam = trainingExamFor(item?.id);
+  if (normalizeTrainingState(item?.estado) !== 'ACTIVA') return '';
+  if (!item?.codigo || !exam?.requiere_evaluacion || !exam?.publicado || !exam?.activo) return '';
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('exam', item.codigo);
+  return url.toString();
+}
+
+function trainingMetrics(item) {
+  const participants = trainingParticipantsFor(item.id);
+  const exam = trainingExamFor(item.id);
+  const passGrade = Number(exam?.nota_aprobatoria ?? 16);
+  const graded = participants.filter(x => x.nota !== null && x.nota !== undefined && Number.isFinite(Number(x.nota)));
+  const average = graded.length ? graded.reduce((s,x)=>s+Number(x.nota),0) / graded.length : null;
+  const approved = graded.filter(x => Number(x.nota) >= passGrade).length;
+  const approval = graded.length ? (approved / graded.length) * 100 : null;
+  return {
+    participantCount: participants.length,
+    signedCount: participants.filter(x => !!x.firma).length,
+    questionCount: trainingQuestionCountFor(item.id),
+    average,
+    approved,
+    approval,
+    resultCount: graded.length,
+    passGrade
+  };
+}
+
+function formatTrainingDate(value) {
+  if (!value) return '—';
+  const [y,m,d] = String(value).split('-');
+  if (!d) return value;
+  return `${d}/${m}/${y}`;
 }
 
 function populateScheduleFilters() {
@@ -1286,26 +1310,32 @@ function populateScheduleFilters() {
     classification.innerHTML = '<option value="all">Todas las clasificaciones</option>' + values.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
     if ([...classification.options].some(o => o.value === current)) classification.value = current;
   }
+  const year = document.getElementById('scheduleYearFilter');
+  if (year) {
+    const current = year.value;
+    const years = [...new Set(scheduleRecords.map(x => String(x.fecha || '').slice(0,4)).filter(x => /^\d{4}$/.test(x)))].sort((a,b)=>b.localeCompare(a));
+    year.innerHTML = '<option value="all">Todos los años</option>' + years.map(x => `<option value="${x}">${x}</option>`).join('');
+    if ([...year.options].some(o => o.value === current)) year.value = current;
+  }
 }
 
-function getFilteredScheduleRecords({ monthOnly = true } = {}) {
+function getFilteredScheduleRecords() {
   const unit = document.getElementById('scheduleUnitFilter')?.value || 'all';
   const classification = document.getElementById('scheduleClassificationFilter')?.value || 'all';
   const status = document.getElementById('scheduleStatusFilter')?.value || 'all';
+  const year = document.getElementById('scheduleYearFilter')?.value || 'all';
   const search = (document.getElementById('scheduleSearch')?.value || '').trim().toLowerCase();
-  const month = scheduleMonthKey(scheduleMonthDate);
   return scheduleRecords.filter(item => {
-    if (monthOnly && !String(item.fecha || '').startsWith(month)) return false;
+    if (year !== 'all' && !String(item.fecha || '').startsWith(year)) return false;
     if (unit !== 'all') {
       const [type,id] = unit.split(':');
       if (type === 'sede' && item.sede_id !== id) return false;
       if (type === 'proyecto' && item.proyecto_id !== id) return false;
     }
     if (classification !== 'all' && item.clasificacion !== classification) return false;
-    const effective = scheduleEffectiveStatus(item);
-    if (status !== 'all' && effective !== status && (status !== item.estado)) return false;
+    if (status !== 'all' && normalizeTrainingState(item.estado) !== status) return false;
     if (search) {
-      const haystack = [item.codigo,item.tema,item.expositor_nombre,item.clasificacion,scheduleUnitLabel(item)].filter(Boolean).join(' ').toLowerCase();
+      const haystack = [item.codigo,item.tema,item.expositor_nombre,item.expositor_cargo,item.area,item.clasificacion,scheduleUnitLabel(item)].filter(Boolean).join(' ').toLowerCase();
       if (!haystack.includes(search)) return false;
     }
     return true;
@@ -1313,171 +1343,351 @@ function getFilteredScheduleRecords({ monthOnly = true } = {}) {
 }
 
 function renderScheduleStats() {
-  const records = getFilteredScheduleRecords({ monthOnly: true });
-  const programmed = records.filter(x => ['PROGRAMADA','REPROGRAMADA','EN CURSO'].includes((x.estado || '').toUpperCase()) && scheduleEffectiveStatus(x) !== 'PENDIENTE').length;
-  const finished = records.filter(x => (x.estado || '').toUpperCase() === 'FINALIZADA').length;
-  const pending = records.filter(x => scheduleEffectiveStatus(x) === 'PENDIENTE').length;
-  const cancelled = records.filter(x => (x.estado || '').toUpperCase() === 'CANCELADA').length;
-  document.getElementById('scheduleProgrammedCount').textContent = String(programmed);
-  document.getElementById('scheduleFinishedCount').textContent = String(finished);
-  document.getElementById('schedulePendingCount').textContent = String(pending);
-  document.getElementById('scheduleCancelledCount').textContent = String(cancelled);
-}
-
-function renderScheduleCalendar() {
-  if (!scheduleCalendarGrid) return;
-  const year = scheduleMonthDate.getFullYear();
-  const month = scheduleMonthDate.getMonth();
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const mondayIndex = (first.getDay() + 6) % 7;
-  const today = todayISO();
-  const records = getFilteredScheduleRecords({ monthOnly: true });
-  const byDay = new Map();
-  records.forEach(item => {
-    const day = Number(String(item.fecha).slice(-2));
-    if (!byDay.has(day)) byDay.set(day, []);
-    byDay.get(day).push(item);
+  const records = getFilteredScheduleRecords();
+  const participants = records.flatMap(x => trainingParticipantsFor(x.id));
+  const active = records.filter(x => normalizeTrainingState(x.estado) === 'ACTIVA').length;
+  const graded = participants.filter(x => x.nota !== null && x.nota !== undefined);
+  let approved = 0;
+  graded.forEach(p => {
+    const training = records.find(x => x.id === p.capacitacion_id);
+    const pass = Number(trainingExamFor(training?.id)?.nota_aprobatoria ?? 16);
+    if (Number(p.nota) >= pass) approved++;
   });
-  byDay.forEach(list => list.sort((a,b) => String(a.hora_inicio || '99:99').localeCompare(String(b.hora_inicio || '99:99'))));
-
-  let cells = '';
-  for (let i=0; i<mondayIndex; i++) cells += '<div class="schedule-day schedule-day-empty"></div>';
-  for (let day=1; day<=daysInMonth; day++) {
-    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const dayRecords = byDay.get(day) || [];
-    const events = dayRecords.slice(0,3).map(item => {
-      const state = scheduleEffectiveStatus(item);
-      const time = item.hora_inicio ? `<span>${scheduleFormatTime(item.hora_inicio)}</span>` : '';
-      return `<button class="schedule-event ${scheduleStatusClass(state)}" type="button" data-schedule-open="${item.id}" title="${escapeHtml(item.tema || '')}">${time}<b>${escapeHtml(item.tema || 'Sin tema')}</b></button>`;
-    }).join('');
-    const more = dayRecords.length > 3 ? `<button class="schedule-more" type="button" data-schedule-day="${iso}">+${dayRecords.length-3} más</button>` : '';
-    cells += `<div class="schedule-day ${iso === today ? 'today' : ''}"><div class="schedule-day-number"><span>${day}</span>${iso === today ? '<small>HOY</small>' : ''}</div><div class="schedule-day-events">${events}${more}</div></div>`;
-  }
-  const used = mondayIndex + daysInMonth;
-  const trailing = (7 - (used % 7)) % 7;
-  for (let i=0; i<trailing; i++) cells += '<div class="schedule-day schedule-day-empty"></div>';
-  scheduleCalendarGrid.innerHTML = cells || '<div class="schedule-calendar-loading">Sin registros.</div>';
+  document.getElementById('scheduleTotalCount').textContent = String(records.length);
+  document.getElementById('scheduleActiveCount').textContent = String(active);
+  document.getElementById('scheduleParticipantCount').textContent = String(participants.length);
+  document.getElementById('scheduleApprovalRate').textContent = graded.length ? `${Math.round(approved / graded.length * 100)}%` : '—';
 }
 
-function renderScheduleTable() {
-  if (!scheduleTableBody) return;
-  const records = getFilteredScheduleRecords({ monthOnly: true }).sort((a,b) => `${a.fecha || ''} ${a.hora_inicio || ''}`.localeCompare(`${b.fecha || ''} ${b.hora_inicio || ''}`));
-  document.getElementById('scheduleResultCount').textContent = `${records.length} ${records.length === 1 ? 'registro' : 'registros'}`;
+function renderScheduleCards() {
+  if (!trainingLibraryList) return;
+  const records = getFilteredScheduleRecords().sort((a,b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  const counter = document.getElementById('scheduleResultCount');
+  if (counter) counter.textContent = `${records.length} ${records.length === 1 ? 'registro' : 'registros'}`;
   if (!records.length) {
-    scheduleTableBody.innerHTML = '<tr><td colspan="9" class="table-empty">No hay capacitaciones para los filtros seleccionados.</td></tr>';
+    trainingLibraryList.innerHTML = '<div class="training-library-empty">No hay capacitaciones para los filtros seleccionados.</div>';
     return;
   }
-  scheduleTableBody.innerHTML = records.map(item => {
-    const state = scheduleEffectiveStatus(item);
-    const time = item.hora_inicio ? `${scheduleFormatTime(item.hora_inicio)}${item.hora_fin ? ' - '+scheduleFormatTime(item.hora_fin) : ''}` : '—';
-    return `<tr>
-      <td>${formatDatePE(item.fecha)}</td>
-      <td>${escapeHtml(time)}</td>
-      <td><strong>${escapeHtml(item.codigo || '—')}</strong></td>
-      <td>${escapeHtml(item.clasificacion || '—')}</td>
-      <td class="schedule-topic-cell">${escapeHtml(item.tema || '—')}</td>
-      <td>${escapeHtml(scheduleUnitLabel(item))}</td>
-      <td>${escapeHtml(item.expositor_nombre || '—')}</td>
-      <td><span class="schedule-status ${scheduleStatusClass(state)}">${escapeHtml(scheduleStatusLabel(state))}</span></td>
-      <td><div class="schedule-row-actions"><button class="table-link" type="button" data-schedule-open="${item.id}">${scheduleCanManage() ? 'Gestionar' : 'Ver'}</button>${scheduleCanManage() ? `<button class="table-link" type="button" data-schedule-edit="${item.id}">Editar</button>` : ''}</div></td>
-    </tr>`;
+
+  trainingLibraryList.innerHTML = records.map(item => {
+    const metrics = trainingMetrics(item);
+    const link = trainingPublicUrlFor(item);
+    const state = scheduleStatusLabel(item.estado);
+    const canManage = scheduleCanManage();
+    return `<article class="training-history-card">
+      <div class="training-history-main">
+        <div class="training-history-icon">▤</div>
+        <div class="training-history-content">
+          <div class="training-history-title-row">
+            <div>
+              <h3>${escapeHtml(item.tema || 'Sin tema')}</h3>
+              <p><strong>Expositor:</strong> ${escapeHtml(item.expositor_nombre || '—')} <span>· ${escapeHtml(item.expositor_cargo || '—')}</span></p>
+            </div>
+            <div class="training-history-badges">
+              <span class="classification-badge">${escapeHtml(item.clasificacion || 'CAPACITACIÓN')}</span>
+              <span class="training-status-badge ${scheduleStatusClass(state)}">${escapeHtml(state)}</span>
+            </div>
+          </div>
+          <div class="training-history-meta">
+            <span>▣ ${escapeHtml(formatTrainingDate(item.fecha))}</span>
+            <span>♙ ${metrics.participantCount} participante${metrics.participantCount === 1 ? '' : 's'}</span>
+            <span>▧ ${metrics.questionCount} pregunta${metrics.questionCount === 1 ? '' : 's'}</span>
+            <span>⌖ ${escapeHtml(scheduleUnitLabel(item))}</span>
+            <span>Área: ${escapeHtml(item.area || '—')}</span>
+          </div>
+          <div class="training-history-kpis">
+            <span class="history-kpi ${metrics.average !== null ? 'good' : ''}">Nota promedio: <b>${metrics.average === null ? '—' : metrics.average.toFixed(1)}</b></span>
+            <span class="history-kpi ${metrics.approval !== null ? 'good' : ''}">Aprobación: <b>${metrics.approval === null ? '—' : `${Math.round(metrics.approval)}%`}</b></span>
+            <span class="history-kpi">Con firma: <b>${metrics.signedCount}/${metrics.participantCount}</b></span>
+          </div>
+        </div>
+      </div>
+      <div class="training-history-actions">
+        <button class="history-action share" type="button" data-training-whatsapp="${item.id}" ${link ? '' : 'disabled'} title="Compartir por WhatsApp">⌘</button>
+        <button class="history-action copy" type="button" data-training-copy="${item.id}" ${link ? '' : 'disabled'} title="Copiar enlace">▣</button>
+        <button class="history-detail-btn" type="button" data-training-detail="${item.id}">◉ Ver detalles</button>
+        ${canManage ? `<button class="history-edit-btn" type="button" data-training-edit="${item.id}">Editar</button>` : ''}
+      </div>
+    </article>`;
   }).join('');
 }
 
 function renderScheduleModule() {
-  document.getElementById('scheduleMonthLabel').textContent = scheduleMonthLabel(scheduleMonthDate);
   populateScheduleFilters();
   renderScheduleStats();
-  renderScheduleCalendar();
-  renderScheduleTable();
+  renderScheduleCards();
 }
 
 async function loadScheduleModule(force = false) {
-  if (!client || !currentProfile) return;
+  if (!client) return;
   if (scheduleRecords.length && !force) { renderScheduleModule(); return; }
   scheduleMessage('');
-  if (scheduleCalendarGrid) scheduleCalendarGrid.innerHTML = '<div class="schedule-calendar-loading">Cargando calendario…</div>';
-  const [trainings, sites, projects] = await Promise.all([
-    client.from('capacitaciones').select('id,codigo,clasificacion,tema,expositor_nombre,sede_id,proyecto_id,fecha,hora_inicio,hora_fin,tiempo_texto,estado,observacion_programacion,fecha_programacion_anterior,ultima_reprogramacion').order('fecha',{ascending:true}).limit(1500),
+  if (trainingLibraryList) trainingLibraryList.innerHTML = '<div class="training-library-empty">Cargando capacitaciones…</div>';
+  const [trainings, sites, projects, exams, participants, questions] = await Promise.all([
+    client.from('capacitaciones').select('id,codigo,clasificacion,tema,expositor_nombre,expositor_cargo,empresa,area,sede_id,proyecto_id,fecha,tiempo_texto,estado,responsable_nombre,responsable_cargo,responsable_dni,firma_expositor,firma_responsable,created_at,updated_at').order('fecha',{ascending:false}).limit(2000),
     client.from('sedes').select('id,nombre,activo').order('nombre'),
-    client.from('proyectos').select('id,nombre,cliente,activo').order('nombre')
+    client.from('proyectos').select('id,nombre,cliente,activo').order('nombre'),
+    client.from('examenes').select('id,capacitacion_id,titulo,requiere_evaluacion,nota_aprobatoria,max_intentos,mostrar_resultado,publicado,activo'),
+    client.from('capacitacion_participantes').select('id,capacitacion_id,trabajador_id,dni,apellidos_nombres,puesto,area,firma,fecha_firma,nota,created_at'),
+    client.from('examen_preguntas').select('id,examen_id,orden,activo')
   ]);
   if (trainings.error) {
     console.error(trainings.error);
-    const missing = /hora_inicio|observacion_programacion|fecha_programacion_anterior/i.test(trainings.error.message || '');
-    scheduleMessage(missing ? 'Primero ejecuta el SQL de la Etapa 9 en Supabase.' : 'No fue posible cargar la programación.');
+    scheduleMessage('No fue posible cargar las capacitaciones.');
     return;
   }
   scheduleRecords = trainings.data || [];
   scheduleSites = sites.data || [];
   scheduleProjects = projects.data || [];
+  trainingLibraryExams = exams.error ? [] : (exams.data || []);
+  trainingLibraryParticipants = participants.error ? [] : (participants.data || []);
+  trainingLibraryQuestions = questions.error ? [] : (questions.data || []);
   renderScheduleModule();
 }
 
-function openScheduleModal(id) {
-  const item = scheduleRecords.find(x => x.id === id);
-  if (!item || !scheduleModal) return;
-  scheduleFormMessage('');
-  document.getElementById('scheduleTrainingId').value = item.id;
-  document.getElementById('scheduleOriginalDate').value = item.fecha || '';
-  document.getElementById('scheduleModalCode').textContent = item.codigo || '—';
-  document.getElementById('scheduleModalTopic').textContent = item.tema || '—';
-  document.getElementById('scheduleModalUnit').textContent = scheduleUnitLabel(item);
-  document.getElementById('scheduleDate').value = item.fecha || '';
-  document.getElementById('scheduleState').value = (item.estado || 'BORRADOR').toUpperCase();
-  document.getElementById('scheduleStartTime').value = item.hora_inicio ? String(item.hora_inicio).slice(0,5) : '';
-  document.getElementById('scheduleEndTime').value = item.hora_fin ? String(item.hora_fin).slice(0,5) : '';
-  document.getElementById('scheduleObservation').value = item.observacion_programacion || '';
-  const canManage = scheduleCanManage();
-  ['scheduleDate','scheduleState','scheduleStartTime','scheduleEndTime','scheduleObservation'].forEach(key => { const el=document.getElementById(key); if (el) el.disabled=!canManage; });
-  document.getElementById('saveScheduleButton')?.classList.toggle('hidden', !canManage);
-  document.getElementById('editScheduleTrainingButton')?.classList.toggle('hidden', !canManage);
-  document.getElementById('scheduleModalTitle').textContent = canManage ? 'Actualizar capacitación' : 'Detalle de capacitación';
-  scheduleModal.classList.remove('hidden');
+function showTrainingLibrary() {
+  selectedTrainingDetailId = null;
+  selectedTrainingDetailData = null;
+  trainingDetailView?.classList.add('hidden');
+  trainingLibraryView?.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function closeScheduleModal() {
-  scheduleModal?.classList.add('hidden');
-  scheduleFormMessage('');
+function trainingDetailTab(tab) {
+  document.querySelectorAll('.training-detail-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.trainingDetailTab === tab));
+  const map = {
+    participants: 'trainingDetailParticipants',
+    exam: 'trainingDetailExam',
+    results: 'trainingDetailResults',
+    document: 'trainingDetailDocument'
+  };
+  Object.entries(map).forEach(([key,id]) => document.getElementById(id)?.classList.toggle('hidden', key !== tab));
 }
 
-async function saveScheduleChanges(event) {
-  event.preventDefault();
+function renderDetailParticipants(participants) {
+  const body = document.getElementById('detailParticipantsBody');
+  if (!body) return;
+  if (!participants.length) {
+    body.innerHTML = '<tr><td colspan="8" class="table-empty">Aún no hay participantes evaluados.</td></tr>';
+    return;
+  }
+  body.innerHTML = participants.map((p,i) => {
+    const completed = !!p.firma;
+    const signature = completed ? `<img class="preview-signature" src="${p.firma}" alt="Firma">` : '<span class="grade-pill pending">Pendiente</span>';
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${escapeHtml(p.apellidos_nombres || '—')}</strong></td>
+      <td>${escapeHtml(p.dni || '—')}</td>
+      <td>${escapeHtml(p.puesto || '—')}</td>
+      <td>${escapeHtml(p.area || '—')}</td>
+      <td>${signature}</td>
+      <td>${p.nota == null ? '<span class="grade-pill pending">Pendiente</span>' : `<span class="grade-pill">${Number(p.nota).toFixed(2).replace(/\.00$/,'')}</span>`}</td>
+      <td><span class="status-pill ${completed ? 'completed' : 'evaluated'}">${completed ? 'COMPLETADO' : 'EVALUADO'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderDetailExam(exam, questions) {
+  const box = document.getElementById('detailExamQuestions');
+  if (!box) return;
+  if (!exam?.requiere_evaluacion) {
+    box.innerHTML = '<div class="training-library-empty">Esta capacitación no requiere examen.</div>';
+    return;
+  }
+  if (!questions.length) {
+    box.innerHTML = '<div class="training-library-empty">El examen todavía no tiene preguntas.</div>';
+    return;
+  }
+  box.innerHTML = questions.map((q,index) => `<article class="detail-exam-card">
+    <div class="detail-exam-question-head"><strong>${index+1}. ${escapeHtml(q.enunciado || '')}</strong><span>${q.examen_opciones?.length || 0} alternativas</span></div>
+    <div class="detail-exam-options">
+      ${(q.examen_opciones || []).sort((a,b)=>a.orden-b.orden).map((o,oi) => `<div class="detail-exam-option ${o.es_correcta ? 'correct' : ''}"><b>${String.fromCharCode(65+oi)})</b> ${escapeHtml(o.texto || '')}${o.es_correcta ? '<small>Respuesta correcta</small>' : ''}</div>`).join('')}
+    </div>
+  </article>`).join('');
+}
+
+function renderDetailResults(participants, attempts, responses, exam, totalQuestions) {
+  const body = document.getElementById('detailResultsBody');
+  if (!body) return;
+  if (!exam?.requiere_evaluacion || !attempts.length) {
+    body.innerHTML = '<tr><td colspan="6" class="table-empty">Aún no hay resultados de evaluación.</td></tr>';
+    return;
+  }
+  const participantMap = new Map(participants.map(p => [p.id,p]));
+  const grouped = new Map();
+  attempts.forEach(a => {
+    if (!grouped.has(a.participante_id)) grouped.set(a.participante_id, []);
+    grouped.get(a.participante_id).push(a);
+  });
+  const rows = [];
+  grouped.forEach((list, participantId) => {
+    list.sort((a,b) => Number(b.nota)-Number(a.nota) || String(b.finalizado_at||'').localeCompare(String(a.finalizado_at||'')));
+    const best = list[0];
+    const p = participantMap.get(participantId) || {};
+    const correct = responses.filter(r => r.intento_id === best.id && r.es_correcta).length;
+    rows.push({p,best,correct,attempts:list.length});
+  });
+  rows.sort((a,b) => String(a.p.apellidos_nombres || '').localeCompare(String(b.p.apellidos_nombres || ''),'es'));
+  body.innerHTML = rows.map(({p,best,correct,attempts:used}) => `<tr>
+    <td><strong>${escapeHtml(p.apellidos_nombres || '—')}</strong><small class="result-dni">${escapeHtml(p.dni || '')}</small></td>
+    <td>${correct} / ${totalQuestions}</td>
+    <td>${Number(best.nota).toFixed(1)} / 20.0</td>
+    <td><strong class="result-grade ${best.aprobado ? 'approved' : 'failed'}">${Number(best.nota).toFixed(1)}</strong></td>
+    <td>${used} / ${exam.max_intentos}</td>
+    <td><span class="result-status ${best.aprobado ? 'approved' : 'failed'}">${best.aprobado ? 'APROBADO' : 'DESAPROBADO'}</span></td>
+  </tr>`).join('');
+}
+
+function renderDocumentPreview(training, participants) {
+  const box = document.getElementById('detailDocumentPreview');
+  if (!box) return;
+  const completed = participants.filter(x => !!x.firma);
+  const classificationOptions = ['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
+  const rows = completed.length ? completed.map((p,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(p.apellidos_nombres||'')}</td><td>${escapeHtml(p.dni||'')}</td><td>${escapeHtml(p.puesto||'')}</td><td>${escapeHtml(p.area||'')}</td><td>${p.firma ? `<img src="${p.firma}" alt="Firma">` : ''}</td><td>${p.nota==null?'N.A.':Number(p.nota).toFixed(2).replace(/\.00$/,'')}</td></tr>`).join('') : '<tr><td colspan="7">Aún no hay participantes con firma registrada.</td></tr>';
+  box.innerHTML = `<div class="document-preview-page">
+    <div class="document-preview-header">
+      <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú">
+      <div><strong>SIG - SSOMAC</strong><span>REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA</span></div>
+      <div class="document-preview-code"><small>Código</small><b>${escapeHtml(training.codigo || '—')}</b><small>Versión 7</small></div>
+    </div>
+    <div class="document-preview-employer"><b>EXPLO DRILLING PERU S.R.L.</b><span>RUC 20572775851</span><span>Perforación Diamantina</span></div>
+    <div class="document-preview-training">
+      <div class="document-preview-classification"><b>CLASIFICACIÓN</b>${classificationOptions.map(x=>`<span>${x===training.clasificacion?'☒':'☐'} ${escapeHtml(x)}</span>`).join('')}</div>
+      <div class="document-preview-fields">
+        <p><b>TEMA:</b> ${escapeHtml(training.tema || '—')}</p>
+        <p><b>EXPOSITOR:</b> ${escapeHtml(training.expositor_nombre || '—')}</p>
+        <p><b>CARGO:</b> ${escapeHtml(training.expositor_cargo || '—')}</p>
+        <p><b>EMPRESA:</b> ${escapeHtml(training.empresa || '—')}</p>
+        <p><b>ÁREA:</b> ${escapeHtml(training.area || '—')}</p>
+      </div>
+      <div class="document-preview-fields">
+        <p><b>DNI:</b> ${escapeHtml(training.expositor_dni || '—')}</p>
+        <p><b>FECHA:</b> ${escapeHtml(formatTrainingDate(training.fecha))}</p>
+        <p><b>TIEMPO:</b> ${escapeHtml(training.tiempo_texto || '—')}</p>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="document-preview-table"><thead><tr><th>N°</th><th>APELLIDOS Y NOMBRES</th><th>DNI</th><th>PUESTO</th><th>ÁREA</th><th>FIRMA</th><th>NOTA</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="document-preview-responsible"><b>RESPONSABLE DEL REGISTRO</b><span>Nombre: ${escapeHtml(training.responsable_nombre || '—')}</span><span>Cargo: ${escapeHtml(training.responsable_cargo || '—')}</span></div>
+  </div>`;
+}
+
+async function openTrainingDetail(id) {
   if (!client) return;
-  const id = document.getElementById('scheduleTrainingId').value;
   const item = scheduleRecords.find(x => x.id === id);
   if (!item) return;
-  const date = document.getElementById('scheduleDate').value;
-  let state = document.getElementById('scheduleState').value;
-  const start = document.getElementById('scheduleStartTime').value || null;
-  const end = document.getElementById('scheduleEndTime').value || null;
-  const observation = document.getElementById('scheduleObservation').value.trim() || null;
-  if (!date) { scheduleFormMessage('Selecciona la fecha de la capacitación.'); return; }
-  if (start && end && end <= start) { scheduleFormMessage('La hora de fin debe ser posterior a la hora de inicio.'); return; }
-  const dateChanged = item.fecha && item.fecha !== date;
-  if (dateChanged && state === 'PROGRAMADA') state = 'REPROGRAMADA';
-  const payload = {
-    fecha: date,
-    hora_inicio: start,
-    hora_fin: end,
-    estado: state,
-    observacion_programacion: observation
-  };
-  if (dateChanged) {
-    payload.fecha_programacion_anterior = item.fecha;
-    payload.ultima_reprogramacion = new Date().toISOString();
+  selectedTrainingDetailId = id;
+  trainingLibraryView?.classList.add('hidden');
+  trainingDetailView?.classList.remove('hidden');
+  trainingDetailTab('participants');
+
+  const existingExam = trainingExamFor(id);
+  const [trainingRes, participantsRes, questionsRes, attemptsRes] = await Promise.all([
+    client.from('capacitaciones').select('*').eq('id',id).single(),
+    client.from('capacitacion_participantes').select('id,capacitacion_id,trabajador_id,dni,apellidos_nombres,puesto,area,firma,fecha_firma,nota,created_at').eq('capacitacion_id',id).order('created_at',{ascending:true}),
+    existingExam ? client.from('examen_preguntas').select('id,examen_id,orden,enunciado,activo,examen_opciones(id,orden,texto,es_correcta)').eq('examen_id',existingExam.id).eq('activo',true).order('orden',{ascending:true}) : Promise.resolve({data:[],error:null}),
+    existingExam ? client.from('examen_intentos').select('id,examen_id,participante_id,numero_intento,nota,aprobado,iniciado_at,finalizado_at').eq('examen_id',existingExam.id).order('finalizado_at',{ascending:true}) : Promise.resolve({data:[],error:null})
+  ]);
+  if (trainingRes.error || !trainingRes.data) {
+    console.error(trainingRes.error);
+    scheduleMessage('No fue posible abrir el detalle de la capacitación.');
+    showTrainingLibrary();
+    return;
   }
-  const button = document.getElementById('saveScheduleButton');
-  const label = button.textContent;
+  const training = trainingRes.data;
+  const participants = participantsRes.data || [];
+  const questions = questionsRes.data || [];
+  const attempts = attemptsRes.data || [];
+  let responses = [];
+  const attemptIds = attempts.map(x=>x.id);
+  if (attemptIds.length) {
+    const responseRes = await client.from('examen_respuestas').select('id,intento_id,pregunta_id,opcion_id,es_correcta').in('intento_id',attemptIds);
+    if (!responseRes.error) responses = responseRes.data || [];
+  }
+  const exam = existingExam;
+  selectedTrainingDetailData = {training,participants,questions,attempts,responses,exam};
+
+  activeTrainingId = training.id;
+  activeTrainingCode = training.codigo || '';
+  activeTrainingPayload = training;
+  activeExamId = exam?.id || null;
+  activeExamConfig = exam || null;
+
+  document.getElementById('detailTrainingTitle').textContent = training.tema || '—';
+  document.getElementById('detailTrainerName').textContent = training.expositor_nombre || '—';
+  document.getElementById('detailTrainerPosition').textContent = training.expositor_cargo || '—';
+  document.getElementById('detailCompany').textContent = training.empresa || '—';
+  document.getElementById('detailArea').textContent = training.area || '—';
+  document.getElementById('detailTrainingDate').textContent = formatTrainingDate(training.fecha);
+  document.getElementById('detailTrainingDuration').textContent = training.tiempo_texto || '—';
+  document.getElementById('detailTrainingUnit').textContent = scheduleUnitLabel(training);
+  document.getElementById('detailTrainingCode').textContent = training.codigo || '—';
+  document.getElementById('detailTrainingClassification').textContent = training.clasificacion || 'CAPACITACIÓN';
+  const state = normalizeTrainingState(training.estado);
+  const stateBadge = document.getElementById('detailTrainingStatus');
+  stateBadge.textContent = state;
+  stateBadge.className = `training-status-badge ${scheduleStatusClass(state)}`;
+
+  const metrics = (()=>{
+    const pass = Number(exam?.nota_aprobatoria ?? 16);
+    const graded = participants.filter(x=>x.nota!==null && x.nota!==undefined);
+    const avg = graded.length ? graded.reduce((s,x)=>s+Number(x.nota),0)/graded.length : null;
+    const approved = graded.filter(x=>Number(x.nota)>=pass).length;
+    return {avg,approval:graded.length?approved/graded.length*100:null,graded:graded.length};
+  })();
+  document.getElementById('detailParticipantCount').textContent = String(participants.length);
+  document.getElementById('detailQuestionCount').textContent = String(questions.length);
+  document.getElementById('detailAverageGrade').textContent = metrics.avg===null?'—':metrics.avg.toFixed(1);
+  document.getElementById('detailApprovalRate').textContent = metrics.approval===null?'—':`${Math.round(metrics.approval)}%`;
+  document.getElementById('detailParticipantsTabCount').textContent = `(${participants.length})`;
+  document.getElementById('detailExamTabCount').textContent = `(${questions.length})`;
+  document.getElementById('detailResultsTabCount').textContent = `(${new Set(attempts.map(x=>x.participante_id)).size})`;
+
+  const link = trainingPublicUrlFor({...item,...training});
+  const linkInput = document.getElementById('detailPublicLink');
+  linkInput.value = link || 'El examen no está publicado o la capacitación no está activa.';
+  document.getElementById('detailCopyLinkButton').disabled = !link;
+  document.getElementById('detailWhatsappButton').disabled = !link;
+  document.getElementById('detailShareBox').classList.toggle('disabled', !link);
+
+  const toggle = document.getElementById('detailToggleStateButton');
+  const canManage = scheduleCanManage();
+  document.getElementById('detailEditTrainingButton').classList.toggle('hidden', !canManage);
+  toggle.classList.toggle('hidden', !canManage);
+  toggle.textContent = state === 'ACTIVA' ? 'Finalizar capacitación' : (state === 'FINALIZADA' || state === 'CANCELADA' ? 'Reactivar capacitación' : 'Activar capacitación');
+  toggle.className = state === 'ACTIVA' ? 'danger-outline-btn' : 'primary-btn';
+
+  renderDetailParticipants(participants);
+  renderDetailExam(exam, questions);
+  renderDetailResults(participants, attempts, responses, exam, questions.length);
+  renderDocumentPreview(training, participants);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function toggleSelectedTrainingState() {
+  if (!client || !selectedTrainingDetailData || !scheduleCanManage()) return;
+  const training = selectedTrainingDetailData.training;
+  const current = normalizeTrainingState(training.estado);
+  const newState = current === 'ACTIVA' ? 'FINALIZADA' : 'ACTIVA';
+  const confirmText = newState === 'FINALIZADA'
+    ? '¿Finalizar esta capacitación? El enlace público dejará de estar disponible hasta que la reactives.'
+    : '¿Reactivar esta capacitación? El examen se volverá a publicar si existe.';
+  if (!window.confirm(confirmText)) return;
+  const button = document.getElementById('detailToggleStateButton');
+  const old = button.textContent;
   button.disabled = true; button.textContent = 'Guardando…';
-  const { data, error } = await client.from('capacitaciones').update(payload).eq('id', id).select('id').single();
-  button.disabled = false; button.textContent = label;
-  if (error) { console.error(error); scheduleFormMessage('No fue posible guardar los cambios. Verifica tus permisos.'); return; }
-  closeScheduleModal();
-  scheduleMessage(dateChanged ? 'Capacitación reprogramada correctamente.' : 'Programación actualizada correctamente.', 'success');
+  const trainingUpdate = await client.from('capacitaciones').update({estado:newState}).eq('id',training.id);
+  if (!trainingUpdate.error && selectedTrainingDetailData.exam) {
+    await client.from('examenes').update({publicado:newState==='ACTIVA', activo:true}).eq('id',selectedTrainingDetailData.exam.id);
+  }
+  button.disabled = false; button.textContent = old;
+  if (trainingUpdate.error) {
+    console.error(trainingUpdate.error);
+    alert('No fue posible cambiar el estado de la capacitación.');
+    return;
+  }
   scheduleRecords = [];
   await loadScheduleModule(true);
+  await openTrainingDetail(training.id);
 }
 
 async function editTrainingFromSchedule(id) {
@@ -1488,7 +1698,7 @@ async function editTrainingFromSchedule(id) {
   showSection('nueva-capacitacion');
   showTrainingDataStep();
   document.getElementById('trainingId').value = data.id;
-  document.getElementById('trainingCurrentStatus').value = data.estado || 'BORRADOR';
+  document.getElementById('trainingCurrentStatus').value = normalizeTrainingState(data.estado || 'BORRADOR');
   document.getElementById('trainingClassification').value = data.clasificacion || 'CAPACITACIÓN';
   renderTrainingUnitOptions();
   const unitValue = data.sede_id ? `sede:${data.sede_id}` : (data.proyecto_id ? `proyecto:${data.proyecto_id}` : '');
@@ -1500,45 +1710,62 @@ async function editTrainingFromSchedule(id) {
   document.getElementById('trainingCompany').value = data.empresa || 'EXPLO DRILLING PERU S.R.L.';
   document.getElementById('trainerArea').value = data.area || '';
   document.getElementById('trainingDate').value = data.fecha || '';
-  document.getElementById('trainingStartTime').value = data.hora_inicio ? String(data.hora_inicio).slice(0,5) : '';
-  document.getElementById('trainingEndTime').value = data.hora_fin ? String(data.hora_fin).slice(0,5) : '';
   document.getElementById('trainingDuration').value = data.tiempo_texto || '';
   document.getElementById('responsibleName').value = data.responsable_nombre || '';
   document.getElementById('responsiblePosition').value = data.responsable_cargo || '';
   document.getElementById('responsibleDni').value = data.responsable_dni || '';
   setSignature('trainer', data.firma_expositor || '');
   setSignature('responsible', data.firma_responsable || '');
-  setTrainingFormMessage(`Editando ${data.codigo || 'capacitación'}. Al guardar se conservará su estado ${data.estado || 'BORRADOR'}.`, 'success');
+  setTrainingFormMessage(`Editando ${data.codigo || 'capacitación'}. Estado actual: ${normalizeTrainingState(data.estado)}.`, 'success');
 }
 
-scheduleForm?.addEventListener('submit', saveScheduleChanges);
-document.getElementById('closeScheduleModal')?.addEventListener('click', closeScheduleModal);
-document.getElementById('cancelScheduleModal')?.addEventListener('click', closeScheduleModal);
-scheduleModal?.addEventListener('click', e => { if (e.target === scheduleModal) closeScheduleModal(); });
-document.getElementById('editScheduleTrainingButton')?.addEventListener('click', () => {
-  const id = document.getElementById('scheduleTrainingId').value;
-  closeScheduleModal();
-  editTrainingFromSchedule(id);
-});
+function exportDetailParticipantsCsv() {
+  const data = selectedTrainingDetailData;
+  if (!data?.participants?.length) { alert('No hay participantes para exportar.'); return; }
+  const rows = [['N°','Apellidos y nombres','DNI','Puesto','Área','Nota','Estado']];
+  data.participants.forEach((p,i)=>rows.push([i+1,p.apellidos_nombres||'',p.dni||'',p.puesto||'',p.area||'',p.nota==null?'':p.nota,p.firma?'COMPLETADO':'EVALUADO']));
+  const csv = '\ufeff' + rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`${data.training.codigo || 'capacitacion'}_participantes.csv`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),500);
+}
+
+function openTrainingWhatsapp(id) {
+  const item = scheduleRecords.find(x=>x.id===id);
+  const link = trainingPublicUrlFor(item);
+  if (!link) return;
+  const text = `Explo Drilling Perú - ${item.tema || 'Capacitación'}\nIngresa al siguiente enlace para registrarte y realizar la evaluación:\n${link}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
+}
+
 document.getElementById('scheduleNewTrainingButton')?.addEventListener('click', () => { showSection('nueva-capacitacion'); clearTrainingFormWithoutConfirm(); });
-document.getElementById('schedulePrevMonth')?.addEventListener('click', () => { scheduleMonthDate.setMonth(scheduleMonthDate.getMonth()-1); renderScheduleModule(); });
-document.getElementById('scheduleNextMonth')?.addEventListener('click', () => { scheduleMonthDate.setMonth(scheduleMonthDate.getMonth()+1); renderScheduleModule(); });
-document.getElementById('scheduleTodayButton')?.addEventListener('click', () => { const d=new Date(); scheduleMonthDate=new Date(d.getFullYear(),d.getMonth(),1); renderScheduleModule(); });
 document.getElementById('scheduleRefreshButton')?.addEventListener('click', () => { scheduleRecords=[]; loadScheduleModule(true); });
-['scheduleUnitFilter','scheduleClassificationFilter','scheduleStatusFilter'].forEach(id => document.getElementById(id)?.addEventListener('change', renderScheduleModule));
+['scheduleYearFilter','scheduleUnitFilter','scheduleClassificationFilter','scheduleStatusFilter'].forEach(id => document.getElementById(id)?.addEventListener('change', renderScheduleModule));
 document.getElementById('scheduleSearch')?.addEventListener('input', renderScheduleModule);
+document.getElementById('backTrainingLibraryButton')?.addEventListener('click', showTrainingLibrary);
+document.getElementById('detailToggleStateButton')?.addEventListener('click', toggleSelectedTrainingState);
+document.getElementById('detailEditTrainingButton')?.addEventListener('click', () => { if (selectedTrainingDetailId) editTrainingFromSchedule(selectedTrainingDetailId); });
+document.getElementById('exportDetailParticipantsButton')?.addEventListener('click', exportDetailParticipantsCsv);
+document.getElementById('detailDownloadPdfButton')?.addEventListener('click', downloadTrainingPdf);
+document.getElementById('detailCopyLinkButton')?.addEventListener('click', () => { const value=document.getElementById('detailPublicLink')?.value || ''; if(value && value.startsWith('http')) copyText(value,'Enlace copiado.'); });
+document.getElementById('detailWhatsappButton')?.addEventListener('click', () => { if(selectedTrainingDetailId) openTrainingWhatsapp(selectedTrainingDetailId); });
+document.querySelectorAll('.training-detail-tab').forEach(btn => btn.addEventListener('click',()=>trainingDetailTab(btn.dataset.trainingDetailTab)));
+
 document.getElementById('programacion')?.addEventListener('click', event => {
-  const open = event.target.closest('[data-schedule-open]');
-  if (open) { openScheduleModal(open.dataset.scheduleOpen); return; }
-  const edit = event.target.closest('[data-schedule-edit]');
-  if (edit) { editTrainingFromSchedule(edit.dataset.scheduleEdit); return; }
-  const more = event.target.closest('[data-schedule-day]');
-  if (more) {
-    document.getElementById('scheduleSearch').value = '';
-    const date = more.dataset.scheduleDay;
-    const dayRecords = getFilteredScheduleRecords({ monthOnly:true }).filter(x => x.fecha === date);
-    if (dayRecords[0]) openScheduleModal(dayRecords[0].id);
+  const detail = event.target.closest('[data-training-detail]');
+  if (detail) { openTrainingDetail(detail.dataset.trainingDetail); return; }
+  const edit = event.target.closest('[data-training-edit]');
+  if (edit) { editTrainingFromSchedule(edit.dataset.trainingEdit); return; }
+  const copy = event.target.closest('[data-training-copy]');
+  if (copy) {
+    const item = scheduleRecords.find(x=>x.id===copy.dataset.trainingCopy);
+    const link = trainingPublicUrlFor(item);
+    if (link) copyText(link,'Enlace copiado.');
+    return;
   }
+  const whats = event.target.closest('[data-training-whatsapp]');
+  if (whats) { openTrainingWhatsapp(whats.dataset.trainingWhatsapp); return; }
 });
 
 function clearTrainingFormWithoutConfirm() {
@@ -1547,8 +1774,6 @@ function clearTrainingFormWithoutConfirm() {
   document.getElementById('trainingCurrentStatus').value = 'BORRADOR';
   document.getElementById('trainingCompany').value = 'EXPLO DRILLING PERU S.R.L.';
   document.getElementById('trainingDate').value = todayISO();
-  if (document.getElementById('trainingStartTime')) document.getElementById('trainingStartTime').value = '';
-  if (document.getElementById('trainingEndTime')) document.getElementById('trainingEndTime').value = '';
   setSignature('trainer', '');
   setSignature('responsible', '');
   setTrainingFormMessage('');

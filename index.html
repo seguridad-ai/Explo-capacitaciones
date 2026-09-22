@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260922-12" />
+  <link rel="stylesheet" href="styles.css?v=20260922-13" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -203,7 +203,7 @@
 
       <nav class="menu" aria-label="Menú principal">
         <button class="menu-item active" data-section="inicio"><span class="menu-icon">⌂</span><span>Inicio</span></button>
-        <button class="menu-item" data-section="programacion"><span class="menu-icon">▣</span><span>Programación</span></button>
+        <button class="menu-item" data-section="programacion"><span class="menu-icon">▣</span><span>Capacitaciones</span></button>
         <button class="menu-item" data-section="nueva-capacitacion"><span class="menu-icon">＋</span><span>Nueva capacitación</span></button>
         <button class="menu-item" data-section="trabajadores"><span class="menu-icon">♟</span><span>Trabajadores</span></button>
         <button class="menu-item" data-section="sedes-proyectos"><span class="menu-icon">◆</span><span>Sedes y proyectos</span></button>
@@ -248,7 +248,7 @@
             <p>Plataforma corporativa para gestionar la programación, ejecución, evaluación y trazabilidad de las capacitaciones.</p>
             <div class="hero-actions">
               <button class="primary-btn" data-go="nueva-capacitacion">Nueva capacitación</button>
-              <button class="secondary-btn" data-go="programacion">Ver programación</button>
+              <button class="secondary-btn" data-go="programacion">Ver capacitaciones</button>
             </div>
           </div>
           <img src="assets/logo-explo.jpg" alt="Logo corporativo" class="hero-logo" />
@@ -283,108 +283,142 @@
       </section>
 
       <section id="programacion" class="page-section">
-        <div class="section-title section-title-row">
-          <div>
-            <span class="eyebrow">PLANIFICACIÓN Y SEGUIMIENTO</span>
-            <h2>Programación de capacitaciones</h2>
-            <p>Consulta el calendario, filtra por sede o proyecto y actualiza el estado de cada actividad.</p>
-          </div>
-          <button id="scheduleNewTrainingButton" class="primary-btn" type="button">＋ Nueva capacitación</button>
-        </div>
-
-        <div id="scheduleMessage" class="module-message" role="alert"></div>
-
-        <div class="schedule-stats">
-          <article><span>Programadas</span><strong id="scheduleProgrammedCount">0</strong><small>Incluye reprogramadas</small></article>
-          <article><span>Finalizadas</span><strong id="scheduleFinishedCount">0</strong><small>Actividades cerradas</small></article>
-          <article><span>Pendientes</span><strong id="schedulePendingCount">0</strong><small>Fecha vencida sin cierre</small></article>
-          <article><span>Canceladas</span><strong id="scheduleCancelledCount">0</strong><small>Actividades anuladas</small></article>
-        </div>
-
-        <article class="schedule-toolbar panel">
-          <div class="schedule-month-nav">
-            <button id="schedulePrevMonth" class="icon-refresh" type="button" title="Mes anterior">‹</button>
+        <div id="trainingLibraryView">
+          <div class="section-title section-title-row">
             <div>
-              <span class="eyebrow">CALENDARIO</span>
-              <h3 id="scheduleMonthLabel">—</h3>
+              <span class="eyebrow">HISTORIAL Y SEGUIMIENTO</span>
+              <h2>Capacitaciones registradas</h2>
+              <p>Consulta todas las capacitaciones, participantes, examen, resultados y documento final. Una capacitación permanece activa hasta que la finalices manualmente.</p>
             </div>
-            <button id="scheduleNextMonth" class="icon-refresh" type="button" title="Mes siguiente">›</button>
-            <button id="scheduleTodayButton" class="secondary-btn schedule-today" type="button">Hoy</button>
+            <button id="scheduleNewTrainingButton" class="primary-btn" type="button">＋ Nueva capacitación</button>
           </div>
-          <div class="schedule-filters">
-            <select id="scheduleUnitFilter" aria-label="Filtrar por sede o proyecto"><option value="all">Todas las sedes y proyectos</option></select>
-            <select id="scheduleClassificationFilter" aria-label="Filtrar por clasificación"><option value="all">Todas las clasificaciones</option></select>
-            <select id="scheduleStatusFilter" aria-label="Filtrar por estado">
-              <option value="all">Todos los estados</option>
-              <option value="BORRADOR">Borrador</option>
-              <option value="PROGRAMADA">Programada</option>
-              <option value="REPROGRAMADA">Reprogramada</option>
-              <option value="EN CURSO">En curso</option>
-              <option value="FINALIZADA">Finalizada</option>
-              <option value="CANCELADA">Cancelada</option>
-              <option value="PENDIENTE">Pendiente / vencida</option>
-            </select>
-            <input id="scheduleSearch" type="search" placeholder="Buscar código, tema o expositor…" />
-            <button id="scheduleRefreshButton" class="icon-refresh" type="button" title="Actualizar programación">↻</button>
+
+          <div id="scheduleMessage" class="module-message" role="alert"></div>
+
+          <div class="training-library-stats">
+            <article><span>Capacitaciones</span><strong id="scheduleTotalCount">0</strong><small>Registros visibles</small></article>
+            <article><span>Activas</span><strong id="scheduleActiveCount">0</strong><small>Enlace disponible mientras el examen esté publicado</small></article>
+            <article><span>Participantes</span><strong id="scheduleParticipantCount">0</strong><small>Evaluaciones registradas</small></article>
+            <article><span>Aprobación</span><strong id="scheduleApprovalRate">0%</strong><small>Sobre resultados con nota</small></article>
           </div>
-        </article>
 
-        <article class="schedule-calendar-card">
-          <div class="schedule-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
-          <div id="scheduleCalendarGrid" class="schedule-calendar-grid"><div class="schedule-calendar-loading">Cargando calendario…</div></div>
-        </article>
+          <article class="training-library-toolbar panel">
+            <div class="training-library-filters">
+              <select id="scheduleYearFilter" aria-label="Filtrar por año"><option value="all">Todos los años</option></select>
+              <select id="scheduleUnitFilter" aria-label="Filtrar por sede o proyecto"><option value="all">Todas las sedes y proyectos</option></select>
+              <select id="scheduleClassificationFilter" aria-label="Filtrar por clasificación"><option value="all">Todas las clasificaciones</option></select>
+              <select id="scheduleStatusFilter" aria-label="Filtrar por estado">
+                <option value="all">Todos los estados</option>
+                <option value="ACTIVA">Activas</option>
+                <option value="BORRADOR">Borradores</option>
+                <option value="FINALIZADA">Finalizadas</option>
+                <option value="CANCELADA">Canceladas</option>
+              </select>
+              <input id="scheduleSearch" type="search" placeholder="Buscar tema, código, expositor, área…" />
+              <button id="scheduleRefreshButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+          </article>
 
-        <article class="schedule-list-card">
-          <div class="catalog-panel-head catalog-panel-head-wrap">
-            <div><span class="eyebrow">DETALLE DEL MES</span><h3>Capacitaciones</h3></div>
+          <div class="training-library-headline">
+            <div><span class="eyebrow">REGISTROS</span><h3>Capacitaciones</h3></div>
             <span id="scheduleResultCount" class="schedule-result-count">0 registros</span>
           </div>
-          <div class="table-wrap">
-            <table class="data-table schedule-table">
-              <thead><tr><th>Fecha</th><th>Hora</th><th>Código</th><th>Clasificación</th><th>Tema</th><th>Sede / Proyecto</th><th>Expositor</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody id="scheduleTableBody"><tr><td colspan="9" class="table-empty">Cargando…</td></tr></tbody>
-            </table>
+          <div id="trainingLibraryList" class="training-library-list">
+            <div class="training-library-empty">Cargando capacitaciones…</div>
           </div>
-        </article>
+        </div>
 
-        <div id="scheduleModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
-          <div class="modal-card schedule-modal-card">
-            <div class="modal-head">
-              <div><span class="eyebrow">GESTIÓN DE PROGRAMACIÓN</span><h3 id="scheduleModalTitle">Actualizar capacitación</h3></div>
-              <button id="closeScheduleModal" class="modal-close" type="button" aria-label="Cerrar">×</button>
+        <div id="trainingDetailView" class="training-detail-view hidden">
+          <div class="training-detail-topbar">
+            <button id="backTrainingLibraryButton" class="secondary-btn" type="button">← Volver a capacitaciones</button>
+            <div class="training-detail-actions">
+              <button id="detailEditTrainingButton" class="secondary-btn" type="button">Editar capacitación</button>
+              <button id="detailToggleStateButton" class="primary-btn" type="button">Finalizar capacitación</button>
             </div>
-            <form id="scheduleForm">
-              <input id="scheduleTrainingId" type="hidden" />
-              <input id="scheduleOriginalDate" type="hidden" />
-              <div class="schedule-training-summary">
-                <strong id="scheduleModalCode">—</strong>
-                <span id="scheduleModalTopic">—</span>
-                <small id="scheduleModalUnit">—</small>
-              </div>
-              <div class="form-grid">
-                <label><span>Fecha *</span><input id="scheduleDate" type="date" required /></label>
-                <label><span>Estado *</span>
-                  <select id="scheduleState" required>
-                    <option value="BORRADOR">BORRADOR</option>
-                    <option value="PROGRAMADA">PROGRAMADA</option>
-                    <option value="REPROGRAMADA">REPROGRAMADA</option>
-                    <option value="EN CURSO">EN CURSO</option>
-                    <option value="FINALIZADA">FINALIZADA</option>
-                    <option value="CANCELADA">CANCELADA</option>
-                  </select>
-                </label>
-                <label><span>Hora de inicio</span><input id="scheduleStartTime" type="time" /></label>
-                <label><span>Hora de fin</span><input id="scheduleEndTime" type="time" /></label>
-                <label class="form-span-2"><span>Observación de programación</span><textarea id="scheduleObservation" rows="3" maxlength="500" placeholder="Motivo de reprogramación, cancelación u otra observación"></textarea></label>
-              </div>
-              <div id="scheduleFormMessage" class="form-message"></div>
-              <div class="modal-actions">
-                <button id="cancelScheduleModal" class="secondary-btn" type="button">Cancelar</button>
-                <button id="editScheduleTrainingButton" class="secondary-btn" type="button">Editar ficha completa</button>
-                <button id="saveScheduleButton" class="primary-btn" type="submit">Guardar cambios</button>
-              </div>
-            </form>
           </div>
+
+          <article class="training-detail-hero">
+            <div class="training-detail-title-row">
+              <div>
+                <div class="training-detail-title-line">
+                  <h2 id="detailTrainingTitle">—</h2>
+                  <span id="detailTrainingStatus" class="training-status-badge active">ACTIVA</span>
+                </div>
+                <p><strong>Expositor:</strong> <span id="detailTrainerName">—</span> · <span id="detailTrainerPosition">—</span></p>
+                <p><strong>Empresa:</strong> <span id="detailCompany">—</span></p>
+                <p><strong>Área:</strong> <span id="detailArea">—</span></p>
+                <div class="training-detail-meta">
+                  <span>▣ <b id="detailTrainingDate">—</b></span>
+                  <span>◷ <b id="detailTrainingDuration">—</b></span>
+                  <span>⌖ <b id="detailTrainingUnit">—</b></span>
+                  <span id="detailTrainingCode">—</span>
+                </div>
+              </div>
+              <span id="detailTrainingClassification" class="classification-badge">CAPACITACIÓN</span>
+            </div>
+
+            <div id="detailShareBox" class="training-share-box">
+              <div class="training-share-label">⌘ <strong>Link de registro y evaluación para participantes</strong></div>
+              <div class="training-share-row">
+                <input id="detailPublicLink" type="text" readonly value="" />
+                <button id="detailCopyLinkButton" class="share-copy-btn" type="button">Copiar</button>
+                <button id="detailWhatsappButton" class="share-whatsapp-btn" type="button">WhatsApp</button>
+              </div>
+              <small id="detailShareHelp">Comparte este link por WhatsApp. El examen permanece disponible mientras la capacitación esté ACTIVA y el examen esté publicado.</small>
+            </div>
+
+            <div class="training-detail-metrics">
+              <article><span>Participantes</span><strong id="detailParticipantCount">0</strong></article>
+              <article><span>Preguntas</span><strong id="detailQuestionCount">0</strong></article>
+              <article><span>Nota promedio</span><strong id="detailAverageGrade">—</strong></article>
+              <article><span>Aprobación</span><strong id="detailApprovalRate">—</strong></article>
+            </div>
+          </article>
+
+          <article class="training-detail-content">
+            <div class="training-detail-tabs" role="tablist">
+              <button class="training-detail-tab active" type="button" data-training-detail-tab="participants">Participantes <span id="detailParticipantsTabCount">(0)</span></button>
+              <button class="training-detail-tab" type="button" data-training-detail-tab="exam">Examen <span id="detailExamTabCount">(0)</span></button>
+              <button class="training-detail-tab" type="button" data-training-detail-tab="results">Resultados <span id="detailResultsTabCount">(0)</span></button>
+              <button class="training-detail-tab" type="button" data-training-detail-tab="document">Documento</button>
+            </div>
+
+            <div id="trainingDetailParticipants" class="training-detail-panel active">
+              <div class="training-detail-panel-head">
+                <div><span class="eyebrow">ASISTENCIA</span><h3>Lista de participantes</h3></div>
+                <button id="exportDetailParticipantsButton" class="secondary-btn" type="button">Exportar CSV</button>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table detail-participants-table">
+                  <thead><tr><th>#</th><th>Apellidos y nombres</th><th>DNI</th><th>Puesto</th><th>Área</th><th>Firma</th><th>Nota</th><th>Estado</th></tr></thead>
+                  <tbody id="detailParticipantsBody"><tr><td colspan="8" class="table-empty">Sin participantes.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="trainingDetailExam" class="training-detail-panel hidden">
+              <div class="training-detail-panel-head"><div><span class="eyebrow">EVALUACIÓN</span><h3>Preguntas del examen</h3></div></div>
+              <div id="detailExamQuestions" class="detail-exam-question-list"><div class="training-library-empty">Sin examen configurado.</div></div>
+            </div>
+
+            <div id="trainingDetailResults" class="training-detail-panel hidden">
+              <div class="training-detail-panel-head"><div><span class="eyebrow">CALIFICACIÓN</span><h3>Resultados de evaluación</h3></div></div>
+              <div class="table-wrap">
+                <table class="data-table detail-results-table">
+                  <thead><tr><th>Participante</th><th>Preguntas correctas</th><th>Puntaje</th><th>Nota</th><th>Intentos</th><th>Estado</th></tr></thead>
+                  <tbody id="detailResultsBody"><tr><td colspan="6" class="table-empty">Sin resultados.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="trainingDetailDocument" class="training-detail-panel hidden">
+              <div class="training-detail-panel-head">
+                <div><span class="eyebrow">REGISTRO OFICIAL</span><h3>Documento de capacitación</h3></div>
+                <button id="detailDownloadPdfButton" class="primary-btn" type="button">Descargar PDF</button>
+              </div>
+              <div id="detailDocumentPreview" class="document-preview-shell"><div class="training-library-empty">Selecciona una capacitación.</div></div>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -471,15 +505,6 @@
               <label>
                 <span>Fecha *</span>
                 <input id="trainingDate" type="date" />
-              </label>
-
-              <label>
-                <span>Hora de inicio</span>
-                <input id="trainingStartTime" type="time" />
-              </label>
-              <label>
-                <span>Hora de fin</span>
-                <input id="trainingEndTime" type="time" />
               </label>
 
               <label>
@@ -922,7 +947,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="config.js?v=20260922-12"></script>
-  <script src="app.js?v=20260922-12"></script>
+  <script src="config.js?v=20260922-13"></script>
+  <script src="app.js?v=20260922-13"></script>
 </body>
 </html>

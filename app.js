@@ -1541,7 +1541,10 @@ function renderDetailResults(participants, attempts, responses, exam, totalQuest
     <td><strong class="result-grade ${best.aprobado ? 'approved' : 'failed'}">${Number(best.nota).toFixed(1)}</strong></td>
     <td>${used} / ${exam.max_intentos}</td>
     <td><span class="result-status ${best.aprobado ? 'approved' : 'failed'}">${best.aprobado ? 'APROBADO' : 'DESAPROBADO'}</span></td>
-    <td><button type="button" class="secondary-btn result-download-btn" onclick="downloadParticipantExamPdf('${best.id}')">Descargar Examen</button></td>
+    <td><div class="result-action-stack">
+      <button type="button" class="secondary-btn result-download-btn" onclick="downloadParticipantExamPdf('${best.id}')">Descargar Examen</button>
+      ${best.aprobado ? `<button type="button" class="certificate-btn" onclick="downloadParticipantCertificatePdf('${best.id}')">Certificado</button>` : '<span class="certificate-unavailable">Certificado no disponible</span>'}
+    </div></td>
   </tr>`).join('');
 }
 
@@ -3088,6 +3091,133 @@ async function downloadParticipantExamPdf(attemptId) {
   } catch (err) {
     console.error(err);
     alert(err?.message || 'No fue posible generar el PDF del examen.');
+  }
+}
+
+
+function extractTrainingHoursOnly(value) {
+  const match = String(value || '').match(/\d+(?:[.,]\d+)?/);
+  if (!match) return '0';
+  return match[0].replace(',', '.');
+}
+
+function certificateIssueDatePE(dateValue = new Date()) {
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SETIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `LIMA, ${day} DE ${month} DEL ${year}`;
+}
+
+async function getWorkerAssignmentLabel(participant, training) {
+  if (!client) return scheduleUnitLabel(training);
+  let worker = null;
+  if (participant?.trabajador_id) {
+    const res = await client.from('trabajadores').select('id,dni,cargo,sede_id,proyecto_id').eq('id', participant.trabajador_id).maybeSingle();
+    if (!res.error) worker = res.data;
+  }
+  if (!worker && participant?.dni) {
+    const res = await client.from('trabajadores').select('id,dni,cargo,sede_id,proyecto_id').eq('dni', participant.dni).maybeSingle();
+    if (!res.error) worker = res.data;
+  }
+  if (worker?.proyecto_id) {
+    const res = await client.from('proyectos').select('nombre').eq('id', worker.proyecto_id).maybeSingle();
+    if (!res.error && res.data?.nombre) return `PROYECTO - ${res.data.nombre}`;
+  }
+  if (worker?.sede_id) {
+    const res = await client.from('sedes').select('nombre').eq('id', worker.sede_id).maybeSingle();
+    if (!res.error && res.data?.nombre) return `SEDE - ${res.data.nombre}`;
+  }
+  return scheduleUnitLabel(training) || '—';
+}
+
+async function downloadParticipantCertificatePdf(attemptId) {
+  const data = selectedTrainingDetailData;
+  const attempt = data?.attempts?.find(x => x.id === attemptId);
+  if (!attempt || !data?.training) { alert('No se encontró el resultado seleccionado.'); return; }
+  if (!attempt.aprobado) { alert('El certificado solo está disponible para participantes aprobados.'); return; }
+  if (!window.PDFLib?.PDFDocument) { alert('No se cargó el generador de certificados. Actualiza la página e inténtalo nuevamente.'); return; }
+
+  const participant = (data.participants || []).find(p => p.id === attempt.participante_id) || {};
+  const training = data.training;
+  const clicked = document.activeElement;
+  const original = clicked?.textContent || 'Certificado';
+  if (clicked?.tagName === 'BUTTON') { clicked.disabled = true; clicked.textContent = 'Generando…'; }
+
+  try {
+    const templateResponse = await fetch('assets/certificado-ssomac.pdf?v=20260922-1', { cache: 'no-store' });
+    if (!templateResponse.ok) throw new Error('No se pudo cargar la plantilla del certificado.');
+    const templateBytes = await templateResponse.arrayBuffer();
+    const { PDFDocument, StandardFonts } = window.PDFLib;
+    const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+    const form = pdfDoc.getForm();
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const assignment = await getWorkerAssignmentLabel(participant, training);
+    const workerName = String(participant.apellidos_nombres || '—').toUpperCase();
+    const workerDni = String(participant.dni || '—');
+    const workerPosition = String(participant.puesto || '—').toUpperCase();
+    const course = String(training.tema || '—').toUpperCase();
+    const unit = String(assignment || '—').toUpperCase();
+    const trainingDate = formatDatePE(training.fecha);
+    const hours = extractTrainingHoursOnly(training.tiempo_texto);
+    const issueDate = certificateIssueDatePE(new Date());
+
+    const fields = {
+      name: form.getTextField('Text-QQh6idkzuB'),
+      dni: form.getTextField('Text-WGoQnviAjR'),
+      position: form.getTextField('Text-Zj1fRcZFWe'),
+      course: form.getTextField('Paragraph-wrnRK3cXBm'),
+      unit: form.getTextField('Text-l5ujXqIrLl'),
+      date: form.getTextField('Text-s92wHHPxgV'),
+      hours: form.getTextField('Text-cVZ0Unv8rm'),
+      issueDate: form.getTextField('Text-qK1FcojYj_')
+    };
+
+    fields.name.setText(workerName);
+    fields.dni.setText(workerDni);
+    fields.position.setText(workerPosition);
+    fields.course.setText(course);
+    fields.unit.setText(unit);
+    fields.date.setText(trainingDate);
+    fields.hours.setText(hours);
+    fields.issueDate.setText(issueDate);
+
+    // Mantiene la jerarquía visual de la plantilla original y evita desbordes.
+    const fitField = (field, value, maxWidth, preferred, minimum) => {
+      let size = preferred;
+      while (size > minimum && font.widthOfTextAtSize(String(value || ''), size) > maxWidth) size -= 0.5;
+      field.setFontSize(size);
+    };
+    fitField(fields.name, workerName, 450, 20, 12);
+    fitField(fields.dni, workerDni, 180, 16, 12);
+    fitField(fields.position, workerPosition, 310, 16, 10);
+    fitField(fields.course, course, 475, 14, 9);
+    fitField(fields.unit, unit, 155, 14, 8);
+    fitField(fields.date, trainingDate, 95, 14, 9);
+    fitField(fields.hours, hours, 20, 14, 10);
+    fitField(fields.issueDate, issueDate, 270, 14, 9);
+
+    form.updateFieldAppearances(font);
+    form.flatten();
+    const output = await pdfDoc.save();
+    const blob = new Blob([output], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeCode = String(training.codigo || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g, '_');
+    const safeName = String(participant.apellidos_nombres || 'Participante').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 55);
+    a.href = url;
+    a.download = `${safeCode}_Certificado_${safeName || 'Participante'}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el certificado.');
+  } finally {
+    if (clicked?.tagName === 'BUTTON') { clicked.disabled = false; clicked.textContent = original; }
   }
 }
 

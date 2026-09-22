@@ -1,18 +1,29 @@
-# Hotfix de maquetación – Etapa 10A
+# Etapa 10B - Certificado automático en PDF
 
-Se corrigió la maquetación del PDF de examen para evitar que el enunciado de la pregunta y la línea de "Tu respuesta" se monten entre sí.
+Se incorpora el botón **Certificado** en la pestaña Resultados para cada participante aprobado.
 
-## Ajustes
-- El enunciado ahora usa salto de línea automático.
-- La línea "Tu respuesta" también se envuelve correctamente.
-- Se agregó más separación vertical entre preguntas.
-- Se mejoró la legibilidad del bloque de cada pregunta.
+El sistema usa como plantilla el PDF oficial `assets/certificado-ssomac.pdf` y rellena automáticamente:
+
+1. Apellidos y nombres del trabajador aprobado.
+2. DNI.
+3. Cargo / puesto.
+4. Tema de la capacitación.
+5. Sede o proyecto asignado al trabajador.
+6. Fecha de la capacitación en formato DD/MM/YYYY.
+7. Número de horas (solo número).
+8. Fecha de expedición en formato `LIMA, DD DE MES DEL YYYY`.
+
+El certificado se genera a partir del PDF original, se aplana antes de descargarse y no queda editable como formulario.
 
 ## Instalación
-Reemplaza en GitHub:
-- index.html
-- styles.css
-- app.js
-- config.js
 
-Luego actualiza con Ctrl + F5.
+En GitHub reemplaza:
+- `index.html`
+- `styles.css`
+- `app.js`
+- `config.js`
+
+Y agrega dentro de la carpeta `assets`:
+- `certificado-ssomac.pdf`
+
+No se requiere SQL adicional.

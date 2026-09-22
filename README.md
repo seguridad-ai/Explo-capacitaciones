@@ -1,44 +1,29 @@
-# Etapa 7C – Registro público y participantes automáticos
-
-Esta actualización modifica el flujo de la Etapa 7:
-
-- Se elimina la etapa manual **Participantes** del registro de capacitación.
-- El flujo administrativo queda en 3 pasos: **Capacitador → Examen → Vista previa**.
-- El enlace del examen puede compartirse por WhatsApp.
-- El trabajador ingresa su DNI.
-- Si existe y está activo, se muestran automáticamente sus datos.
-- Si no existe, aparece el mensaje **“Usted no está registrado. Regístrese, por favor”** y un formulario con DNI, apellidos, nombres, puesto, área y sede.
-- El nuevo trabajador se incorpora a la base `trabajadores` con estado **Activo**.
-- Un trabajador que ya existe pero está **Inactivo** no puede autorregistrarse de nuevo; debe ser actualizado por un responsable.
-- Consultar el DNI ya no agrega a la persona como participante.
-- El participante se incorpora a `capacitacion_participantes` recién cuando envía su evaluación.
-- La Vista previa muestra automáticamente a quienes ya rindieron el examen y su nota.
+# Etapa 8 · Firma del participante + registro final PDF
 
 ## 1. Supabase
+Ejecutar en SQL Editor el archivo:
 
-Ejecuta completo:
+`ETAPA8_FIRMA_Y_REGISTRO_PDF.sql`
 
-`ETAPA7C_REGISTRO_PUBLICO_Y_FLUJO.sql`
-
-Resultado esperado:
-
-`Etapa 7C aplicada correctamente`
-
-> Esta actualización supone que las Etapas 5, 6, 7 y 7B ya fueron aplicadas.
+Resultado esperado: **Etapa 8 aplicada correctamente**.
 
 ## 2. GitHub
-
-Reemplaza en el repositorio:
+Reemplazar en el repositorio:
 
 - `index.html`
 - `styles.css`
 - `app.js`
 - `config.js`
 
-No reemplaces la carpeta `assets/`.
+No reemplazar la carpeta `assets/`.
 
-Commit sugerido:
+## 3. Qué agrega esta etapa
+- Después de enviar el examen, el trabajador firma desde el celular.
+- Si cierra el enlace antes de firmar, puede volver a ingresar con el mismo DNI y completar la firma.
+- Vista previa con Firma, Nota y Estado: EVALUADO / COMPLETADO.
+- Solo participantes COMPLETADOS (evaluación + firma) ingresan al PDF final.
+- Botón **Descargar registro PDF** con el formato corporativo solicitado.
+- El PDF incluye firma del expositor, firma del participante, nota y firma del responsable del registro.
 
-`Etapa 7C - Registro público y participantes automáticos`
-
-Después espera la publicación de GitHub Pages y usa `Ctrl + F5`.
+## 4. Nota
+El PDF utiliza jsPDF y AutoTable desde CDN. Se requiere conexión a Internet al momento de cargar la página para obtener esas librerías.

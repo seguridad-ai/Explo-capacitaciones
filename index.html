@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260921-10" />
+  <link rel="stylesheet" href="styles.css?v=20260921-11" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -107,6 +107,26 @@
           <h2 id="publicExamResultTitle">Evaluación finalizada</h2>
           <div id="publicExamGrade" class="public-result-grade">—</div>
           <p id="publicExamResultText">—</p>
+
+          <section id="publicSignatureCard" class="public-signature-card">
+            <span class="eyebrow">ÚLTIMO PASO</span>
+            <h3>Firma de participación</h3>
+            <p>Firma dentro del recuadro para completar tu registro de asistencia. La firma quedará asociada a esta capacitación.</p>
+            <div class="public-signature-canvas-wrap">
+              <canvas id="publicSignatureCanvas" width="900" height="300"></canvas>
+            </div>
+            <div id="publicSignatureMessage" class="form-message"></div>
+            <div class="public-signature-actions">
+              <button id="clearPublicSignatureButton" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="savePublicSignatureButton" class="primary-btn" type="button">Registrar firma y finalizar</button>
+            </div>
+          </section>
+
+          <div id="publicCompletionBox" class="public-completion-box hidden">
+            <strong>✓ Participación completada</strong>
+            <span>Tu evaluación y firma quedaron registradas correctamente.</span>
+          </div>
+
           <button id="publicExamRetryButton" class="secondary-btn hidden" type="button">Intentar nuevamente</button>
         </section>
       </main>
@@ -532,7 +552,7 @@
             <div class="training-card-head participant-list-head">
               <div class="participant-list-title">
                 <div class="training-icon">♟</div>
-                <div><span class="eyebrow">REGISTRO AUTOMÁTICO</span><h3>Participantes que ya rindieron la evaluación</h3></div>
+                <div><span class="eyebrow">REGISTRO AUTOMÁTICO</span><h3>Participantes evaluados y estado de firma</h3></div>
               </div>
               <div class="participant-list-tools">
                 <button id="refreshPreviewParticipantsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
@@ -540,13 +560,14 @@
             </div>
             <div class="table-wrap">
               <table class="data-table participant-table">
-                <thead><tr><th>N°</th><th>Apellidos y nombres</th><th>N° DNI</th><th>Puesto de trabajo</th><th>Área</th><th>Nota</th></tr></thead>
-                <tbody id="previewParticipantsTableBody"><tr><td colspan="6" class="table-empty">Aún no hay participantes evaluados.</td></tr></tbody>
+                <thead><tr><th>N°</th><th>Apellidos y nombres</th><th>N° DNI</th><th>Puesto de trabajo</th><th>Área</th><th>Firma</th><th>Nota</th><th>Estado</th></tr></thead>
+                <tbody id="previewParticipantsTableBody"><tr><td colspan="8" class="table-empty">Aún no hay participantes evaluados.</td></tr></tbody>
               </table>
             </div>
           </article>
 
           <div class="training-form-actions participant-footer-actions">
+            <button id="downloadTrainingPdfButton" class="secondary-btn" type="button">Descargar registro PDF</button>
             <button id="finishTrainingConfigurationButton" class="primary-btn" type="button">Finalizar configuración</button>
           </div>
         </section>
@@ -785,7 +806,9 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=20260921-10"></script>
-  <script src="app.js?v=20260921-10"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="config.js?v=20260921-11"></script>
+  <script src="app.js?v=20260921-11"></script>
 </body>
 </html>

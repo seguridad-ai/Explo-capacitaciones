@@ -1559,6 +1559,8 @@ let examQuestionsCache = [];
 let examStructureLocked = false;
 let publicExamCode = '';
 let publicExamData = null;
+let publicSignatureDrawing = false;
+let publicSignatureHasStroke = false;
 
 const examPanel = document.getElementById('examPanel');
 const examQuestionList = document.getElementById('examQuestionList');
@@ -1924,17 +1926,17 @@ async function saveExamConfiguration({ continueNext = false } = {}) {
 async function loadPreviewParticipants() {
   const body = document.getElementById('previewParticipantsTableBody');
   if (!body || !client || !activeTrainingId) return;
-  body.innerHTML = '<tr><td colspan="6" class="table-empty">Cargando participantes…</td></tr>';
+  body.innerHTML = '<tr><td colspan="8" class="table-empty">Cargando participantes…</td></tr>';
 
   const { data, error } = await client
     .from('capacitacion_participantes')
-    .select('id,dni,apellidos_nombres,puesto,area,nota,created_at')
+    .select('id,dni,apellidos_nombres,puesto,area,firma,fecha_firma,nota,created_at')
     .eq('capacitacion_id', activeTrainingId)
     .order('created_at', { ascending: true });
 
   if (error) {
     console.error(error);
-    body.innerHTML = '<tr><td colspan="6" class="table-empty">No fue posible cargar el registro.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="table-empty">No fue posible cargar el registro.</td></tr>';
     return;
   }
 
@@ -1943,22 +1945,238 @@ async function loadPreviewParticipants() {
   if (count) count.textContent = String(rows.length);
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="6" class="table-empty">Aún no hay participantes evaluados.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="table-empty">Aún no hay participantes evaluados.</td></tr>';
     return;
   }
 
-  body.innerHTML = rows.map((item, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td><strong>${escapeHtml(item.apellidos_nombres || '—')}</strong></td>
-      <td>${escapeHtml(item.dni || '—')}</td>
-      <td>${escapeHtml(item.puesto || '—')}</td>
-      <td>${escapeHtml(item.area || '—')}</td>
-      <td>${item.nota === null || item.nota === undefined
-        ? '<span class="grade-pill pending">Pendiente</span>'
-        : `<span class="grade-pill">${Number(item.nota).toFixed(2).replace(/\.00$/, '')}</span>`}</td>
-    </tr>
-  `).join('');
+  body.innerHTML = rows.map((item, index) => {
+    const completed = !!item.firma;
+    const signature = completed
+      ? `<img class="preview-signature" src="${item.firma}" alt="Firma de ${escapeHtml(item.apellidos_nombres || 'participante')}">`
+      : '<span class="grade-pill pending">Pendiente</span>';
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${escapeHtml(item.apellidos_nombres || '—')}</strong></td>
+        <td>${escapeHtml(item.dni || '—')}</td>
+        <td>${escapeHtml(item.puesto || '—')}</td>
+        <td>${escapeHtml(item.area || '—')}</td>
+        <td>${signature}</td>
+        <td>${item.nota === null || item.nota === undefined
+          ? '<span class="grade-pill pending">Pendiente</span>'
+          : `<span class="grade-pill">${Number(item.nota).toFixed(2).replace(/\.00$/, '')}</span>`}</td>
+        <td><span class="status-pill ${completed ? 'completed' : 'evaluated'}">${completed ? 'COMPLETADO' : 'EVALUADO'}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+
+const PDF_EMPLOYER = {
+  razonSocial: 'EXPLO DRILLING PERU S.R.L.',
+  ruc: '20572775851',
+  domicilio: 'Calle Las Acacias I-7, Urb. La Capitana - Huachipa - Lurigancho - Lima',
+  actividad: 'Perforación Diamantina',
+  codigoFormato: 'EDP-SIG-SSOMAC-RE-EA-121',
+  version: '7',
+  fechaActualizacion: 'Jul-25'
+};
+
+function formatDatePE(value) {
+  if (!value) return '—';
+  const parts = String(value).split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return value;
+}
+
+async function imageToDataUrl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', .95));
+      } catch (err) { reject(err); }
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function getTrainingPdfData() {
+  if (!client || !activeTrainingId) throw new Error('No hay una capacitación seleccionada.');
+
+  const { data: training, error: trainingError } = await client
+    .from('capacitaciones')
+    .select('*')
+    .eq('id', activeTrainingId)
+    .single();
+  if (trainingError || !training) throw trainingError || new Error('Capacitación no encontrada.');
+
+  let unidad = '—';
+  let trabajadoresCentro = 0;
+  if (training.sede_id) {
+    const [{ data: sede }, { count }] = await Promise.all([
+      client.from('sedes').select('nombre').eq('id', training.sede_id).single(),
+      client.from('trabajadores').select('id', { count: 'exact', head: true }).eq('sede_id', training.sede_id).eq('activo', true)
+    ]);
+    unidad = sede?.nombre ? `Sede - ${sede.nombre}` : 'Sede';
+    trabajadoresCentro = count || 0;
+  } else if (training.proyecto_id) {
+    const [{ data: proyecto }, { count }] = await Promise.all([
+      client.from('proyectos').select('nombre,cliente').eq('id', training.proyecto_id).single(),
+      client.from('trabajadores').select('id', { count: 'exact', head: true }).eq('proyecto_id', training.proyecto_id).eq('activo', true)
+    ]);
+    unidad = proyecto?.nombre ? `Proyecto - ${proyecto.nombre}` : 'Proyecto';
+    trabajadoresCentro = count || 0;
+  }
+
+  const { data: participants, error: participantsError } = await client
+    .from('capacitacion_participantes')
+    .select('dni,apellidos_nombres,puesto,area,firma,fecha_firma,nota,created_at')
+    .eq('capacitacion_id', activeTrainingId)
+    .order('created_at', { ascending: true });
+  if (participantsError) throw participantsError;
+
+  return {
+    training,
+    unidad,
+    trabajadoresCentro,
+    participants: (participants || []).filter(x => !!x.firma)
+  };
+}
+
+async function downloadTrainingPdf() {
+  const button = document.getElementById('downloadTrainingPdfButton');
+  const original = button?.textContent || 'Descargar registro PDF';
+  if (button) { button.disabled = true; button.textContent = 'Generando PDF…'; }
+  try {
+    if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF. Actualiza la página e inténtalo nuevamente.');
+    const data = await getTrainingPdfData();
+    if (!data.participants.length) {
+      alert('Todavía no hay participantes con estado COMPLETADO. El PDF final incluirá únicamente a quienes hayan rendido la evaluación y registrado su firma.');
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const t = data.training;
+    const black = [20,20,20], gray = [85,85,85], red = [192,0,0];
+    const pageW = 210;
+    const left = 5;
+    const right = 205;
+    let logoData = null;
+    try { logoData = await imageToDataUrl('assets/logo-explo.jpg'); } catch (e) { console.warn(e); }
+
+    // Cabecera corporativa
+    doc.setDrawColor(...black); doc.setLineWidth(.25);
+    doc.rect(left, 5, 200, 25);
+    doc.line(42, 5, 42, 30);
+    doc.line(162, 5, 162, 30);
+    if (logoData) doc.addImage(logoData, 'JPEG', 7, 7, 32, 21, undefined, 'FAST');
+    doc.setFont('helvetica','bold'); doc.setTextColor(...black); doc.setFontSize(9);
+    doc.text('SIG - SSOMAC', 102, 10, { align:'center' });
+    doc.setFillColor(...red); doc.rect(42, 13, 120, 17, 'F');
+    doc.setTextColor(255,255,255); doc.setFontSize(7.2);
+    doc.text('REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO', 102, 19, {align:'center'});
+    doc.text('DE EMERGENCIA', 102, 24, {align:'center'});
+    doc.setTextColor(...black); doc.setFontSize(5.7); doc.setFont('helvetica','normal');
+    const meta = [
+      ['Código:', PDF_EMPLOYER.codigoFormato],
+      ['N°:', t.codigo || '—'],
+      ['Versión:', PDF_EMPLOYER.version],
+      ['Fecha Act:', PDF_EMPLOYER.fechaActualizacion]
+    ];
+    meta.forEach((r,i)=>{
+      const y=5+i*6.25;
+      if(i>0) doc.line(162,y,205,y);
+      doc.setFont('helvetica','bold'); doc.text(r[0],164,y+4.1);
+      doc.setFont('helvetica','normal'); doc.text(String(r[1]),178,y+4.1);
+    });
+
+    // Datos del empleador
+    doc.autoTable({
+      startY: 31,
+      margin:{left,right:5},
+      theme:'grid',
+      head:[['RAZÓN O DENOMINACIÓN SOCIAL','RUC','DOMICILIO (Dirección, distrito, provincia, dpto.)','ACTIVIDAD ECONÓMICA','N° TRABAJADORES EN EL CENTRO LABORAL']],
+      body:[[PDF_EMPLOYER.razonSocial,PDF_EMPLOYER.ruc,PDF_EMPLOYER.domicilio,PDF_EMPLOYER.actividad,String(data.trabajadoresCentro)]],
+      styles:{fontSize:5.2,cellPadding:1.1,textColor:black,lineColor:black,lineWidth:.2,valign:'middle',halign:'center'},
+      headStyles:{fillColor:gray,textColor:[255,255,255],fontStyle:'bold',fontSize:5.1},
+      columnStyles:{0:{cellWidth:37},1:{cellWidth:27},2:{cellWidth:65},3:{cellWidth:37},4:{cellWidth:34}}
+    });
+
+    const classes = ['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
+    const classText = classes.map(c => `${c === t.clasificacion ? '[X]' : '[ ]'} ${c}`).join('\n');
+    const trainingStart = doc.lastAutoTable.finalY + 1;
+    doc.autoTable({
+      startY:trainingStart,
+      margin:{left,right:5},
+      theme:'grid',
+      body:[
+        [{content:`CLASIFICACIÓN\n${classText}`,rowSpan:6,styles:{fontSize:5.1,fontStyle:'bold'}}, {content:`TEMA: ${t.tema || '—'}`,colSpan:2}],
+        [`EXPOSITOR: ${t.expositor_nombre || '—'}`, {content:'FIRMA:',styles:{fontStyle:'bold'}}],
+        [`CARGO: ${t.expositor_cargo || '—'}`, `DNI: ${t.expositor_dni || '—'}`],
+        [`EMPRESA: ${t.empresa || PDF_EMPLOYER.razonSocial}`, `FECHA: ${formatDatePE(t.fecha)}`],
+        [`ÁREA: ${t.area || '—'}`, `TIEMPO: ${t.tiempo_texto || '—'}`],
+        [`UNIDAD: ${data.unidad}`, '']
+      ],
+      styles:{fontSize:5.6,cellPadding:1.2,lineColor:black,lineWidth:.2,textColor:black,minCellHeight:7,valign:'middle'},
+      columnStyles:{0:{cellWidth:36},1:{cellWidth:111},2:{cellWidth:53}},
+      didDrawCell:(cellData)=>{
+        if(cellData.row.index===1 && cellData.column.index===2 && t.firma_expositor){
+          try { doc.addImage(t.firma_expositor,'PNG',cellData.cell.x+16,cellData.cell.y+1,28,5.5,undefined,'FAST'); } catch(e){}
+        }
+      }
+    });
+
+    const completed = data.participants;
+    const displayRows = completed.map((x,i)=>[String(i+1),x.apellidos_nombres || '',x.dni || '',x.puesto || '',x.area || '','',x.nota==null?'N.A.':Number(x.nota).toFixed(2).replace(/\.00$/,'')]);
+    while(displayRows.length < 20) displayRows.push([String(displayRows.length+1),'','','','','','']);
+    const tableStart = doc.lastAutoTable.finalY;
+    doc.autoTable({
+      startY:tableStart,
+      margin:{left,right:5},
+      theme:'grid',
+      head:[['N°','APELLIDOS Y NOMBRES','N° DNI','PUESTO DE TRABAJO','ÁREA','FIRMA','NOTA']],
+      body:displayRows,
+      styles:{fontSize:5.4,cellPadding:.8,lineColor:black,lineWidth:.2,textColor:black,minCellHeight:7.3,valign:'middle'},
+      headStyles:{fillColor:gray,textColor:[255,255,255],fontStyle:'bold',halign:'center',fontSize:5.2},
+      columnStyles:{0:{cellWidth:6,halign:'center'},1:{cellWidth:57},2:{cellWidth:18,halign:'center'},3:{cellWidth:46},4:{cellWidth:27},5:{cellWidth:31},6:{cellWidth:15,halign:'center'}},
+      didDrawCell:(cellData)=>{
+        if(cellData.section==='body' && cellData.column.index===5){
+          const participant = completed[cellData.row.index];
+          if(participant?.firma){
+            try { doc.addImage(participant.firma,'PNG',cellData.cell.x+2,cellData.cell.y+1.1,cellData.cell.width-4,cellData.cell.height-2.2,undefined,'FAST'); } catch(e){}
+          }
+        }
+      }
+    });
+
+    let y = doc.lastAutoTable.finalY + 1;
+    if (y > 267) { doc.addPage(); y = 12; }
+    doc.setDrawColor(...black); doc.setLineWidth(.2); doc.setFontSize(5.7); doc.setTextColor(...black);
+    doc.setFillColor(225,225,225); doc.rect(5,y,200,6,'FD'); doc.setFont('helvetica','bold'); doc.text('RESPONSABLE DEL REGISTRO',105,y+4,{align:'center'});
+    doc.setFont('helvetica','normal');
+    doc.rect(5,y+6,120,14); doc.rect(125,y+6,80,14);
+    doc.text(`NOMBRE: ${t.responsable_nombre || '—'}`,7,y+11);
+    doc.text(`CARGO: ${t.responsable_cargo || '—'}`,7,y+17);
+    doc.text(`FECHA: ${formatDatePE(t.fecha)}`,127,y+17);
+    doc.setFont('helvetica','bold'); doc.text('FIRMA:',127,y+10);
+    if(t.firma_responsable){ try { doc.addImage(t.firma_responsable,'PNG',146,y+7,34,11,undefined,'FAST'); } catch(e){} }
+
+    const safe = String(t.codigo || 'CAPACITACION').replace(/[^A-Za-z0-9_-]+/g,'_');
+    doc.save(`${safe}_Registro_Capacitacion.pdf`);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el registro PDF.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
 }
 
 async function openTrainingPreviewStep() {
@@ -1993,6 +2211,7 @@ document.getElementById('backToExamFromPreview')?.addEventListener('click', () =
   openExamStep(activeTrainingId, activeTrainingCode, activeTrainingPayload);
 });
 document.getElementById('refreshPreviewParticipantsButton')?.addEventListener('click', loadPreviewParticipants);
+document.getElementById('downloadTrainingPdfButton')?.addEventListener('click', downloadTrainingPdf);
 document.getElementById('copyPreviewExamLinkButton')?.addEventListener('click', () => {
   if (activeExamConfig?.requiere_evaluacion && activeExamConfig?.publicado) copyText(examPublicUrl(), 'Enlace del examen copiado.');
 });
@@ -2053,6 +2272,9 @@ function initializePublicExamView(code) {
   document.getElementById('publicExamIdentity')?.classList.remove('hidden');
   document.getElementById('publicExamQuestions')?.classList.add('hidden');
   document.getElementById('publicExamResult')?.classList.add('hidden');
+  document.getElementById('publicSignatureCard')?.classList.remove('hidden');
+  document.getElementById('publicCompletionBox')?.classList.add('hidden');
+  resetPublicSignatureCanvas();
   document.getElementById('publicExamRegistration')?.classList.add('hidden');
   setTimeout(() => document.getElementById('publicExamDni')?.focus(), 50);
 }
@@ -2125,6 +2347,10 @@ async function lookupPublicExam() {
     if (data?.status === 'NO_REGISTRADO' && data?.allow_registro) {
       await showPublicRegistration(dni);
       return;
+    }
+    if (data?.status === 'APROBADO' || data?.status === 'SIN_INTENTOS') {
+      const recovered = await showExistingEvaluationSignatureState(dni);
+      if (recovered) return;
     }
     const extra = data?.mejor_nota !== null && data?.mejor_nota !== undefined ? ` Mejor nota registrada: ${Number(data.mejor_nota).toFixed(2).replace(/\.00$/, '')}.` : '';
     setPublicExamMessage(`${data?.error || 'No fue posible acceder a la evaluación.'}${extra}`);
@@ -2252,8 +2478,132 @@ async function submitPublicExam(event) {
   const retry = document.getElementById('publicExamRetryButton');
   retry.classList.toggle('hidden', data.aprobado || Number(data.intentos_restantes || 0) <= 0);
   publicExamData.intentos_disponibles = Number(data.intentos_restantes || 0);
+  document.getElementById('publicSignatureCard')?.classList.remove('hidden');
+  document.getElementById('publicCompletionBox')?.classList.add('hidden');
+  resetPublicSignatureCanvas();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+
+const publicSignatureCanvas = document.getElementById('publicSignatureCanvas');
+const publicSignatureCtx = publicSignatureCanvas?.getContext('2d');
+
+function resetPublicSignatureCanvas() {
+  if (!publicSignatureCanvas || !publicSignatureCtx) return;
+  publicSignatureCtx.clearRect(0, 0, publicSignatureCanvas.width, publicSignatureCanvas.height);
+  publicSignatureCtx.fillStyle = '#ffffff';
+  publicSignatureCtx.fillRect(0, 0, publicSignatureCanvas.width, publicSignatureCanvas.height);
+  publicSignatureCtx.strokeStyle = '#17263c';
+  publicSignatureCtx.lineWidth = 4;
+  publicSignatureCtx.lineCap = 'round';
+  publicSignatureCtx.lineJoin = 'round';
+  publicSignatureDrawing = false;
+  publicSignatureHasStroke = false;
+  setPublicExamMessage('', 'error', 'publicSignatureMessage');
+}
+
+function publicSignaturePoint(event) {
+  const rect = publicSignatureCanvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * (publicSignatureCanvas.width / rect.width),
+    y: (event.clientY - rect.top) * (publicSignatureCanvas.height / rect.height)
+  };
+}
+
+function startPublicSignature(event) {
+  if (!publicSignatureCtx || !publicSignatureCanvas) return;
+  event.preventDefault();
+  publicSignatureDrawing = true;
+  publicSignatureHasStroke = true;
+  const point = publicSignaturePoint(event);
+  publicSignatureCtx.beginPath();
+  publicSignatureCtx.moveTo(point.x, point.y);
+  try { publicSignatureCanvas.setPointerCapture(event.pointerId); } catch {}
+}
+
+function drawPublicSignature(event) {
+  if (!publicSignatureDrawing || !publicSignatureCtx) return;
+  event.preventDefault();
+  const point = publicSignaturePoint(event);
+  publicSignatureCtx.lineTo(point.x, point.y);
+  publicSignatureCtx.stroke();
+}
+
+function stopPublicSignature(event) {
+  if (!publicSignatureDrawing) return;
+  event?.preventDefault?.();
+  publicSignatureDrawing = false;
+  publicSignatureCtx?.closePath();
+}
+
+async function savePublicParticipantSignature() {
+  if (!client || !publicSignatureCanvas) return;
+  if (!publicSignatureHasStroke) {
+    setPublicExamMessage('Registra tu firma antes de finalizar.', 'error', 'publicSignatureMessage');
+    return;
+  }
+  const dni = (document.getElementById('publicExamDni')?.value || '').replace(/\D/g,'').slice(0,8);
+  const button = document.getElementById('savePublicSignatureButton');
+  if (button) { button.disabled = true; button.textContent = 'Guardando firma…'; }
+  const firma = publicSignatureCanvas.toDataURL('image/png');
+  const { data, error } = await client.rpc('guardar_firma_participante_examen', {
+    p_codigo: publicExamCode,
+    p_dni: dni,
+    p_firma: firma
+  });
+  if (button) { button.disabled = false; button.textContent = 'Registrar firma y finalizar'; }
+  if (error || !data?.ok) {
+    console.error(error);
+    const missing = /guardar_firma_participante_examen|schema cache|function/i.test(error?.message || '');
+    setPublicExamMessage(missing ? 'La función de firma todavía no está habilitada. Ejecuta el SQL de la Etapa 8.' : (data?.error || 'No fue posible guardar la firma.'), 'error', 'publicSignatureMessage');
+    return;
+  }
+  document.getElementById('publicSignatureCard')?.classList.add('hidden');
+  document.getElementById('publicCompletionBox')?.classList.remove('hidden');
+  setPublicExamMessage('', 'success', 'publicSignatureMessage');
+  window.scrollTo({ top: document.getElementById('publicExamResult')?.offsetTop || 0, behavior: 'smooth' });
+}
+
+async function showExistingEvaluationSignatureState(dni) {
+  const { data, error } = await client.rpc('consultar_participacion_examen', {
+    p_codigo: publicExamCode,
+    p_dni: dni
+  });
+  if (error || !data?.ok || !data?.evaluado) return false;
+
+  document.getElementById('publicExamIdentity')?.classList.add('hidden');
+  document.getElementById('publicExamQuestions')?.classList.add('hidden');
+  document.getElementById('publicExamResult')?.classList.remove('hidden');
+  const icon = document.getElementById('publicExamResultIcon');
+  icon.textContent = data.aprobado ? '✓' : '×';
+  icon.classList.toggle('fail', !data.aprobado);
+  document.getElementById('publicExamResultTitle').textContent = data.aprobado ? 'APROBADO' : 'EVALUACIÓN REGISTRADA';
+  document.getElementById('publicExamGrade').textContent = data.mostrar_resultado && data.nota !== null ? `${Number(data.nota).toFixed(2).replace(/\.00$/, '')} / 20` : 'Registrado';
+  document.getElementById('publicExamResultText').textContent = data.mostrar_resultado
+    ? `Tu evaluación ya se encuentra registrada. Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}.`
+    : 'Tu evaluación ya se encuentra registrada.';
+  document.getElementById('publicExamRetryButton')?.classList.add('hidden');
+
+  if (data.firma_registrada) {
+    document.getElementById('publicSignatureCard')?.classList.add('hidden');
+    document.getElementById('publicCompletionBox')?.classList.remove('hidden');
+  } else {
+    document.getElementById('publicSignatureCard')?.classList.remove('hidden');
+    document.getElementById('publicCompletionBox')?.classList.add('hidden');
+    resetPublicSignatureCanvas();
+  }
+  setPublicExamMessage('Evaluación encontrada. Completa la firma si todavía está pendiente.', 'success');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
+}
+
+publicSignatureCanvas?.addEventListener('pointerdown', startPublicSignature);
+publicSignatureCanvas?.addEventListener('pointermove', drawPublicSignature);
+publicSignatureCanvas?.addEventListener('pointerup', stopPublicSignature);
+publicSignatureCanvas?.addEventListener('pointerleave', stopPublicSignature);
+publicSignatureCanvas?.addEventListener('pointercancel', stopPublicSignature);
+document.getElementById('clearPublicSignatureButton')?.addEventListener('click', resetPublicSignatureCanvas);
+document.getElementById('savePublicSignatureButton')?.addEventListener('click', savePublicParticipantSignature);
 
 document.getElementById('publicExamDni')?.addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0,8); });
 document.getElementById('publicExamDni')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupPublicExam(); } });

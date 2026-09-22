@@ -4364,31 +4364,80 @@ async function savePractice(event) {
 
 async function savePracticeQuestion(event) {
   event.preventDefault();
-  if (!client||!activePracticeId) return;
-  const text=document.getElementById('practiceQuestionText').value.trim();
-  const opts=[...document.querySelectorAll('.practice-option-input')].map(x=>x.value.trim());
-  const correct=Number(document.querySelector('input[name="practiceCorrectOption"]:checked')?.value||0);
-  const msg=document.getElementById('practiceQuestionMessage');
-  if (!text||opts.some(x=>!x)) { msg.textContent='Completa la pregunta y las cuatro alternativas.'; return; }
-  let questionId=practiceQuestionEditId;
-  if (questionId) {
-    const {error}=await client.from('practica_preguntas').update({enunciado:text}).eq('id',questionId);
-    if (error) {msg.textContent=error.message;return;}
-    await client.from('practica_opciones').delete().eq('pregunta_id',questionId);
-  } else {
-    const existing=await client.from('practica_preguntas').select('orden').eq('practica_id',activePracticeId).order('orden',{ascending:false}).limit(1);
-    const next=(existing.data?.[0]?.orden||0)+1;
-    const {data,error}=await client.from('practica_preguntas').insert({practica_id:activePracticeId,orden:next,enunciado:text,activo:true}).select().single();
-    if (error){msg.textContent=error.message;return;} questionId=data.id;
+  if (!client || !activePracticeId) return;
+
+  const questionText = document.getElementById('practiceQuestionText').value.trim();
+  const optionInputs = [...document.querySelectorAll('.practice-option-input')];
+  const options = optionInputs.map(x => x.value.trim());
+  const correctIndex = Number(document.querySelector('input[name="practiceCorrectOption"]:checked')?.value ?? -1);
+  const msg = document.getElementById('practiceQuestionMessage');
+  const submit = document.querySelector('#practiceQuestionForm button[type="submit"]');
+
+  const showQuestionMessage = (message, type = 'error') => {
+    msg.textContent = message || '';
+    msg.className = `form-message ${message ? 'visible' : ''} ${type}`;
+  };
+
+  showQuestionMessage('');
+
+  if (!questionText) {
+    showQuestionMessage('Ingresa el enunciado de la pregunta.');
+    document.getElementById('practiceQuestionText').focus();
+    return;
   }
-  const rows=opts.map((texto,i)=>({pregunta_id:questionId,orden:i+1,texto,es_correcta:i===correct}));
-  const {error:optErr}=await client.from('practica_opciones').insert(rows);
-  if (optErr){msg.textContent=optErr.message;return;}
-  closePracticeQuestionModal();
-  practiceRecords=[];
-  await loadPracticeModule(true);
-  activePracticeId=document.getElementById('practiceId').value||activePracticeId;
-  await renderPracticeEditorQuestions();
+
+  const missingIndex = options.findIndex(x => !x);
+  if (missingIndex >= 0) {
+    showQuestionMessage(`Completa la alternativa ${String.fromCharCode(65 + missingIndex)}.`);
+    optionInputs[missingIndex]?.focus();
+    return;
+  }
+
+  if (correctIndex < 0 || correctIndex > 3) {
+    showQuestionMessage('Selecciona cuál de las alternativas es la respuesta correcta.');
+    return;
+  }
+
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = 'Guardando…';
+  }
+
+  try {
+    const { data, error } = await client.rpc('guardar_pregunta_practica', {
+      p_practica_id: activePracticeId,
+      p_pregunta_id: practiceQuestionEditId || null,
+      p_enunciado: questionText,
+      p_opcion_a: options[0],
+      p_opcion_b: options[1],
+      p_opcion_c: options[2],
+      p_opcion_d: options[3],
+      p_correcta: correctIndex + 1
+    });
+
+    if (error || !data?.ok) {
+      console.error('guardar_pregunta_practica', error, data);
+      throw new Error(data?.error || error?.message || 'No fue posible guardar la pregunta.');
+    }
+
+    closePracticeQuestionModal();
+    await renderPracticeEditorQuestions();
+
+    const moduleMessage = document.getElementById('practiceModuleMessage');
+    if (moduleMessage) {
+      moduleMessage.textContent = practiceQuestionEditId
+        ? 'Pregunta actualizada correctamente.'
+        : 'Pregunta agregada correctamente.';
+      moduleMessage.className = 'module-message visible success';
+    }
+  } catch (err) {
+    showQuestionMessage(err?.message || 'No fue posible guardar la pregunta.');
+  } finally {
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = 'Guardar pregunta';
+    }
+  }
 }
 
 async function copyActivePracticeLink() {

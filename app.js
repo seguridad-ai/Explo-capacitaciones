@@ -4999,7 +4999,7 @@ async function savePracticeEvaluationQuestion(){
     let opciones=[];let accepted=[];
     if(type==='FREE_TEXT'){accepted=document.getElementById('practiceEvaluationAcceptedAnswers').value.split('\n').map(x=>x.trim()).filter(Boolean);if(!accepted.length)throw new Error('Agrega al menos una respuesta aceptada.');}
     else{const rows=[...document.querySelectorAll('#practiceEvaluationOptionEditor .evaluation-option-row')];opciones=rows.map((r,i)=>({texto:r.querySelector('.evaluation-option-text').value.trim(),es_correcta:r.querySelector('input[name="evaluationCorrectOption"]').checked}));if(opciones.some(o=>!o.texto))throw new Error('Completa todas las alternativas.');}
-    const payload={enunciado,tipo,nivel_tema:nivel,explicacion:document.getElementById('practiceEvaluationQuestionExplanation').value.trim(),peso,imagen_url:imageUrl,opciones,respuestas_aceptadas:accepted};
+    const payload={enunciado,tipo:type,nivel_tema:nivel,explicacion:document.getElementById('practiceEvaluationQuestionExplanation').value.trim(),peso,imagen_url:imageUrl,opciones,respuestas_aceptadas:accepted};
     const{data,error}=await client.rpc('guardar_pregunta_evaluacion_practica',{p_evaluacion_id:activePracticeEvaluationId,p_pregunta_id:practiceEvaluationQuestionEditId||null,p_data:payload});if(error||!data?.ok)throw new Error(data?.error||error?.message||'No se pudo guardar.');
     closePracticeEvaluationQuestionModal();await renderPracticeEvaluationQuestions();
   }catch(err){msg.textContent=err.message;msg.className='form-message visible error';}finally{button.disabled=false;button.textContent='Guardar pregunta';}

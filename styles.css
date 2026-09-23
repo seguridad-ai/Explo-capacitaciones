@@ -192,7 +192,7 @@
 .modal.hidden{
   display:none !important;
 }
-.modal-backdrop{
+.modal > .modal-backdrop{
   position:absolute !important;
   inset:0 !important;
   z-index:0 !important;
@@ -202,7 +202,7 @@
   display:block !important;
   padding:0 !important;
 }
-.modal-card{
+.modal > .modal-card{
   position:relative !important;
   z-index:1 !important;
   margin:auto !important;
@@ -236,3 +236,31 @@ body.modal-open{
 
 @media(max-width:900px){.practice-evaluation-card{grid-template-columns:1fr}.practice-evaluation-card-actions{justify-content:flex-start}.evaluation-results-grid{grid-template-columns:1fr}.evaluation-result-stats{grid-template-columns:1fr 1fr}.evaluation-form-grid{grid-template-columns:1fr}.evaluation-description-field{grid-column:auto}.evaluation-config-grid{grid-template-columns:1fr}.public-evaluation-meta{grid-template-columns:1fr}.evaluation-review-summary{grid-template-columns:1fr}}
 @media(max-width:600px){.practice-mode-tabs{width:100%}.practice-mode-tabs button{flex:1}.evaluation-result-stats{grid-template-columns:1fr}.evaluation-admin-options{grid-template-columns:1fr}.evaluation-question-form-grid{grid-template-columns:1fr}.evaluation-question-form-grid .span-2{grid-column:auto}.public-evaluation-header img{width:95px}.public-evaluation-header h1{font-size:19px}.public-evaluation-card{padding:17px}.public-evaluation-grade{font-size:46px}.public-review-head{align-items:flex-start;flex-direction:column}}
+
+
+/* ============================================================
+   ETAPA 13A · COMPATIBILIDAD CON MODALES EXISTENTES
+   ============================================================ */
+.modal-backdrop[role="dialog"]{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:1000 !important;
+  background:rgba(11,18,28,.46) !important;
+  display:grid !important;
+  place-items:center !important;
+  padding:20px !important;
+  width:auto !important;
+  height:auto !important;
+  overflow:auto !important;
+}
+.modal-backdrop[role="dialog"].hidden{
+  display:none !important;
+}
+.modal-backdrop[role="dialog"] > .modal-card{
+  position:relative !important;
+  z-index:1 !important;
+  width:min(680px,100%) !important;
+  max-height:90vh !important;
+  overflow:auto !important;
+  margin:auto !important;
+}

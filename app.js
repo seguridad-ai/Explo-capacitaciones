@@ -13,6 +13,7 @@ const togglePassword = document.getElementById('togglePassword');
 const logoutButton = document.getElementById('logoutButton');
 const publicExamScreen = document.getElementById('publicExamScreen');
 const publicPracticeScreen = document.getElementById('publicPracticeScreen');
+const publicEvaluationScreen = document.getElementById('publicEvaluationScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -37,6 +38,7 @@ function setLoginBusy(busy) {
 function showAuthScreen() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.remove('hidden');
   authLoading?.classList.add('hidden');
@@ -46,6 +48,7 @@ function showAuthScreen() {
 function showLoading() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.remove('hidden');
@@ -54,6 +57,7 @@ function showLoading() {
 function showApp() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
@@ -68,7 +72,7 @@ function showSection(sectionId) {
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
   if (sectionId === 'nueva-capacitacion') loadTrainingModule();
-  if (sectionId === 'practicar') loadPracticeModule();
+  if (sectionId === 'practicar') { switchPracticeMode(practiceEvaluationMode || 'quiz'); }
   if (sectionId === 'usuarios') loadUsersModule();
 }
 
@@ -196,12 +200,17 @@ async function initializeAuth() {
   const publicParams = new URLSearchParams(window.location.search);
   const publicExamCode = publicParams.get('exam');
   const publicPracticeCodeParam = publicParams.get('practice');
+  const publicEvaluationCodeParam = publicParams.get('evaluation');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
     return;
   }
   if (publicPracticeCodeParam) {
     await initializePublicPracticeMode(publicPracticeCodeParam);
+    return;
+  }
+  if (publicEvaluationCodeParam) {
+    await initializePublicEvaluationMode(publicEvaluationCodeParam);
     return;
   }
 
@@ -4691,6 +4700,412 @@ document.getElementById('publicPracticeRegistrationCancelButton')?.addEventListe
   document.getElementById('publicPracticeDni')?.focus();
 });
 document.getElementById('publicPracticeAgainButton')?.addEventListener('click',resetPublicPracticeForRetry);
+
+
+// ============================================================
+// ETAPA 13 · EVALUACIONES DE PRÁCTICA
+// ============================================================
+
+let practiceEvaluationRecords = [];
+let practiceEvaluationAttempts = [];
+let practiceEvaluationTrainings = [];
+let practiceEvaluationSites = [];
+let practiceEvaluationProjects = [];
+let activePracticeEvaluationId = null;
+let practiceEvaluationQuestionEditId = null;
+let practiceEvaluationQuestionCache = [];
+let practiceEvaluationMode = 'quiz';
+let practiceEvaluationResultData = null;
+
+function switchPracticeMode(mode = 'quiz') {
+  practiceEvaluationMode = mode;
+  const isQuiz = mode === 'quiz';
+  document.getElementById('practiceQuizModeButton')?.classList.toggle('active', isQuiz);
+  document.getElementById('practiceEvaluationModeButton')?.classList.toggle('active', !isQuiz);
+  document.getElementById('practiceListView')?.classList.toggle('hidden', !isQuiz);
+  document.getElementById('practiceEditorView')?.classList.add('hidden');
+  document.getElementById('evaluationListView')?.classList.toggle('hidden', isQuiz);
+  document.getElementById('evaluationEditorView')?.classList.add('hidden');
+  document.getElementById('evaluationResultsView')?.classList.add('hidden');
+  if (isQuiz) loadPracticeModule();
+  else loadPracticeEvaluations();
+}
+
+function canManagePracticeEvaluation(record = null) {
+  if (currentProfile?.rol_codigo === 'ADMIN') return true;
+  return currentProfile?.rol_codigo === 'PROYECTO' && !!record?.proyecto_id;
+}
+
+function practiceEvaluationUnitLabel(e) {
+  if (e?.proyecto_id) return `Proyecto · ${practiceEvaluationProjects.find(x => x.id === e.proyecto_id)?.nombre || 'Proyecto'}`;
+  if (e?.sede_id) return `Sede · ${practiceEvaluationSites.find(x => x.id === e.sede_id)?.nombre || 'Sede'}`;
+  return 'Corporativo · Todos';
+}
+
+function practiceEvaluationPublicUrl(e) {
+  if (!e?.codigo || e.estado !== 'ACTIVA') return '';
+  return `${window.location.origin}${window.location.pathname}?evaluation=${encodeURIComponent(e.codigo)}`;
+}
+
+function showPracticeEvaluationMessage(message = '', type = 'error') {
+  const el = document.getElementById('practiceEvaluationModuleMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+async function loadPracticeEvaluations(force = false) {
+  if (!client) return;
+  if (practiceEvaluationRecords.length && !force) {
+    renderPracticeEvaluations();
+    return;
+  }
+  showPracticeEvaluationMessage('');
+  const cards = document.getElementById('practiceEvaluationCards');
+  if (cards) cards.innerHTML = '<div class="training-library-empty">Cargando evaluaciones…</div>';
+
+  const [evals, attempts, trainings, sites, projects] = await Promise.all([
+    client.from('evaluaciones_practica').select('*').order('created_at', { ascending: false }),
+    client.from('evaluacion_practica_intentos').select('*').order('finalizado_at', { ascending: false }),
+    client.from('capacitaciones').select('id,codigo,tema,fecha').order('fecha', { ascending: false }).limit(300),
+    client.from('sedes').select('id,nombre,activo').order('nombre'),
+    client.from('proyectos').select('id,nombre,activo').order('nombre')
+  ]);
+
+  if (evals.error) {
+    console.error(evals.error);
+    showPracticeEvaluationMessage('No fue posible cargar Evaluaciones. Ejecuta el SQL de la Etapa 13.');
+    return;
+  }
+
+  practiceEvaluationRecords = evals.data || [];
+  practiceEvaluationAttempts = attempts.error ? [] : (attempts.data || []);
+  practiceEvaluationTrainings = trainings.error ? [] : (trainings.data || []);
+  practiceEvaluationSites = sites.error ? [] : (sites.data || []);
+  practiceEvaluationProjects = projects.error ? [] : (projects.data || []);
+  renderPracticeEvaluations();
+}
+
+function renderPracticeEvaluations() {
+  document.getElementById('newPracticeEvaluationButton')?.classList.toggle('hidden', !['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo));
+  const search = (document.getElementById('practiceEvaluationSearch')?.value || '').trim().toLowerCase();
+  const status = document.getElementById('practiceEvaluationStatusFilter')?.value || '';
+  const rows = practiceEvaluationRecords.filter(e => {
+    if (status && e.estado !== status) return false;
+    if (search && !`${e.titulo || ''} ${e.codigo || ''} ${e.tema || ''}`.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  const box = document.getElementById('practiceEvaluationCards');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '<div class="training-library-empty">No hay evaluaciones con los filtros seleccionados.</div>';
+    return;
+  }
+
+  box.innerHTML = rows.map(e => {
+    const attempts = practiceEvaluationAttempts.filter(a => a.evaluacion_id === e.id && a.finalizado_at);
+    const approved = attempts.filter(a => a.aprobado).length;
+    const approval = attempts.length ? Math.round(approved / attempts.length * 100) : 0;
+    const avg = attempts.length ? (attempts.reduce((s,a)=>s+Number(a.nota || 0),0) / attempts.length).toFixed(1) : '—';
+    const link = practiceEvaluationPublicUrl(e);
+    return `<article class="practice-evaluation-card">
+      <div class="practice-evaluation-card-main">
+        <div class="practice-evaluation-card-title"><div><h3>${escapeHtml(e.titulo)}</h3><p>${escapeHtml(e.tema || '—')} · ${escapeHtml(practiceEvaluationUnitLabel(e))}</p></div><span class="evaluation-state ${e.estado.toLowerCase()}">${escapeHtml(e.estado)}</span></div>
+        <div class="practice-evaluation-card-meta"><span>${formatDatePE(e.fecha)}</span><span>Nota mínima ${Number(e.nota_minima).toFixed(1).replace('.0','')}</span><span>${attempts.length} intentos</span><span>${approval}% aprobación</span><span>Promedio ${avg}</span></div>
+      </div>
+      <div class="practice-evaluation-card-actions">
+        ${link ? `<button type="button" class="eval-icon-btn green" data-eval-share="${e.id}" title="Compartir">↗</button><button type="button" class="eval-icon-btn" data-eval-copy="${e.id}" title="Copiar enlace">⧉</button>` : ''}
+        <button type="button" class="eval-icon-btn blue" data-eval-results="${e.id}" title="Resultados">▥</button>
+        ${canManagePracticeEvaluation(e) ? `<button type="button" class="eval-icon-btn amber" data-eval-edit="${e.id}" title="Editar">✎</button><button type="button" class="eval-icon-btn red" data-eval-delete="${e.id}" title="Eliminar">⌫</button>` : ''}
+      </div>
+    </article>`;
+  }).join('');
+
+  box.querySelectorAll('[data-eval-edit]').forEach(b => b.addEventListener('click', () => openPracticeEvaluationEditor(b.dataset.evalEdit)));
+  box.querySelectorAll('[data-eval-results]').forEach(b => b.addEventListener('click', () => openPracticeEvaluationResults(b.dataset.evalResults)));
+  box.querySelectorAll('[data-eval-copy]').forEach(b => b.addEventListener('click', async () => {
+    const e = practiceEvaluationRecords.find(x => x.id === b.dataset.evalCopy); const link = practiceEvaluationPublicUrl(e); if (!link) return;
+    try { await navigator.clipboard.writeText(link); showPracticeEvaluationMessage('Enlace copiado.','success'); } catch { window.prompt('Copia el enlace:', link); }
+  }));
+  box.querySelectorAll('[data-eval-share]').forEach(b => b.addEventListener('click', () => {
+    const e = practiceEvaluationRecords.find(x => x.id === b.dataset.evalShare); const link = practiceEvaluationPublicUrl(e); if (!link) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(`Evaluación: ${e.titulo}\n${link}`)}`,'_blank','noopener');
+  }));
+  box.querySelectorAll('[data-eval-delete]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('¿Eliminar esta evaluación y todos sus resultados?')) return;
+    const { error } = await client.from('evaluaciones_practica').delete().eq('id', b.dataset.evalDelete);
+    if (error) alert(error.message); else { practiceEvaluationRecords = []; await loadPracticeEvaluations(true); }
+  }));
+}
+
+function renderPracticeEvaluationTrainingOptions(selected = '') {
+  const sel = document.getElementById('practiceEvaluationTraining');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Sin capacitación relacionada</option>' + practiceEvaluationTrainings.map(t => `<option value="${t.id}">${escapeHtml(t.codigo || '')} · ${escapeHtml(t.tema || '')}</option>`).join('');
+  sel.value = selected || '';
+}
+
+function renderPracticeEvaluationUnitOptions(selected = '') {
+  const sel = document.getElementById('practiceEvaluationUnit'); if (!sel) return;
+  const options = [];
+  if (currentProfile?.rol_codigo === 'ADMIN') {
+    options.push('<option value="global">Corporativo · Todos</option>');
+    practiceEvaluationSites.filter(s=>s.activo).forEach(s=>options.push(`<option value="sede:${s.id}">Sede · ${escapeHtml(s.nombre)}</option>`));
+  }
+  practiceEvaluationProjects.filter(p=>p.activo).forEach(p=>options.push(`<option value="proyecto:${p.id}">Proyecto · ${escapeHtml(p.nombre)}</option>`));
+  sel.innerHTML = options.join('') || '<option value="">Sin unidades disponibles</option>';
+  if (selected && [...sel.options].some(o=>o.value===selected)) sel.value = selected;
+}
+
+async function openPracticeEvaluationEditor(id = null) {
+  if (!practiceEvaluationRecords.length) await loadPracticeEvaluations();
+  const record = id ? practiceEvaluationRecords.find(x => x.id === id) : null;
+  if (record && !canManagePracticeEvaluation(record) && currentProfile?.rol_codigo !== 'GERENCIA') return;
+  activePracticeEvaluationId = record?.id || null;
+  document.getElementById('evaluationListView')?.classList.add('hidden');
+  document.getElementById('evaluationResultsView')?.classList.add('hidden');
+  document.getElementById('evaluationEditorView')?.classList.remove('hidden');
+  document.getElementById('practiceListView')?.classList.add('hidden');
+  document.getElementById('practiceEditorView')?.classList.add('hidden');
+
+  document.getElementById('practiceEvaluationId').value = record?.id || '';
+  document.getElementById('practiceEvaluationEditorTitle').textContent = record ? 'Editar evaluación' : 'Nueva evaluación';
+  document.getElementById('practiceEvaluationEditorCode').textContent = record?.codigo || 'NUEVO';
+  document.getElementById('practiceEvaluationTitle').value = record?.titulo || '';
+  document.getElementById('practiceEvaluationResponsible').value = record?.responsable || [currentProfile?.nombres,currentProfile?.apellidos].filter(Boolean).join(' ');
+  renderPracticeEvaluationTrainingOptions(record?.capacitacion_id || '');
+  document.getElementById('practiceEvaluationTopic').value = record?.tema || '';
+  const unit = record?.proyecto_id ? `proyecto:${record.proyecto_id}` : (record?.sede_id ? `sede:${record.sede_id}` : 'global');
+  renderPracticeEvaluationUnitOptions(unit);
+  document.getElementById('practiceEvaluationDate').value = record?.fecha || new Date().toISOString().slice(0,10);
+  document.getElementById('practiceEvaluationTime').value = record?.tiempo_max_min || '';
+  document.getElementById('practiceEvaluationPassing').value = record?.nota_minima ?? 16;
+  document.getElementById('practiceEvaluationAttempts').value = String(record?.max_intentos ?? 0);
+  document.getElementById('practiceEvaluationStatus').value = record?.estado || 'BORRADOR';
+  document.getElementById('practiceEvaluationDescription').value = record?.descripcion || '';
+  document.getElementById('practiceEvaluationRetryFailed').checked = !!record?.reintento_solo_desaprobado;
+  document.getElementById('practiceEvaluationImmediate').checked = !!record?.mostrar_correcta_inmediata;
+  document.getElementById('practiceEvaluationShowCorrect').checked = record?.mostrar_correctas_final ?? true;
+  document.getElementById('practiceEvaluationShuffleQuestions').checked = record?.mezclar_preguntas ?? true;
+  document.getElementById('practiceEvaluationShuffleOptions').checked = record?.mezclar_opciones ?? true;
+  document.getElementById('practiceEvaluationShowExplanation').checked = record?.mostrar_explicacion ?? true;
+  document.getElementById('practiceEvaluationFormMessage').textContent = '';
+  const link = record ? practiceEvaluationPublicUrl(record) : '';
+  document.getElementById('copyPracticeEvaluationLinkButton')?.classList.toggle('hidden', !link);
+  document.getElementById('whatsappPracticeEvaluationButton')?.classList.toggle('hidden', !link);
+  document.getElementById('practiceEvaluationQuestionsPanel')?.classList.toggle('hidden', !record);
+  document.getElementById('saveAndReturnPracticeEvaluation')?.classList.toggle('hidden', !record);
+  if (record) await renderPracticeEvaluationQuestions();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function savePracticeEvaluation(event) {
+  event?.preventDefault();
+  const id = document.getElementById('practiceEvaluationId').value || null;
+  const title = document.getElementById('practiceEvaluationTitle').value.trim();
+  const responsible = document.getElementById('practiceEvaluationResponsible').value.trim();
+  const topic = document.getElementById('practiceEvaluationTopic').value.trim();
+  const unit = document.getElementById('practiceEvaluationUnit').value;
+  const msg = document.getElementById('practiceEvaluationFormMessage');
+  if (!title || !responsible || !topic || !unit) { msg.textContent = 'Completa título, responsable, tema y proyecto/sede.'; msg.className='form-message visible error'; return null; }
+  let sede_id=null,proyecto_id=null; if(unit.startsWith('sede:'))sede_id=unit.split(':')[1]; if(unit.startsWith('proyecto:'))proyecto_id=unit.split(':')[1];
+  const payload = {
+    titulo:title,responsable:responsible,capacitacion_id:document.getElementById('practiceEvaluationTraining').value||null,tema:topic,
+    sede_id,proyecto_id,fecha:document.getElementById('practiceEvaluationDate').value,
+    tiempo_max_min:Number(document.getElementById('practiceEvaluationTime').value)||null,
+    nota_minima:Number(document.getElementById('practiceEvaluationPassing').value||16),max_intentos:Number(document.getElementById('practiceEvaluationAttempts').value||0),
+    reintento_solo_desaprobado:document.getElementById('practiceEvaluationRetryFailed').checked,
+    mostrar_correcta_inmediata:document.getElementById('practiceEvaluationImmediate').checked,
+    mostrar_correctas_final:document.getElementById('practiceEvaluationShowCorrect').checked,
+    mezclar_preguntas:document.getElementById('practiceEvaluationShuffleQuestions').checked,
+    mezclar_opciones:document.getElementById('practiceEvaluationShuffleOptions').checked,
+    mostrar_explicacion:document.getElementById('practiceEvaluationShowExplanation').checked,
+    descripcion:document.getElementById('practiceEvaluationDescription').value.trim()||null,
+    estado:document.getElementById('practiceEvaluationStatus').value,created_by:currentProfile?.id||null
+  };
+  let res; if(id){delete payload.created_by;res=await client.from('evaluaciones_practica').update(payload).eq('id',id).select().single();}else res=await client.from('evaluaciones_practica').insert(payload).select().single();
+  if(res.error){msg.textContent=res.error.message;msg.className='form-message visible error';return null;}
+  practiceEvaluationRecords=[]; await loadPracticeEvaluations(true); activePracticeEvaluationId=res.data.id;
+  msg.textContent='Evaluación guardada correctamente.';msg.className='form-message visible success';
+  await openPracticeEvaluationEditor(res.data.id);
+  return res.data;
+}
+
+async function loadPracticeEvaluationQuestions() {
+  if (!activePracticeEvaluationId) return [];
+  const {data,error}=await client.rpc('listar_preguntas_evaluacion_practica',{p_evaluacion_id:activePracticeEvaluationId});
+  if(error||!data?.ok) throw new Error(data?.error||error?.message||'No fue posible cargar las preguntas.');
+  practiceEvaluationQuestionCache=data.preguntas||[]; return practiceEvaluationQuestionCache;
+}
+
+async function renderPracticeEvaluationQuestions() {
+  const list=document.getElementById('practiceEvaluationQuestionList'); if(!list)return;
+  list.innerHTML='<div class="training-library-empty">Cargando preguntas…</div>';
+  try{
+    const questions=await loadPracticeEvaluationQuestions(); document.getElementById('practiceEvaluationQuestionCount').textContent=String(questions.length);
+    if(!questions.length){list.innerHTML='<div class="training-library-empty">Aún no hay preguntas. Agrega la primera.</div>';return;}
+    list.innerHTML=questions.map((q,i)=>`<article class="evaluation-admin-question"><div class="evaluation-admin-question-head"><div><span class="practice-question-number">${i+1}</span><strong>${escapeHtml(q.enunciado)}</strong></div><div class="evaluation-question-tags"><span>${escapeHtml(evaluationQuestionTypeLabel(q.tipo))}</span><span>${escapeHtml(q.nivel_tema)}</span><span>${Number(q.peso)} pts</span></div></div>${q.imagen_url?`<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de pregunta" class="evaluation-question-thumb" />`:''}<div class="evaluation-admin-options">${q.tipo==='FREE_TEXT'?`<span><b>Respuestas aceptadas:</b> ${(q.respuestas_aceptadas||[]).map(escapeHtml).join(' · ')}</span>`:(q.opciones||[]).map((o,oi)=>`<span class="${o.es_correcta?'correct':''}">${String.fromCharCode(65+oi)}) ${escapeHtml(o.texto)}</span>`).join('')}</div>${q.explicacion?`<p class="evaluation-explanation-preview"><b>Explicación:</b> ${escapeHtml(q.explicacion)}</p>`:''}<div class="evaluation-admin-actions"><button type="button" class="table-link" data-epq-edit="${q.id}">Editar</button><button type="button" class="table-action danger" data-epq-delete="${q.id}">Eliminar</button></div></article>`).join('');
+    list.querySelectorAll('[data-epq-edit]').forEach(b=>b.addEventListener('click',()=>openPracticeEvaluationQuestionModal(questions.find(q=>q.id===b.dataset.epqEdit))));
+    list.querySelectorAll('[data-epq-delete]').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('¿Eliminar esta pregunta?'))return;const{data,error}=await client.rpc('eliminar_pregunta_evaluacion_practica',{p_pregunta_id:b.dataset.epqDelete});if(error||!data?.ok)alert(data?.error||error?.message);else await renderPracticeEvaluationQuestions();}));
+  }catch(err){list.innerHTML=`<div class="training-library-empty">${escapeHtml(err.message)}</div>`;}
+}
+
+function evaluationQuestionTypeLabel(type){return {SINGLE:'Opción múltiple',TRUE_FALSE:'Verdadero / Falso',MULTIPLE:'Varias respuestas',FREE_TEXT:'Respuesta libre'}[type]||type;}
+
+function renderPracticeEvaluationOptionEditor(type='SINGLE',question=null){
+  const box=document.getElementById('practiceEvaluationOptionEditor');const free=document.getElementById('practiceEvaluationFreeEditor'); if(!box||!free)return;
+  const options=question?.opciones||[];
+  free.classList.toggle('hidden',type!=='FREE_TEXT');box.classList.toggle('hidden',type==='FREE_TEXT');
+  if(type==='FREE_TEXT'){document.getElementById('practiceEvaluationAcceptedAnswers').value=(question?.respuestas_aceptadas||[]).join('\n');box.innerHTML='';return;}
+  const count=type==='TRUE_FALSE'?2:4;const labels=type==='TRUE_FALSE'?['Verdadero','Falso']:['Alternativa A','Alternativa B','Alternativa C','Alternativa D'];
+  box.innerHTML=Array.from({length:count},(_,i)=>{const o=options[i]||{};const inputType=type==='MULTIPLE'?'checkbox':'radio';return `<label class="evaluation-option-row"><input type="${inputType}" name="evaluationCorrectOption" value="${i}" ${o.es_correcta?'checked':''} /><span>${type==='TRUE_FALSE'?'':String.fromCharCode(65+i)}</span><input class="evaluation-option-text" data-index="${i}" value="${escapeHtml(o.texto||labels[i])}" ${type==='TRUE_FALSE'?'readonly':''} /></label>`;}).join('');
+  if(type!=='MULTIPLE'&&!box.querySelector('input[name="evaluationCorrectOption"]:checked')) box.querySelector('input[name="evaluationCorrectOption"]')?.setAttribute('checked','checked');
+}
+
+function openPracticeEvaluationQuestionModal(question=null){
+  practiceEvaluationQuestionEditId=question?.id||null;
+  document.getElementById('practiceEvaluationQuestionModalTitle').textContent=question?'Editar pregunta':'Nueva pregunta';
+  document.getElementById('practiceEvaluationQuestionId').value=question?.id||'';
+  document.getElementById('practiceEvaluationQuestionText').value=question?.enunciado||'';
+  document.getElementById('practiceEvaluationQuestionType').value=question?.tipo||'SINGLE';
+  document.getElementById('practiceEvaluationQuestionLevel').value=question?.nivel_tema||'';
+  document.getElementById('practiceEvaluationQuestionWeight').value=question?.peso||1;
+  document.getElementById('practiceEvaluationQuestionExplanation').value=question?.explicacion||'';
+  document.getElementById('practiceEvaluationQuestionImage').value='';
+  const preview=document.getElementById('practiceEvaluationImagePreview');preview.dataset.url=question?.imagen_url||'';preview.innerHTML=question?.imagen_url?`<img src="${escapeHtml(question.imagen_url)}" alt="Vista previa" /><button id="removeEvaluationQuestionImage" type="button">Quitar imagen</button>`:'';
+  document.getElementById('removeEvaluationQuestionImage')?.addEventListener('click',()=>{preview.dataset.url='';preview.innerHTML='';});
+  renderPracticeEvaluationOptionEditor(question?.tipo||'SINGLE',question);
+  document.getElementById('practiceEvaluationQuestionMessage').textContent='';
+  const modal=document.getElementById('practiceEvaluationQuestionModal');modal?.classList.remove('hidden');modal?.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');setTimeout(()=>document.getElementById('practiceEvaluationQuestionText')?.focus(),50);
+}
+
+function closePracticeEvaluationQuestionModal(){const modal=document.getElementById('practiceEvaluationQuestionModal');modal?.classList.add('hidden');modal?.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');practiceEvaluationQuestionEditId=null;}
+
+async function uploadPracticeEvaluationQuestionImage(file){
+  if(!file)return null;if(file.size>5*1024*1024)throw new Error('La imagen no puede superar 5 MB.');
+  const ext=(file.name.split('.').pop()||'jpg').toLowerCase();const path=`${activePracticeEvaluationId}/${crypto.randomUUID()}.${ext}`;
+  const{error}=await client.storage.from('evaluacion-imagenes').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});if(error)throw error;
+  return client.storage.from('evaluacion-imagenes').getPublicUrl(path).data.publicUrl;
+}
+
+async function savePracticeEvaluationQuestion(){
+  if(!activePracticeEvaluationId)return;
+  const type=document.getElementById('practiceEvaluationQuestionType').value;const msg=document.getElementById('practiceEvaluationQuestionMessage');const button=document.getElementById('savePracticeEvaluationQuestionButton');
+  const enunciado=document.getElementById('practiceEvaluationQuestionText').value.trim();const nivel=document.getElementById('practiceEvaluationQuestionLevel').value.trim();const peso=Number(document.getElementById('practiceEvaluationQuestionWeight').value||0);
+  if(!enunciado||!nivel||peso<=0){msg.textContent='Completa pregunta, nivel/tema y peso.';msg.className='form-message visible error';return;}
+  button.disabled=true;button.textContent='Guardando…';
+  try{
+    let imageUrl=document.getElementById('practiceEvaluationImagePreview').dataset.url||null;const file=document.getElementById('practiceEvaluationQuestionImage').files?.[0];if(file)imageUrl=await uploadPracticeEvaluationQuestionImage(file);
+    let opciones=[];let accepted=[];
+    if(type==='FREE_TEXT'){accepted=document.getElementById('practiceEvaluationAcceptedAnswers').value.split('\n').map(x=>x.trim()).filter(Boolean);if(!accepted.length)throw new Error('Agrega al menos una respuesta aceptada.');}
+    else{const rows=[...document.querySelectorAll('#practiceEvaluationOptionEditor .evaluation-option-row')];opciones=rows.map((r,i)=>({texto:r.querySelector('.evaluation-option-text').value.trim(),es_correcta:r.querySelector('input[name="evaluationCorrectOption"]').checked}));if(opciones.some(o=>!o.texto))throw new Error('Completa todas las alternativas.');}
+    const payload={enunciado,tipo,nivel_tema:nivel,explicacion:document.getElementById('practiceEvaluationQuestionExplanation').value.trim(),peso,imagen_url:imageUrl,opciones,respuestas_aceptadas:accepted};
+    const{data,error}=await client.rpc('guardar_pregunta_evaluacion_practica',{p_evaluacion_id:activePracticeEvaluationId,p_pregunta_id:practiceEvaluationQuestionEditId||null,p_data:payload});if(error||!data?.ok)throw new Error(data?.error||error?.message||'No se pudo guardar.');
+    closePracticeEvaluationQuestionModal();await renderPracticeEvaluationQuestions();
+  }catch(err){msg.textContent=err.message;msg.className='form-message visible error';}finally{button.disabled=false;button.textContent='Guardar pregunta';}
+}
+
+async function openPracticeEvaluationResults(id){
+  if(!practiceEvaluationRecords.length)await loadPracticeEvaluations();const record=practiceEvaluationRecords.find(x=>x.id===id);if(!record)return;activePracticeEvaluationId=id;
+  document.getElementById('evaluationListView')?.classList.add('hidden');document.getElementById('evaluationEditorView')?.classList.add('hidden');document.getElementById('evaluationResultsView')?.classList.remove('hidden');
+  document.getElementById('evaluationResultsTitle').textContent=record.titulo;
+  const attempts=practiceEvaluationAttempts.filter(a=>a.evaluacion_id===id&&a.finalizado_at);const approved=attempts.filter(a=>a.aprobado).length;const avg=attempts.length?attempts.reduce((s,a)=>s+Number(a.nota||0),0)/attempts.length:0;
+  document.getElementById('evaluationResultsAttempts').textContent=String(attempts.length);document.getElementById('evaluationResultsApproval').textContent=`${attempts.length?Math.round(approved/attempts.length*100):0}%`;document.getElementById('evaluationResultsAverage').textContent=avg.toFixed(1);document.getElementById('evaluationResultsApproved').textContent=String(approved);
+  const body=document.getElementById('evaluationResultsBody');body.innerHTML=attempts.length?attempts.map(a=>`<tr><td>${escapeHtml(a.dni)}</td><td>${escapeHtml(a.apellidos_nombres)}</td><td><strong>${Number(a.nota).toFixed(1)}</strong></td><td><span class="result-status ${a.aprobado?'approved':'failed'}">${a.aprobado?'APROBADO':'DESAPROBADO'}</span></td><td>${a.firma?`<img src="${a.firma}" class="evaluation-signature-thumb" />`:'—'}</td><td><div class="evaluation-action-row"><button type="button" class="eval-row-btn" data-attempt-expand="${a.id}">⌄</button><button type="button" class="eval-row-btn green" data-attempt-pdf="${a.id}">⇩</button></div></td></tr>`).join(''):'<tr><td colspan="6" class="table-empty">Todavía no hay resultados.</td></tr>';
+  body.querySelectorAll('[data-attempt-expand]').forEach(b=>b.addEventListener('click',()=>toggleEvaluationAttemptDetail(b.dataset.attemptExpand)));
+  body.querySelectorAll('[data-attempt-pdf]').forEach(b=>b.addEventListener('click',()=>downloadPracticeEvaluationAttemptPdf(b.dataset.attemptPdf)));
+  await renderPracticeEvaluationGapAnalysis(id);
+}
+
+async function loadEvaluationAttemptDetail(attemptId){
+  const attempt=practiceEvaluationAttempts.find(a=>a.id===attemptId);if(!attempt)throw new Error('Intento no encontrado.');
+  const [questions,responses]=await Promise.all([client.rpc('listar_preguntas_evaluacion_practica',{p_evaluacion_id:attempt.evaluacion_id}),client.from('evaluacion_practica_respuestas').select('*').eq('intento_id',attemptId)]);
+  if(questions.error||!questions.data?.ok)throw new Error(questions.data?.error||questions.error?.message||'No se pudo cargar preguntas.');
+  if(responses.error)throw responses.error;return{attempt,questions:questions.data.preguntas||[],responses:responses.data||[]};
+}
+
+async function toggleEvaluationAttemptDetail(attemptId){
+  const box=document.getElementById('evaluationAttemptDetail');if(!box)return;if(box.dataset.attemptId===attemptId&&!box.classList.contains('hidden')){box.classList.add('hidden');box.dataset.attemptId='';return;}
+  box.classList.remove('hidden');box.dataset.attemptId=attemptId;box.innerHTML='<div class="training-library-empty">Cargando respuestas…</div>';
+  try{const data=await loadEvaluationAttemptDetail(attemptId);box.innerHTML=`<h3>Respuestas · DNI ${escapeHtml(data.attempt.dni)}</h3><div class="evaluation-answer-review-admin">${data.questions.map((q,i)=>{const r=data.responses.find(x=>x.pregunta_id===q.id);const selected=q.tipo==='FREE_TEXT'?(r?.respuesta_texto||'Sin respuesta'):(q.opciones||[]).filter(o=>(r?.opcion_ids||[]).includes(o.id)).map(o=>o.texto).join(', ')||'Sin respuesta';const correct=q.tipo==='FREE_TEXT'?(q.respuestas_aceptadas||[]).join(' / '):(q.opciones||[]).filter(o=>o.es_correcta).map(o=>o.texto).join(', ');return `<article class="${r?.es_correcta?'correct':'wrong'}"><strong>${i+1}. ${escapeHtml(q.enunciado)}</strong><p>Respuesta: ${escapeHtml(selected)}</p><p>Correcta: ${escapeHtml(correct)}</p>${q.explicacion?`<small>${escapeHtml(q.explicacion)}</small>`:''}</article>`;}).join('')}</div>`;}catch(err){box.innerHTML=`<div class="training-library-empty">${escapeHtml(err.message)}</div>`;}
+}
+
+async function renderPracticeEvaluationGapAnalysis(evalId){
+  const box=document.getElementById('evaluationGapAnalysis');if(!box)return;const attempts=practiceEvaluationAttempts.filter(a=>a.evaluacion_id===evalId&&a.finalizado_at);if(!attempts.length){box.innerHTML='<div class="training-library-empty">Sin datos todavía.</div>';return;}
+  const ids=attempts.map(a=>a.id);const [qres,rres]=await Promise.all([client.rpc('listar_preguntas_evaluacion_practica',{p_evaluacion_id:evalId}),client.from('evaluacion_practica_respuestas').select('intento_id,pregunta_id,es_correcta').in('intento_id',ids)]);if(qres.error||!qres.data?.ok||rres.error){box.innerHTML='<div class="training-library-empty">No se pudo calcular brechas.</div>';return;}
+  const qmap=new Map((qres.data.preguntas||[]).map(q=>[q.id,q]));const stats=new Map();(rres.data||[]).forEach(r=>{const q=qmap.get(r.pregunta_id);if(!q)return;const key=q.nivel_tema||'General';if(!stats.has(key))stats.set(key,{total:0,errors:0});const s=stats.get(key);s.total++;if(!r.es_correcta)s.errors++;});const rows=[...stats.entries()].map(([tema,s])=>({tema,pct:s.total?Math.round(s.errors/s.total*100):0})).sort((a,b)=>b.pct-a.pct||a.tema.localeCompare(b.tema));box.innerHTML=rows.map(x=>`<div class="evaluation-gap-row"><div><span>${escapeHtml(x.tema)}</span><strong>${x.pct}% error</strong></div><div><i style="width:${x.pct}%"></i></div></div>`).join('');
+}
+
+async function downloadPracticeEvaluationAttemptPdf(attemptId){
+  if(!window.jspdf?.jsPDF)return alert('No se cargó el generador PDF.');
+  try{const data=await loadEvaluationAttemptDetail(attemptId);const record=practiceEvaluationRecords.find(x=>x.id===data.attempt.evaluacion_id);const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});let logo=null;try{logo=await imageToDataUrl('assets/logo-explo.jpg');}catch{}
+    if(logo)doc.addImage(logo,'JPEG',14,10,28,16);doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('SIG - SSOMAC',105,16,{align:'center'});doc.setFontSize(16);doc.text('EVALUACIÓN DE PRÁCTICA',105,25,{align:'center'});doc.setFontSize(8);doc.text(`Código: ${record?.codigo||'—'}`,150,15);doc.line(14,32,196,32);doc.setFontSize(13);doc.text('RESOLUCIÓN DE LA EVALUACIÓN',105,41,{align:'center'});doc.setFontSize(9);doc.setFont('helvetica','normal');let y=52;[['Participante',data.attempt.apellidos_nombres],['DNI',data.attempt.dni],['Tema',record?.tema||'—'],['Fecha',formatDatePE(record?.fecha)],['Nota',Number(data.attempt.nota).toFixed(1)],['Estado',data.attempt.aprobado?'APROBADO':'DESAPROBADO']].forEach(([k,v])=>{doc.setFont('helvetica','bold');doc.text(`${k}:`,18,y);doc.setFont('helvetica','normal');doc.text(String(v),48,y);y+=6;});y+=4;
+    for(let i=0;i<data.questions.length;i++){const q=data.questions[i];const r=data.responses.find(x=>x.pregunta_id===q.id);if(y>270){doc.addPage();y=18;}doc.setFont('helvetica','bold');doc.setFontSize(9);const qLines=doc.splitTextToSize(`${i+1}. ${q.enunciado}`,170);doc.text(qLines,18,y);y+=qLines.length*4+2;const selected=q.tipo==='FREE_TEXT'?(r?.respuesta_texto||'Sin respuesta'):(q.opciones||[]).filter(o=>(r?.opcion_ids||[]).includes(o.id)).map(o=>o.texto).join(', ')||'Sin respuesta';const correct=q.tipo==='FREE_TEXT'?(q.respuestas_aceptadas||[]).join(' / '):(q.opciones||[]).filter(o=>o.es_correcta).map(o=>o.texto).join(', ');doc.setFont('helvetica','normal');doc.setFontSize(8);const a=doc.splitTextToSize(`Tu respuesta: ${selected}`,166);doc.text(a,22,y);y+=a.length*3.6;doc.setTextColor(r?.es_correcta?0:180,r?.es_correcta?130:0,30);const c=doc.splitTextToSize(`Respuesta correcta: ${correct}`,166);doc.text(c,22,y);y+=c.length*3.6+2;doc.setTextColor(0,0,0);if(q.explicacion){const ex=doc.splitTextToSize(`Explicación: ${q.explicacion}`,166);doc.text(ex,22,y);y+=ex.length*3.6+4;}else y+=3;}
+    if(data.attempt.firma){if(y>255){doc.addPage();y=25;}doc.setFont('helvetica','bold');doc.text('Firma del participante:',18,y);try{doc.addImage(data.attempt.firma,'PNG',55,y-7,42,16);}catch{}}
+    doc.save(`${record?.codigo||'EVALUACION'}_Resultado_${data.attempt.dni}.pdf`);
+  }catch(err){alert(err.message);}
+}
+
+async function downloadPracticeEvaluationRegisterPdf(){
+  const record=practiceEvaluationRecords.find(x=>x.id===activePracticeEvaluationId);if(!record||!window.jspdf?.jsPDF)return;const attempts=practiceEvaluationAttempts.filter(a=>a.evaluacion_id===record.id&&a.finalizado_at);const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});let logo=null;try{logo=await imageToDataUrl('assets/logo-explo.jpg');}catch{}
+  if(logo)doc.addImage(logo,'JPEG',12,8,28,16);doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('SIG - SSOMAC',148,14,{align:'center'});doc.setFillColor(192,0,0);doc.rect(45,18,205,8,'F');doc.setTextColor(255,255,255);doc.setFontSize(8);doc.text('REGISTRO DE EVALUACIÓN DE PRÁCTICA',147,23,{align:'center'});doc.setTextColor(0,0,0);doc.setFontSize(7);doc.text(`Código: ${record.codigo}`,252,12);doc.text(`Fecha: ${formatDatePE(record.fecha)}`,252,18);doc.setFontSize(9);doc.text(`TEMA: ${record.tema}`,12,36);doc.text(`RESPONSABLE: ${record.responsable}`,12,43);doc.text(`UNIDAD: ${practiceEvaluationUnitLabel(record)}`,150,43);doc.autoTable({startY:50,head:[['N°','APELLIDOS Y NOMBRES','DNI','PUESTO','ÁREA','FIRMA','NOTA']],body:attempts.map((a,i)=>[i+1,a.apellidos_nombres,a.dni,a.puesto||'',a.area||'','',Number(a.nota).toFixed(1)]),styles:{fontSize:7,cellPadding:2},headStyles:{fillColor:[70,70,70]},columnStyles:{0:{cellWidth:12},1:{cellWidth:70},2:{cellWidth:28},3:{cellWidth:55},4:{cellWidth:40},5:{cellWidth:45},6:{cellWidth:18}}});
+  let finalY=doc.lastAutoTable.finalY;attempts.forEach((a,i)=>{if(!a.firma)return;try{const rowY=50+8+(i*7);doc.addImage(a.firma,'PNG',213,rowY,25,6);}catch{}});doc.save(`${record.codigo}_Registro_Evaluacion.pdf`);
+}
+
+function backToPracticeEvaluationList(){document.getElementById('evaluationEditorView')?.classList.add('hidden');document.getElementById('evaluationResultsView')?.classList.add('hidden');document.getElementById('evaluationListView')?.classList.remove('hidden');activePracticeEvaluationId=null;renderPracticeEvaluations();}
+
+// ---------------- PUBLIC EVALUATION ----------------
+let publicEvaluationCode='';let publicEvaluationParticipant=null;let publicEvaluationRun=null;let publicEvaluationTimerInterval=null;let publicEvaluationDeadline=null;let publicEvaluationLastResult=null;let publicEvaluationLastAttemptId=null;let publicEvaluationCanvasDrawing=false;let publicEvaluationCanvasCtx=null;
+
+function showPublicEvaluationOnly(){publicExamScreen?.classList.add('hidden');publicPracticeScreen?.classList.add('hidden');appShell?.classList.add('hidden');authScreen?.classList.add('hidden');authLoading?.classList.add('hidden');publicEvaluationScreen?.classList.remove('hidden');}
+function publicEvaluationMessage(message='',type='error',id='publicEvaluationMessage'){const el=document.getElementById(id);if(!el)return;el.textContent=message;el.className=`form-message ${message?'visible':''} ${type}`;}
+async function initializePublicEvaluationMode(code){publicEvaluationCode=(code||'').trim();showPublicEvaluationOnly();document.getElementById('publicEvaluationHeaderCode').textContent=publicEvaluationCode;document.getElementById('publicEvaluationIdentity')?.classList.remove('hidden');document.getElementById('publicEvaluationFormView')?.classList.add('hidden');document.getElementById('publicEvaluationResultView')?.classList.add('hidden');document.getElementById('publicEvaluationReviewView')?.classList.add('hidden');setTimeout(()=>document.getElementById('publicEvaluationDni')?.focus(),50);}
+async function lookupPublicEvaluation(){const dni=(document.getElementById('publicEvaluationDni').value||'').replace(/\D/g,'').slice(0,8);document.getElementById('publicEvaluationDni').value=dni;publicEvaluationMessage('');document.getElementById('publicEvaluationParticipantPreview')?.classList.add('hidden');document.getElementById('publicEvaluationRegistration')?.classList.add('hidden');if(!/^\d{8}$/.test(dni)){publicEvaluationMessage('Ingresa un DNI válido de 8 dígitos.');return;}const btn=document.getElementById('publicEvaluationLookupButton');btn.disabled=true;btn.textContent='Buscando…';const{data,error}=await client.rpc('obtener_evaluacion_practica_participante',{p_codigo:publicEvaluationCode,p_dni:dni});btn.disabled=false;btn.textContent='Continuar';if(error||!data?.ok){publicEvaluationMessage(data?.error||error?.message||'No fue posible consultar.');return;}document.getElementById('publicEvaluationHeaderTitle').textContent=data.titulo||'Evaluación';if(!data.registrado){publicEvaluationParticipant=data;document.getElementById('publicEvaluationRegDni').value=dni;const{data:sites}=await client.rpc('listar_sedes_registro_evaluacion_practica',{p_codigo:publicEvaluationCode});const sel=document.getElementById('publicEvaluationRegSite');sel.innerHTML='<option value="">Seleccione una sede</option>'+(sites||[]).map(s=>`<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('');document.getElementById('publicEvaluationSiteField').classList.toggle('hidden',!!data.sede_id||!!data.proyecto_id);document.getElementById('publicEvaluationRegistration')?.classList.remove('hidden');publicEvaluationMessage('No estás registrado. Regístrate para continuar.');return;}publicEvaluationParticipant=data;document.getElementById('publicEvaluationParticipantName').textContent=data.nombre;document.getElementById('publicEvaluationParticipantDetails').textContent=`DNI ${data.dni} · ${data.puesto||'—'} · ${data.area||'—'} · ${data.proyecto||data.sede||'—'}`;document.getElementById('publicEvaluationAttempts').textContent=data.max_intentos>0?`Intentos: ${data.intentos_realizados} de ${data.max_intentos}`:`Intentos realizados: ${data.intentos_realizados} · Sin límite`;document.getElementById('publicEvaluationParticipantPreview')?.classList.remove('hidden');}
+async function registerPublicEvaluationWorker(event){event.preventDefault();const payload={p_codigo:publicEvaluationCode,p_dni:document.getElementById('publicEvaluationRegDni').value,p_nombres:document.getElementById('publicEvaluationRegFirstName').value.trim(),p_apellidos:document.getElementById('publicEvaluationRegLastName').value.trim(),p_cargo:document.getElementById('publicEvaluationRegPosition').value.trim(),p_area:document.getElementById('publicEvaluationRegArea').value.trim(),p_sede_id:document.getElementById('publicEvaluationRegSite').value||null};const{data,error}=await client.rpc('registrar_trabajador_evaluacion_practica',payload);if(error||!data?.ok){publicEvaluationMessage(data?.error||error?.message||'No se pudo registrar.','error','publicEvaluationRegistrationMessage');return;}document.getElementById('publicEvaluationRegistration')?.classList.add('hidden');await lookupPublicEvaluation();}
+async function startPublicEvaluation(){const dni=document.getElementById('publicEvaluationDni').value;const btn=document.getElementById('publicEvaluationStartButton');btn.disabled=true;btn.textContent='Preparando…';const{data,error}=await client.rpc('iniciar_evaluacion_practica',{p_codigo:publicEvaluationCode,p_dni:dni});btn.disabled=false;btn.textContent='Comenzar evaluación';if(error||!data?.ok){publicEvaluationMessage(data?.error||error?.message||'No se pudo iniciar.');return;}publicEvaluationRun=data;publicEvaluationLastAttemptId=data.intento_id;document.getElementById('publicEvaluationIdentity')?.classList.add('hidden');document.getElementById('publicEvaluationFormView')?.classList.remove('hidden');document.getElementById('publicEvaluationPlayer').textContent=data.participante;document.getElementById('publicEvaluationPassing').textContent=Number(data.nota_minima).toFixed(1).replace('.0','');document.getElementById('publicEvaluationDescription').textContent=data.descripcion||'';renderPublicEvaluationQuestions(data.preguntas||[]);setupPublicEvaluationSignatureCanvas();startPublicEvaluationTimer(data.tiempo_max_min);}
+function renderPublicEvaluationQuestions(questions){const box=document.getElementById('publicEvaluationQuestionList');box.innerHTML=questions.map((q,i)=>`<article class="public-evaluation-question" data-question-id="${q.id}" data-question-type="${q.tipo}"><div class="public-evaluation-question-head"><span>Pregunta ${i+1}</span><b>${Number(q.peso)} pts · ${escapeHtml(q.nivel_tema)}</b></div><h3>${escapeHtml(q.enunciado)}</h3>${q.imagen_url?`<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de la pregunta" />`:''}${renderPublicEvaluationAnswerControls(q)}${publicEvaluationRun.mostrar_correcta_inmediata?`<button type="button" class="secondary-btn public-check-answer" data-check-question="${q.id}">Comprobar respuesta</button><div class="public-immediate-feedback hidden" id="feedback-${q.id}"></div>`:''}</article>`).join('');box.querySelectorAll('[data-check-question]').forEach(b=>b.addEventListener('click',()=>checkPublicEvaluationAnswer(b.dataset.checkQuestion)));}
+function renderPublicEvaluationAnswerControls(q){if(q.tipo==='FREE_TEXT')return `<textarea class="public-eval-free" rows="3" placeholder="Escribe tu respuesta"></textarea>`;const input=q.tipo==='MULTIPLE'?'checkbox':'radio';return `<div class="public-evaluation-options">${(q.opciones||[]).map((o,i)=>`<label><input type="${input}" name="q-${q.id}" value="${o.id}" /><span>${String.fromCharCode(65+i)}) ${escapeHtml(o.texto)}</span></label>`).join('')}</div>`;}
+function collectPublicEvaluationAnswer(q){const article=document.querySelector(`.public-evaluation-question[data-question-id="${q.id}"]`);if(!article)return{pregunta_id:q.id,opcion_ids:[],texto:''};if(q.tipo==='FREE_TEXT')return{pregunta_id:q.id,opcion_ids:[],texto:article.querySelector('.public-eval-free')?.value.trim()||''};return{pregunta_id:q.id,opcion_ids:[...article.querySelectorAll('input:checked')].map(x=>x.value),texto:''};}
+async function checkPublicEvaluationAnswer(questionId){const q=(publicEvaluationRun?.preguntas||[]).find(x=>x.id===questionId);if(!q)return;const a=collectPublicEvaluationAnswer(q);const{data,error}=await client.rpc('verificar_respuesta_evaluacion_practica',{p_codigo:publicEvaluationCode,p_pregunta_id:q.id,p_opcion_ids:a.opcion_ids,p_respuesta_texto:a.texto||null});const box=document.getElementById(`feedback-${q.id}`);if(error||!data?.ok){box.textContent=data?.error||error?.message;box.className='public-immediate-feedback wrong';return;}box.innerHTML=`<strong>${data.es_correcta?'✓ Correcto':'✕ Incorrecto'}</strong>${!data.es_correcta?`<span>Respuesta correcta: ${(data.correctas||[]).map(escapeHtml).join(' / ')}</span>`:''}${data.explicacion?`<p>${escapeHtml(data.explicacion)}</p>`:''}`;box.className=`public-immediate-feedback ${data.es_correcta?'correct':'wrong'}`;}
+function startPublicEvaluationTimer(minutes){clearInterval(publicEvaluationTimerInterval);const box=document.getElementById('publicEvaluationTimerBox');const txt=document.getElementById('publicEvaluationTimer');if(!minutes){box.classList.add('hidden');txt.textContent='Sin límite';return;}box.classList.remove('hidden');publicEvaluationDeadline=Date.now()+Number(minutes)*60000;const tick=()=>{const ms=Math.max(0,publicEvaluationDeadline-Date.now());const min=Math.floor(ms/60000);const sec=Math.floor(ms%60000/1000);txt.textContent=`${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;if(ms<=0){clearInterval(publicEvaluationTimerInterval);submitPublicEvaluation(true);}};tick();publicEvaluationTimerInterval=setInterval(tick,1000);}
+function setupPublicEvaluationSignatureCanvas(){const c=document.getElementById('publicEvaluationSignatureCanvas');if(!c)return;publicEvaluationCanvasCtx=c.getContext('2d');publicEvaluationCanvasCtx.lineWidth=2;publicEvaluationCanvasCtx.lineCap='round';publicEvaluationCanvasCtx.strokeStyle='#17263c';publicEvaluationCanvasCtx.clearRect(0,0,c.width,c.height);const point=e=>{const r=c.getBoundingClientRect();const p=e.touches?.[0]||e;return{x:(p.clientX-r.left)*(c.width/r.width),y:(p.clientY-r.top)*(c.height/r.height)}};c.onpointerdown=e=>{publicEvaluationCanvasDrawing=true;const p=point(e);publicEvaluationCanvasCtx.beginPath();publicEvaluationCanvasCtx.moveTo(p.x,p.y);c.setPointerCapture?.(e.pointerId);};c.onpointermove=e=>{if(!publicEvaluationCanvasDrawing)return;const p=point(e);publicEvaluationCanvasCtx.lineTo(p.x,p.y);publicEvaluationCanvasCtx.stroke();};c.onpointerup=()=>{publicEvaluationCanvasDrawing=false;};c.onpointerleave=()=>{publicEvaluationCanvasDrawing=false;};}
+function publicEvaluationSignatureIsBlank(){const c=document.getElementById('publicEvaluationSignatureCanvas');const ctx=c.getContext('2d');const data=ctx.getImageData(0,0,c.width,c.height).data;for(let i=3;i<data.length;i+=4)if(data[i]!==0)return false;return true;}
+async function submitPublicEvaluation(auto=false){if(!publicEvaluationRun)return;const msg=document.getElementById('publicEvaluationSubmitMessage');if(!auto&&publicEvaluationSignatureIsBlank()){msg.textContent='Registra tu firma antes de finalizar.';msg.className='form-message visible error';return;}const c=document.getElementById('publicEvaluationSignatureCanvas');const firma=publicEvaluationSignatureIsBlank()?'data:image/png;base64,':c.toDataURL('image/png');if(auto&&publicEvaluationSignatureIsBlank()){msg.textContent='El tiempo terminó. Firma y pulsa Finalizar evaluación.';msg.className='form-message visible error';return;}const answers=(publicEvaluationRun.preguntas||[]).map(collectPublicEvaluationAnswer);const dni=document.getElementById('publicEvaluationDni').value;const btn=document.getElementById('publicEvaluationSubmitButton');btn.disabled=true;btn.textContent='Calificando…';const{data,error}=await client.rpc('finalizar_evaluacion_practica',{p_intento_id:publicEvaluationRun.intento_id,p_dni:dni,p_respuestas:answers,p_firma:firma});btn.disabled=false;btn.textContent='Finalizar evaluación';if(error||!data?.ok){msg.textContent=data?.error||error?.message||'No se pudo finalizar.';msg.className='form-message visible error';return;}clearInterval(publicEvaluationTimerInterval);publicEvaluationLastResult=data;showPublicEvaluationResult(data);}
+function showPublicEvaluationResult(data){document.getElementById('publicEvaluationFormView')?.classList.add('hidden');document.getElementById('publicEvaluationResultView')?.classList.remove('hidden');const icon=document.getElementById('publicEvaluationResultIcon');icon.textContent=data.aprobado?'✓':'!';icon.classList.toggle('fail',!data.aprobado);document.getElementById('publicEvaluationResultTitle').textContent=data.aprobado?'¡Genial, estás aprobado!':'Debes reforzar algunos temas';document.getElementById('publicEvaluationGrade').innerHTML=`${Number(data.nota).toFixed(1)} <small>/ 20</small>`;document.getElementById('publicEvaluationCorrectText').textContent=`${data.correctas} de ${data.total} respuestas correctas`;const card=document.getElementById('publicEvaluationReinforceCard');const list=document.getElementById('publicEvaluationReinforceList');const topics=data.temas_reforzar||[];card.classList.toggle('hidden',!topics.length);list.innerHTML=topics.map(x=>`<div>⚠ ${escapeHtml(x.tema)}</div>`).join('');}
+async function reviewPublicEvaluation(){const dni=document.getElementById('publicEvaluationDni').value;const{data,error}=await client.rpc('revisar_evaluacion_practica',{p_intento_id:publicEvaluationLastAttemptId,p_dni:dni});if(error||!data?.ok){alert(data?.error||error?.message);return;}document.getElementById('publicEvaluationResultView')?.classList.add('hidden');document.getElementById('publicEvaluationReviewView')?.classList.remove('hidden');document.getElementById('publicEvaluationReviewQuestions').innerHTML=(data.preguntas||[]).map((q,i)=>`<article class="public-review-question ${q.es_correcta?'correct':'wrong'}"><h3>${i+1}. ${escapeHtml(q.enunciado)}</h3><p><b>Tu respuesta:</b> ${escapeHtml(q.respuesta_texto||((q.respuesta_seleccionada||[]).join(', '))||'Sin respuesta')}</p>${(q.respuestas_correctas||[]).length?`<p><b>Respuesta correcta:</b> ${escapeHtml(q.respuestas_correctas.join(' / '))}</p>`:''}${q.explicacion?`<p class="public-review-explanation">${escapeHtml(q.explicacion)}</p>`:''}<small>Tema: ${escapeHtml(q.nivel_tema)}</small></article>`).join('');document.getElementById('publicEvaluationMasteredList').innerHTML=(data.temas_dominados||[]).map(x=>`<div>✓ ${escapeHtml(x)}</div>`).join('')||'<div>—</div>';document.getElementById('publicEvaluationReviewReinforceList').innerHTML=(data.temas_reforzar||[]).map(x=>`<div>⚠ ${escapeHtml(x.tema)}</div>`).join('')||'<div>✓ Sin temas pendientes</div>';}
+
+// EVENTS ETAPA 13
+document.getElementById('practiceQuizModeButton')?.addEventListener('click',()=>switchPracticeMode('quiz'));
+document.getElementById('practiceEvaluationModeButton')?.addEventListener('click',()=>switchPracticeMode('evaluation'));
+document.getElementById('newPracticeEvaluationButton')?.addEventListener('click',()=>openPracticeEvaluationEditor());
+document.getElementById('refreshPracticeEvaluationsButton')?.addEventListener('click',()=>{practiceEvaluationRecords=[];loadPracticeEvaluations(true);});
+document.getElementById('practiceEvaluationSearch')?.addEventListener('input',renderPracticeEvaluations);
+document.getElementById('practiceEvaluationStatusFilter')?.addEventListener('change',renderPracticeEvaluations);
+document.getElementById('backPracticeEvaluationsButton')?.addEventListener('click',backToPracticeEvaluationList);
+document.getElementById('backEvaluationResultsButton')?.addEventListener('click',backToPracticeEvaluationList);
+document.getElementById('practiceEvaluationForm')?.addEventListener('submit',savePracticeEvaluation);
+document.getElementById('practiceEvaluationTraining')?.addEventListener('change',e=>{const t=practiceEvaluationTrainings.find(x=>x.id===e.target.value);if(t&&!document.getElementById('practiceEvaluationTopic').value.trim())document.getElementById('practiceEvaluationTopic').value=t.tema||'';});
+document.getElementById('newPracticeEvaluationQuestionButton')?.addEventListener('click',()=>openPracticeEvaluationQuestionModal());
+document.getElementById('practiceEvaluationQuestionType')?.addEventListener('change',e=>renderPracticeEvaluationOptionEditor(e.target.value));
+document.getElementById('savePracticeEvaluationQuestionButton')?.addEventListener('click',savePracticeEvaluationQuestion);
+document.getElementById('closePracticeEvaluationQuestionModal')?.addEventListener('click',closePracticeEvaluationQuestionModal);
+document.getElementById('cancelPracticeEvaluationQuestionModal')?.addEventListener('click',closePracticeEvaluationQuestionModal);
+document.getElementById('practiceEvaluationQuestionModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePracticeEvaluationQuestionModal);
+document.getElementById('saveAndReturnPracticeEvaluation')?.addEventListener('click',async()=>{await savePracticeEvaluation();backToPracticeEvaluationList();});
+document.getElementById('copyPracticeEvaluationLinkButton')?.addEventListener('click',async()=>{const e=practiceEvaluationRecords.find(x=>x.id===activePracticeEvaluationId);const link=practiceEvaluationPublicUrl(e);if(!link)return;try{await navigator.clipboard.writeText(link);alert('Enlace copiado.');}catch{window.prompt('Copia el enlace:',link);}});
+document.getElementById('whatsappPracticeEvaluationButton')?.addEventListener('click',()=>{const e=practiceEvaluationRecords.find(x=>x.id===activePracticeEvaluationId);const link=practiceEvaluationPublicUrl(e);if(link)window.open(`https://wa.me/?text=${encodeURIComponent(`Evaluación: ${e.titulo}\n${link}`)}`,'_blank','noopener');});
+document.getElementById('downloadEvaluationRegisterButton')?.addEventListener('click',downloadPracticeEvaluationRegisterPdf);
+
+document.getElementById('publicEvaluationDni')?.addEventListener('input',e=>e.target.value=e.target.value.replace(/\D/g,'').slice(0,8));
+document.getElementById('publicEvaluationDni')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupPublicEvaluation();}});
+document.getElementById('publicEvaluationLookupButton')?.addEventListener('click',lookupPublicEvaluation);
+document.getElementById('publicEvaluationRegistrationForm')?.addEventListener('submit',registerPublicEvaluationWorker);
+document.getElementById('publicEvaluationRegistrationCancelButton')?.addEventListener('click',()=>document.getElementById('publicEvaluationRegistration')?.classList.add('hidden'));
+document.getElementById('publicEvaluationStartButton')?.addEventListener('click',startPublicEvaluation);
+document.getElementById('clearPublicEvaluationSignature')?.addEventListener('click',()=>setupPublicEvaluationSignatureCanvas());
+document.getElementById('publicEvaluationSubmitButton')?.addEventListener('click',()=>submitPublicEvaluation(false));
+document.getElementById('publicEvaluationReviewButton')?.addEventListener('click',reviewPublicEvaluation);
+document.getElementById('publicEvaluationReviewBack')?.addEventListener('click',()=>{document.getElementById('publicEvaluationReviewView')?.classList.add('hidden');document.getElementById('publicEvaluationResultView')?.classList.remove('hidden');});
 
 
 initializeAuth();

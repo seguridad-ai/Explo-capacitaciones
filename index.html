@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260922-28" />
+  <link rel="stylesheet" href="styles.css?v=20260923-30" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -224,6 +224,63 @@
         </section>
       </main>
 
+      <footer class="public-exam-footer"><span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span><span>By RonyC</span></footer>
+    </div>
+  </section>
+
+
+  <section id="publicEvaluationScreen" class="public-evaluation-screen hidden" aria-label="Evaluación de práctica">
+    <div class="public-evaluation-shell">
+      <header class="public-evaluation-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div><span class="eyebrow">EVALUACIÓN DE PRÁCTICA</span><h1 id="publicEvaluationHeaderTitle">Evaluación</h1><p id="publicEvaluationHeaderCode">Código</p></div>
+      </header>
+
+      <main class="public-evaluation-card">
+        <section id="publicEvaluationIdentity">
+          <div class="public-evaluation-intro"><span class="evaluation-icon">?</span><div><h2>Ingresa para iniciar</h2><p>Identifícate con tu DNI. Tus datos se cargarán automáticamente.</p></div></div>
+          <label class="public-exam-dni-label"><span>DNI</span><div class="public-exam-dni-row"><input id="publicEvaluationDni" type="text" inputmode="numeric" maxlength="8" placeholder="8 dígitos" autocomplete="off" /><button id="publicEvaluationLookupButton" class="primary-btn" type="button">Continuar</button></div></label>
+          <div id="publicEvaluationMessage" class="form-message"></div>
+          <div id="publicEvaluationParticipantPreview" class="public-participant-preview hidden"><strong id="publicEvaluationParticipantName">—</strong><span id="publicEvaluationParticipantDetails">—</span><span id="publicEvaluationAttempts">—</span><button id="publicEvaluationStartButton" class="primary-btn" type="button">Comenzar evaluación</button></div>
+
+          <section id="publicEvaluationRegistration" class="public-registration-card hidden">
+            <div class="public-registration-head"><div><span class="eyebrow">NO ESTÁS REGISTRADO</span><h3>Regístrate para continuar</h3><p>Completa tus datos. El registro quedará disponible en Trabajadores.</p></div></div>
+            <form id="publicEvaluationRegistrationForm" novalidate>
+              <div class="public-registration-grid">
+                <label><span>DNI *</span><input id="publicEvaluationRegDni" type="text" readonly /></label>
+                <label id="publicEvaluationSiteField"><span>Sede *</span><select id="publicEvaluationRegSite"><option value="">Seleccione una sede</option></select></label>
+                <label><span>Apellidos *</span><input id="publicEvaluationRegLastName" maxlength="160" /></label>
+                <label><span>Nombres *</span><input id="publicEvaluationRegFirstName" maxlength="160" /></label>
+                <label><span>Puesto *</span><input id="publicEvaluationRegPosition" maxlength="160" /></label>
+                <label><span>Área *</span><input id="publicEvaluationRegArea" maxlength="160" /></label>
+              </div>
+              <div id="publicEvaluationRegistrationMessage" class="form-message"></div>
+              <div class="public-registration-actions"><button id="publicEvaluationRegistrationCancelButton" class="secondary-btn" type="button">Volver</button><button class="primary-btn" type="submit">Registrarme y continuar</button></div>
+            </form>
+          </section>
+        </section>
+
+        <section id="publicEvaluationFormView" class="hidden">
+          <div class="public-evaluation-meta"><div><span>Participante</span><strong id="publicEvaluationPlayer">—</strong></div><div><span>Nota mínima</span><strong id="publicEvaluationPassing">16</strong></div><div id="publicEvaluationTimerBox"><span>Tiempo restante</span><strong id="publicEvaluationTimer">Sin límite</strong></div></div>
+          <div id="publicEvaluationDescription" class="public-evaluation-description"></div>
+          <div id="publicEvaluationQuestionList" class="public-evaluation-question-list"></div>
+          <section class="public-evaluation-signature"><div><h3>Firma del participante</h3><p>Firma con el dedo o mouse antes de enviar tu evaluación.</p></div><canvas id="publicEvaluationSignatureCanvas" width="650" height="170"></canvas><div class="signature-actions"><button id="clearPublicEvaluationSignature" class="secondary-btn" type="button">Limpiar firma</button></div></section>
+          <div id="publicEvaluationSubmitMessage" class="form-message"></div>
+          <button id="publicEvaluationSubmitButton" class="primary-btn public-evaluation-submit" type="button">Finalizar evaluación</button>
+        </section>
+
+        <section id="publicEvaluationResultView" class="public-evaluation-result hidden">
+          <div id="publicEvaluationResultIcon" class="public-result-icon">✓</div><span class="eyebrow">RESULTADO</span><h2 id="publicEvaluationResultTitle">¡Genial, estás aprobado!</h2><div id="publicEvaluationGrade" class="public-evaluation-grade">20.0 <small>/ 20</small></div><p id="publicEvaluationCorrectText">—</p>
+          <div id="publicEvaluationReinforceCard" class="evaluation-learning-card reinforce hidden"><h3>⚠ Temas que debes reforzar</h3><div id="publicEvaluationReinforceList"></div></div>
+          <button id="publicEvaluationReviewButton" class="primary-btn" type="button">Revisar mis respuestas</button>
+        </section>
+
+        <section id="publicEvaluationReviewView" class="public-evaluation-review hidden">
+          <div class="public-review-head"><button id="publicEvaluationReviewBack" class="secondary-btn" type="button">← Volver al resultado</button><h2>Repasa tus respuestas</h2></div>
+          <div id="publicEvaluationReviewQuestions" class="public-review-list"></div>
+          <div class="evaluation-review-summary"><article><h3>✓ Temas dominados</h3><div id="publicEvaluationMasteredList"></div></article><article class="reinforce"><h3>⚠ Temas a reforzar</h3><div id="publicEvaluationReviewReinforceList"></div></article></div>
+        </section>
+      </main>
       <footer class="public-exam-footer"><span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span><span>By RonyC</span></footer>
     </div>
   </section>
@@ -1031,6 +1088,10 @@
       <section id="inducciones" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Inducciones</h2><p>Contenido, videos, evaluación y constancia.</p></div><div class="coming-card"><span>▶</span><h3>Próximamente</h3><p>Rutas de inducción con control de avance y evaluación.</p></div></section>
       
       <section id="practicar" class="page-section">
+        <div id="practiceModeTabs" class="practice-mode-tabs">
+          <button id="practiceQuizModeButton" class="active" type="button">★ Quiz rápido</button>
+          <button id="practiceEvaluationModeButton" type="button">▣ Evaluaciones</button>
+        </div>
         <div id="practiceListView">
           <div class="section-title section-title-row">
             <div><span class="eyebrow">APRENDIZAJE DIDÁCTICO</span><h2>Practicar</h2><p>Crea quizzes temporizados tipo Kahoot, comparte el enlace y revisa el ranking.</p></div>
@@ -1096,6 +1157,50 @@
             <div class="table-wrap"><table class="data-table"><thead><tr><th>#</th><th>Participante</th><th>DNI</th><th>Puntaje</th><th>Correctas</th><th>Fecha</th></tr></thead><tbody id="practiceRankingBody"></tbody></table></div>
           </article>
         </div>
+
+
+        <div id="evaluationListView" class="hidden">
+          <div class="section-title section-title-row"><div><span class="eyebrow">EVALUACIONES DE PRÁCTICA</span><h2>Evaluaciones</h2><p>Evaluaciones formales con nota, firma, análisis de brechas y retroalimentación educativa.</p></div><button id="newPracticeEvaluationButton" class="primary-btn" type="button">+ Nueva evaluación</button></div>
+          <div id="practiceEvaluationModuleMessage" class="module-message"></div>
+          <article class="practice-toolbar"><input id="practiceEvaluationSearch" type="search" placeholder="Buscar evaluación" /><select id="practiceEvaluationStatusFilter"><option value="">Todos los estados</option><option value="ACTIVA">Activas</option><option value="BORRADOR">Borradores</option><option value="CERRADA">Cerradas</option></select><button id="refreshPracticeEvaluationsButton" class="secondary-btn" type="button">Actualizar</button></article>
+          <div id="practiceEvaluationCards" class="practice-evaluation-card-list"><div class="training-library-empty">Cargando evaluaciones…</div></div>
+        </div>
+
+        <div id="evaluationEditorView" class="hidden">
+          <div class="training-detail-topbar"><button id="backPracticeEvaluationsButton" class="secondary-btn" type="button">← Volver a Evaluaciones</button><div class="training-detail-actions"><button id="copyPracticeEvaluationLinkButton" class="secondary-btn hidden" type="button">Copiar enlace</button><button id="whatsappPracticeEvaluationButton" class="primary-btn hidden" type="button">WhatsApp</button></div></div>
+          <article class="catalog-panel evaluation-editor-panel">
+            <div class="catalog-panel-head"><div><span class="eyebrow">EVALUACIÓN</span><h3 id="practiceEvaluationEditorTitle">Nueva evaluación</h3><p class="modal-subtitle">Relaciona la evaluación con una capacitación o utiliza un tema libre.</p></div><span id="practiceEvaluationEditorCode" class="practice-code">NUEVO</span></div>
+            <form id="practiceEvaluationForm" novalidate><input id="practiceEvaluationId" type="hidden" />
+              <div class="evaluation-form-grid">
+                <label><span>Título *</span><input id="practiceEvaluationTitle" maxlength="200" required /></label><label><span>Responsable *</span><input id="practiceEvaluationResponsible" maxlength="180" required /></label>
+                <label><span>Capacitación relacionada</span><select id="practiceEvaluationTraining"><option value="">Sin capacitación relacionada</option></select></label><label><span>Tema de la capacitación / tema libre *</span><input id="practiceEvaluationTopic" maxlength="250" required /></label>
+                <label><span>Proyecto / Sede *</span><select id="practiceEvaluationUnit"></select></label><label><span>Fecha *</span><input id="practiceEvaluationDate" type="date" required /></label>
+                <label><span>Tiempo máximo (minutos, opcional)</span><input id="practiceEvaluationTime" type="number" min="1" max="600" placeholder="Sin límite" /></label><label><span>Nota mínima aprobatoria *</span><input id="practiceEvaluationPassing" type="number" min="0" max="20" step="0.1" value="16" /></label>
+                <label><span>Máximo de intentos</span><select id="practiceEvaluationAttempts"><option value="0">Ilimitados</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label><label><span>Estado *</span><select id="practiceEvaluationStatus"><option value="BORRADOR">BORRADOR</option><option value="ACTIVA">ACTIVA</option><option value="CERRADA">CERRADA</option></select></label>
+                <label class="evaluation-description-field"><span>Descripción</span><textarea id="practiceEvaluationDescription" rows="3" maxlength="1200"></textarea></label>
+              </div>
+              <div class="evaluation-config-grid"><label><input id="practiceEvaluationRetryFailed" type="checkbox" /><span>Permitir reintento solo si desaprobó</span></label><label><input id="practiceEvaluationImmediate" type="checkbox" /><span>Mostrar respuesta correcta inmediatamente</span></label><label><input id="practiceEvaluationShowCorrect" type="checkbox" checked /><span>Mostrar respuestas correctas al finalizar</span></label><label><input id="practiceEvaluationShuffleQuestions" type="checkbox" checked /><span>Ordenar preguntas aleatoriamente</span></label><label><input id="practiceEvaluationShuffleOptions" type="checkbox" checked /><span>Ordenar alternativas aleatoriamente</span></label><label><input id="practiceEvaluationShowExplanation" type="checkbox" checked /><span>Mostrar explicación educativa</span></label></div>
+              <div id="practiceEvaluationFormMessage" class="form-message"></div><div class="modal-actions"><button id="savePracticeEvaluationButton" class="primary-btn" type="submit">Guardar evaluación</button></div>
+            </form>
+          </article>
+
+          <article id="practiceEvaluationQuestionsPanel" class="catalog-panel hidden"><div class="catalog-panel-head catalog-panel-head-wrap"><div><span class="eyebrow">PREGUNTAS</span><h3>Preguntas (<span id="practiceEvaluationQuestionCount">0</span>)</h3><p class="modal-subtitle">Define nivel/tema, peso, explicación, imagen y tipo de respuesta.</p></div><button id="newPracticeEvaluationQuestionButton" class="primary-btn" type="button">+ Agregar pregunta</button></div><div id="practiceEvaluationQuestionList" class="evaluation-question-admin-list"></div></article>
+          <div class="evaluation-save-footer"><button id="saveAndReturnPracticeEvaluation" class="primary-btn" type="button">Guardar evaluación y volver</button></div>
+        </div>
+
+        <div id="evaluationResultsView" class="hidden">
+          <div class="training-detail-topbar"><button id="backEvaluationResultsButton" class="secondary-btn" type="button">← Volver a Evaluaciones</button><button id="downloadEvaluationRegisterButton" class="primary-btn" type="button">Descargar Registro (PDF)</button></div>
+          <article class="evaluation-results-hero"><div><h2 id="evaluationResultsTitle">Evaluación</h2><p>Análisis de aprendizaje y brechas de conocimiento</p></div></article>
+          <div class="evaluation-result-stats"><article><span>Intentos</span><strong id="evaluationResultsAttempts">0</strong></article><article><span>Aprobación</span><strong id="evaluationResultsApproval">0%</strong></article><article><span>Promedio</span><strong id="evaluationResultsAverage">0</strong></article><article><span>Aprobados</span><strong id="evaluationResultsApproved">0</strong></article></div>
+          <div class="evaluation-results-grid"><article class="catalog-panel"><div class="catalog-panel-head"><div><span class="eyebrow">RESULTADOS</span><h3>Participantes</h3></div></div><div class="table-wrap"><table class="data-table evaluation-results-table"><thead><tr><th>DNI</th><th>Nombre</th><th>Nota</th><th>Resultado</th><th>Firma</th><th>Acciones</th></tr></thead><tbody id="evaluationResultsBody"></tbody></table></div><div id="evaluationAttemptDetail" class="evaluation-attempt-detail hidden"></div></article><article class="catalog-panel"><div class="catalog-panel-head"><div><span class="eyebrow">BRECHAS</span><h3>Temas a reforzar</h3></div></div><div id="evaluationGapAnalysis" class="evaluation-gap-list"></div></article></div>
+        </div>
+
+        <div id="practiceEvaluationQuestionModal" class="modal hidden" aria-hidden="true"><div class="modal-backdrop"></div><div class="modal-card evaluation-question-modal-card"><div class="modal-head"><div><span class="eyebrow">PREGUNTA DE EVALUACIÓN</span><h3 id="practiceEvaluationQuestionModalTitle">Nueva pregunta</h3></div><button id="closePracticeEvaluationQuestionModal" class="modal-close" type="button">×</button></div>
+          <div id="practiceEvaluationQuestionForm"><input id="practiceEvaluationQuestionId" type="hidden" />
+            <div class="evaluation-question-form-grid"><label class="span-2"><span>Pregunta *</span><textarea id="practiceEvaluationQuestionText" rows="3" maxlength="800"></textarea></label><label><span>Tipo de pregunta *</span><select id="practiceEvaluationQuestionType"><option value="SINGLE">Opción múltiple</option><option value="TRUE_FALSE">Verdadero / Falso</option><option value="MULTIPLE">Varias respuestas</option><option value="FREE_TEXT">Respuesta libre</option></select></label><label><span>Nivel / tema *</span><input id="practiceEvaluationQuestionLevel" maxlength="160" placeholder="Ej. Nivel 3: Establecer expectativas" /></label><label><span>Peso / puntos *</span><input id="practiceEvaluationQuestionWeight" type="number" min="0.1" step="0.1" value="1" /></label><label><span>Imagen opcional</span><input id="practiceEvaluationQuestionImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><div id="practiceEvaluationImagePreview" class="evaluation-image-preview span-2"></div><label class="span-2"><span>Explicación educativa</span><textarea id="practiceEvaluationQuestionExplanation" rows="3" maxlength="1200" placeholder="Mensaje que verá el trabajador al revisar sus respuestas"></textarea></label></div>
+            <div id="practiceEvaluationOptionEditor" class="evaluation-option-editor"></div><div id="practiceEvaluationFreeEditor" class="evaluation-free-editor hidden"><label><span>Respuestas aceptadas *</span><textarea id="practiceEvaluationAcceptedAnswers" rows="3" placeholder="Una respuesta aceptada por línea"></textarea><small>La comparación ignora mayúsculas/minúsculas y espacios al inicio/final.</small></label></div>
+            <div id="practiceEvaluationQuestionMessage" class="form-message"></div><div class="modal-actions"><button id="cancelPracticeEvaluationQuestionModal" class="secondary-btn" type="button">Cancelar</button><button id="savePracticeEvaluationQuestionButton" class="primary-btn" type="button">Guardar pregunta</button></div>
+          </div></div></div>
 
         <div id="practiceQuestionModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
@@ -1198,7 +1303,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20260922-28"></script>
-  <script src="app.js?v=20260922-28"></script>
+  <script src="config.js?v=20260923-30"></script>
+  <script src="app.js?v=20260923-30"></script>
 </body>
 </html>

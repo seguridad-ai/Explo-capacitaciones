@@ -264,3 +264,24 @@ body.modal-open{
   overflow:auto !important;
   margin:auto !important;
 }
+
+
+/* ETAPA 13C · Retroalimentación únicamente después de finalizar */
+.evaluation-review-note{
+  border:1px solid #d7e5f5;
+  background:#f4f8fd;
+  border-radius:10px;
+  padding:12px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.evaluation-review-note strong{
+  color:#17263c;
+  font-size:10px;
+}
+.evaluation-review-note span{
+  color:#66758a;
+  font-size:9.5px;
+  line-height:1.45;
+}

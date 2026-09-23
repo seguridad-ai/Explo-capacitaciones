@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20260923-32" />
+  <link rel="stylesheet" href="styles.css?v=20260923-33" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1179,7 +1179,7 @@
                 <label><span>Máximo de intentos</span><select id="practiceEvaluationAttempts"><option value="0">Ilimitados</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label><label><span>Estado *</span><select id="practiceEvaluationStatus"><option value="BORRADOR">BORRADOR</option><option value="ACTIVA">ACTIVA</option><option value="CERRADA">CERRADA</option></select></label>
                 <label class="evaluation-description-field"><span>Descripción</span><textarea id="practiceEvaluationDescription" rows="3" maxlength="1200"></textarea></label>
               </div>
-              <div class="evaluation-config-grid"><label><input id="practiceEvaluationRetryFailed" type="checkbox" /><span>Permitir reintento solo si desaprobó</span></label><label><input id="practiceEvaluationImmediate" type="checkbox" /><span>Mostrar respuesta correcta inmediatamente</span></label><label><input id="practiceEvaluationShowCorrect" type="checkbox" checked /><span>Mostrar respuestas correctas al finalizar</span></label><label><input id="practiceEvaluationShuffleQuestions" type="checkbox" checked /><span>Ordenar preguntas aleatoriamente</span></label><label><input id="practiceEvaluationShuffleOptions" type="checkbox" checked /><span>Ordenar alternativas aleatoriamente</span></label><label><input id="practiceEvaluationShowExplanation" type="checkbox" checked /><span>Mostrar explicación educativa</span></label></div>
+              <div class="evaluation-config-grid"><label><input id="practiceEvaluationRetryFailed" type="checkbox" /><span>Permitir reintento solo si desaprobó</span></label><label><input id="practiceEvaluationShowCorrect" type="checkbox" checked /><span>Mostrar respuestas correctas al finalizar</span></label><label><input id="practiceEvaluationShuffleQuestions" type="checkbox" checked /><span>Ordenar preguntas aleatoriamente</span></label><label><input id="practiceEvaluationShuffleOptions" type="checkbox" checked /><span>Ordenar alternativas aleatoriamente</span></label><label><input id="practiceEvaluationShowExplanation" type="checkbox" checked /><span>Mostrar explicación educativa al revisar resultados</span></label><div class="evaluation-review-note"><strong>Retroalimentación al finalizar</strong><span>Durante la evaluación no se mostrará si una respuesta es correcta o incorrecta. La retroalimentación aparecerá únicamente después de enviar la evaluación, en “Revisar mis respuestas”.</span></div></div>
               <div id="practiceEvaluationFormMessage" class="form-message"></div><div class="modal-actions"><button id="savePracticeEvaluationButton" class="primary-btn" type="submit">Guardar evaluación</button></div>
             </form>
           </article>
@@ -1303,7 +1303,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20260923-32"></script>
-  <script src="app.js?v=20260923-32"></script>
+  <script src="config.js?v=20260923-33"></script>
+  <script src="app.js?v=20260923-33"></script>
 </body>
 </html>

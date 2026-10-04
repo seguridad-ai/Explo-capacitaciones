@@ -315,3 +315,24 @@ body.modal-open{
 .danger-outline-btn:hover{
   background:#fff1f1;
 }
+
+
+/* ETAPA 13E · Asignación de trabajador a sede o proyecto */
+.worker-assignment-help{
+  border:1px solid #dbe3ec;
+  background:#f7f9fc;
+  border-radius:10px;
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.worker-assignment-help strong{
+  font-size:10px;
+  color:#17263c;
+}
+.worker-assignment-help span{
+  font-size:9.5px;
+  color:#697586;
+  line-height:1.4;
+}

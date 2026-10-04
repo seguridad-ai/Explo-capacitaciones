@@ -877,6 +877,7 @@ projectsTableBody?.addEventListener('click', e => {
 // ============================== ETAPA 4 · TRABAJADORES ==============================
 let workersCache = [];
 let workerSitesCache = [];
+let workerProjectsCache = [];
 let workersLoaded = false;
 
 const workerMessage = document.getElementById('workerMessage');
@@ -905,36 +906,78 @@ function siteNameById(id) {
   return site?.nombre || '—';
 }
 
+function projectNameById(id) {
+  const project = workerProjectsCache.find(x => x.id === id);
+  return project?.nombre || '—';
+}
+
+function workerUnitName(worker) {
+  if (worker?.proyecto_id) return `Proyecto · ${projectNameById(worker.proyecto_id)}`;
+  if (worker?.sede_id) return `Sede · ${siteNameById(worker.sede_id)}`;
+  return '—';
+}
+
 function renderWorkerSiteOptions() {
-  const formSelect = document.getElementById('workerSite');
-  const currentFormValue = formSelect?.value || '';
+  const siteSelect = document.getElementById('workerSite');
+  const projectSelect = document.getElementById('workerProject');
+  const currentSite = siteSelect?.value || '';
+  const currentProject = projectSelect?.value || '';
   const currentFilterValue = workerSiteFilter?.value || 'all';
-  const options = workerSitesCache.map(site =>
+
+  const siteOptions = workerSitesCache.map(site =>
     `<option value="${site.id}">${escapeHtml(site.nombre)}${site.activo ? '' : ' (Inactiva)'}</option>`
   ).join('');
 
-  if (formSelect) {
-    formSelect.innerHTML = `<option value="">Seleccione una sede</option>${options}`;
-    if ([...formSelect.options].some(o => o.value === currentFormValue)) formSelect.value = currentFormValue;
+  const projectOptions = workerProjectsCache.map(project =>
+    `<option value="${project.id}">${escapeHtml(project.nombre)}${project.activo ? '' : ' (Inactivo)'}</option>`
+  ).join('');
+
+  if (siteSelect) {
+    siteSelect.innerHTML = `<option value="">Sin sede / Seleccione una sede</option>${siteOptions}`;
+    if ([...siteSelect.options].some(o => o.value === currentSite)) siteSelect.value = currentSite;
+  }
+
+  if (projectSelect) {
+    projectSelect.innerHTML = `<option value="">Sin proyecto / Seleccione un proyecto</option>${projectOptions}`;
+    if ([...projectSelect.options].some(o => o.value === currentProject)) projectSelect.value = currentProject;
   }
 
   if (workerSiteFilter) {
-    workerSiteFilter.innerHTML = `<option value="all">Todas las sedes</option>${options}`;
-    if ([...workerSiteFilter.options].some(o => o.value === currentFilterValue)) workerSiteFilter.value = currentFilterValue;
+    workerSiteFilter.innerHTML = `
+      <option value="all">Todas las sedes y proyectos</option>
+      <optgroup label="Sedes">
+        ${workerSitesCache.map(site => `<option value="sede:${site.id}">${escapeHtml(site.nombre)}</option>`).join('')}
+      </optgroup>
+      <optgroup label="Proyectos">
+        ${workerProjectsCache.map(project => `<option value="proyecto:${project.id}">${escapeHtml(project.nombre)}</option>`).join('')}
+      </optgroup>`;
+    if ([...workerSiteFilter.options].some(o => o.value === currentFilterValue)) {
+      workerSiteFilter.value = currentFilterValue;
+    }
   }
 }
 
 function filteredWorkers() {
   const q = (workerSearch?.value || '').trim().toLowerCase();
-  const site = workerSiteFilter?.value || 'all';
+  const unit = workerSiteFilter?.value || 'all';
   const status = workerStatusFilter?.value || 'all';
 
   return workersCache.filter(worker => {
-    const searchable = `${worker.dni || ''} ${worker.apellidos || ''} ${worker.nombres || ''} ${worker.cargo || ''} ${worker.area || ''} ${siteNameById(worker.sede_id)}`.toLowerCase();
+    const searchable = `${worker.dni || ''} ${worker.apellidos || ''} ${worker.nombres || ''} ${worker.cargo || ''} ${worker.area || ''} ${siteNameById(worker.sede_id)} ${projectNameById(worker.proyecto_id)}`.toLowerCase();
     const qOk = !q || searchable.includes(q);
-    const siteOk = site === 'all' || worker.sede_id === site;
+
+    let unitOk = true;
+    if (unit !== 'all') {
+      const [type, id] = unit.split(':');
+      unitOk = type === 'sede'
+        ? worker.sede_id === id
+        : type === 'proyecto'
+          ? worker.proyecto_id === id
+          : true;
+    }
+
     const statusOk = status === 'all' || (status === 'active' ? worker.activo : !worker.activo);
-    return qOk && siteOk && statusOk;
+    return qOk && unitOk && statusOk;
   });
 }
 
@@ -965,7 +1008,7 @@ function renderWorkers() {
         <td><strong>${escapeHtml(fullName)}</strong></td>
         <td>${escapeHtml(worker.cargo || '—')}</td>
         <td>${escapeHtml(worker.area || '—')}</td>
-        <td>${escapeHtml(siteNameById(worker.sede_id))}</td>
+        <td>${escapeHtml(workerUnitName(worker))}</td>
         <td><span class="status-badge ${worker.activo ? 'active' : 'inactive'}">${worker.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td class="admin-only-col ${admin ? '' : 'hidden'}">
           <div class="row-actions">
@@ -994,13 +1037,30 @@ async function loadWorkerSites() {
   renderWorkerSiteOptions();
 }
 
+async function loadWorkerProjects() {
+  if (!client) return;
+  const { data, error } = await client
+    .from('proyectos')
+    .select('id,codigo,nombre,activo')
+    .order('nombre');
+
+  if (error) {
+    console.error(error);
+    setWorkerMessage('No fue posible cargar los proyectos para los trabajadores.');
+    return;
+  }
+
+  workerProjectsCache = data || [];
+  renderWorkerSiteOptions();
+}
+
 async function loadWorkers() {
   if (!client) return;
   if (workersTableBody) workersTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">Cargando…</td></tr>`;
 
   const { data, error } = await client
     .from('trabajadores')
-    .select('id,dni,nombres,apellidos,cargo,area,sede_id,activo,created_at,updated_at')
+    .select('id,dni,nombres,apellidos,cargo,area,sede_id,proyecto_id,activo,created_at,updated_at')
     .order('apellidos')
     .order('nombres');
 
@@ -1028,7 +1088,7 @@ async function loadWorkersModule(force = false) {
   }
 
   setWorkerMessage('');
-  await loadWorkerSites();
+  await Promise.all([loadWorkerSites(), loadWorkerProjects()]);
   await loadWorkers();
   workersLoaded = true;
 }
@@ -1048,6 +1108,7 @@ function openWorkerModal(record = null) {
   document.getElementById('workerPosition').value = record?.cargo || '';
   document.getElementById('workerArea').value = record?.area || '';
   document.getElementById('workerSite').value = record?.sede_id || '';
+  document.getElementById('workerProject').value = record?.proyecto_id || '';
   document.getElementById('workerActive').checked = record ? !!record.activo : true;
 
   workerModal?.classList.remove('hidden');
@@ -1070,6 +1131,7 @@ async function saveWorker(event) {
   const cargo = document.getElementById('workerPosition').value.trim();
   const area = document.getElementById('workerArea').value.trim();
   const sede_id = document.getElementById('workerSite').value || null;
+  const proyecto_id = document.getElementById('workerProject').value || null;
   const activo = document.getElementById('workerActive').checked;
   const saveButton = document.getElementById('saveWorkerButton');
 
@@ -1077,8 +1139,16 @@ async function saveWorker(event) {
     setWorkerFormMessage('El DNI debe contener exactamente 8 dígitos.');
     return;
   }
-  if (!apellidos || !nombres || !cargo || !area || !sede_id) {
-    setWorkerFormMessage('Completa apellidos, nombres, puesto, área y sede.');
+  if (!apellidos || !nombres || !cargo || !area) {
+    setWorkerFormMessage('Completa apellidos, nombres, puesto y área.');
+    return;
+  }
+  if (!sede_id && !proyecto_id) {
+    setWorkerFormMessage('Selecciona una sede o un proyecto para el trabajador.');
+    return;
+  }
+  if (sede_id && proyecto_id) {
+    setWorkerFormMessage('Selecciona solo una asignación: sede o proyecto, no ambos.');
     return;
   }
 
@@ -1086,7 +1156,7 @@ async function saveWorker(event) {
   saveButton.textContent = 'Guardando…';
   setWorkerFormMessage('');
 
-  const payload = { dni, apellidos, nombres, cargo, area, sede_id, activo };
+  const payload = { dni, apellidos, nombres, cargo, area, sede_id, proyecto_id, activo };
   const query = id
     ? client.from('trabajadores').update(payload).eq('id', id)
     : client.from('trabajadores').insert(payload);
@@ -1137,7 +1207,9 @@ async function toggleWorker(id) {
 }
 
 document.getElementById('newWorkerButton')?.addEventListener('click', async () => {
-  if (!workerSitesCache.length) await loadWorkerSites();
+  if (!workerSitesCache.length || !workerProjectsCache.length) {
+    await Promise.all([loadWorkerSites(), loadWorkerProjects()]);
+  }
   openWorkerModal();
 });
 document.getElementById('closeWorkerModal')?.addEventListener('click', closeWorkerModal);
@@ -1147,6 +1219,21 @@ workerForm?.addEventListener('submit', saveWorker);
 workerSearch?.addEventListener('input', renderWorkers);
 workerSiteFilter?.addEventListener('change', renderWorkers);
 workerStatusFilter?.addEventListener('change', renderWorkers);
+
+document.getElementById('workerSite')?.addEventListener('change', e => {
+  if (e.target.value) {
+    const project = document.getElementById('workerProject');
+    if (project) project.value = '';
+  }
+});
+
+document.getElementById('workerProject')?.addEventListener('change', e => {
+  if (e.target.value) {
+    const site = document.getElementById('workerSite');
+    if (site) site.value = '';
+  }
+});
+
 document.getElementById('refreshWorkersButton')?.addEventListener('click', () => loadWorkersModule(true));
 document.getElementById('workerDni')?.addEventListener('input', e => {
   e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8);

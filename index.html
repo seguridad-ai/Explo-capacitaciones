@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261004-34" />
+  <link rel="stylesheet" href="styles.css?v=20261004-35" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -940,7 +940,7 @@
                   <th>Apellidos y nombres</th>
                   <th>Puesto</th>
                   <th>Área</th>
-                  <th>Sede</th>
+                  <th>Sede / Proyecto</th>
                   <th>Estado</th>
                   <th class="admin-only-col">Acciones</th>
                 </tr>
@@ -965,8 +965,12 @@
                   <input id="workerDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
                 </label>
                 <label>
-                  <span>Sede *</span>
-                  <select id="workerSite"><option value="">Seleccione una sede</option></select>
+                  <span>Sede</span>
+                  <select id="workerSite"><option value="">Sin sede / Seleccione una sede</option></select>
+                </label>
+                <label>
+                  <span>Proyecto</span>
+                  <select id="workerProject"><option value="">Sin proyecto / Seleccione un proyecto</option></select>
                 </label>
                 <label>
                   <span>Apellidos *</span>
@@ -984,6 +988,10 @@
                   <span>Área *</span>
                   <input id="workerArea" maxlength="160" placeholder="Ej. Operaciones" />
                 </label>
+                <div class="worker-assignment-help form-span-2">
+                  <strong>Asignación *</strong>
+                  <span>Selecciona una sede o un proyecto. El trabajador no puede quedar asignado a ambos al mismo tiempo.</span>
+                </div>
                 <label class="check-field form-span-2"><input id="workerActive" type="checkbox" checked /><span>Trabajador activo</span></label>
               </div>
 
@@ -1304,7 +1312,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261004-34"></script>
-  <script src="app.js?v=20261004-34"></script>
+  <script src="config.js?v=20261004-35"></script>
+  <script src="app.js?v=20261004-35"></script>
 </body>
 </html>

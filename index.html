@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261004-35" />
+  <link rel="stylesheet" href="styles.css?v=20261004-36" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -41,8 +41,21 @@
             <strong id="publicExamParticipantName">—</strong>
             <span id="publicExamParticipantDetails">—</span>
             <span id="publicExamAttempts">—</span>
-            <button id="publicExamStartButton" class="primary-btn" type="button">Comenzar examen</button>
           </div>
+
+          <section id="publicSignatureCard" class="public-signature-card hidden">
+            <span class="eyebrow">PASO 2 · FIRMA DIGITAL</span>
+            <h3>Firma antes de iniciar el examen</h3>
+            <p>Firma dentro del recuadro para registrar tu participación. Luego podrás comenzar tu evaluación.</p>
+            <div class="public-signature-canvas-wrap">
+              <canvas id="publicSignatureCanvas" width="900" height="300"></canvas>
+            </div>
+            <div id="publicSignatureMessage" class="form-message"></div>
+            <div class="public-signature-actions">
+              <button id="clearPublicSignatureButton" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="savePublicSignatureButton" class="primary-btn" type="button">Registrar firma y continuar</button>
+            </div>
+          </section>
 
           <section id="publicExamRegistration" class="public-registration-card hidden" aria-label="Registro de trabajador">
             <div class="public-registration-head">
@@ -113,23 +126,9 @@
             <span>Disponible por haber aprobado la evaluación.</span>
           </div>
 
-          <section id="publicSignatureCard" class="public-signature-card">
-            <span class="eyebrow">ÚLTIMO PASO</span>
-            <h3>Firma de participación</h3>
-            <p>Firma dentro del recuadro para completar tu registro de asistencia. La firma quedará asociada a esta capacitación.</p>
-            <div class="public-signature-canvas-wrap">
-              <canvas id="publicSignatureCanvas" width="900" height="300"></canvas>
-            </div>
-            <div id="publicSignatureMessage" class="form-message"></div>
-            <div class="public-signature-actions">
-              <button id="clearPublicSignatureButton" class="secondary-btn" type="button">Limpiar firma</button>
-              <button id="savePublicSignatureButton" class="primary-btn" type="button">Registrar firma y finalizar</button>
-            </div>
-          </section>
-
           <div id="publicCompletionBox" class="public-completion-box hidden">
             <strong>✓ Participación completada</strong>
-            <span>Tu evaluación y firma quedaron registradas correctamente.</span>
+            <span>Tu evaluación quedó registrada correctamente.</span>
           </div>
 
           <button id="publicExamRetryButton" class="secondary-btn hidden" type="button">Intentar nuevamente</button>
@@ -1312,7 +1311,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261004-35"></script>
-  <script src="app.js?v=20261004-35"></script>
+  <script src="config.js?v=20261004-36"></script>
+  <script src="app.js?v=20261004-36"></script>
 </body>
 </html>

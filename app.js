@@ -3763,7 +3763,7 @@ function initializePublicExamView(code) {
   document.getElementById('publicExamIdentity')?.classList.remove('hidden');
   document.getElementById('publicExamQuestions')?.classList.add('hidden');
   document.getElementById('publicExamResult')?.classList.add('hidden');
-  document.getElementById('publicSignatureCard')?.classList.remove('hidden');
+  document.getElementById('publicSignatureCard')?.classList.add('hidden');
   document.getElementById('publicCompletionBox')?.classList.add('hidden');
   document.getElementById('publicCertificateActions')?.classList.add('hidden');
   resetPublicSignatureCanvas();
@@ -3817,6 +3817,7 @@ async function lookupPublicExam() {
   if (dniEl) dniEl.value = dni;
   document.getElementById('publicExamParticipantPreview')?.classList.add('hidden');
   document.getElementById('publicExamRegistration')?.classList.add('hidden');
+  document.getElementById('publicSignatureCard')?.classList.add('hidden');
   publicExamData = null;
   if (!/^\d{8}$/.test(dni)) {
     setPublicExamMessage('Ingresa un DNI de 8 dígitos.');
@@ -3854,7 +3855,9 @@ async function lookupPublicExam() {
   document.getElementById('publicExamParticipantDetails').textContent = `DNI ${data.dni || '—'} · ${data.puesto || 'Sin puesto'} · ${data.area || 'Sin área'} · ${data.sede || 'Sin sede'}`;
   document.getElementById('publicExamAttempts').textContent = `Intentos disponibles: ${data.intentos_disponibles} de ${data.max_intentos} · Nota aprobatoria: ${Number(data.nota_aprobatoria).toFixed(2).replace(/\.00$/, '')}`;
   document.getElementById('publicExamParticipantPreview')?.classList.remove('hidden');
-  setPublicExamMessage('Datos encontrados correctamente.', 'success');
+  document.getElementById('publicSignatureCard')?.classList.remove('hidden');
+  resetPublicSignatureCanvas();
+  setPublicExamMessage('Datos encontrados correctamente. Registra tu firma para iniciar el examen.', 'success');
 }
 
 async function registerWorkerFromPublicExam(event) {
@@ -3920,6 +3923,7 @@ function renderPublicExamQuestions() {
 
 function startPublicExam() {
   if (!publicExamData) return;
+  document.getElementById('publicSignatureCard')?.classList.add('hidden');
   document.getElementById('publicExamIdentity')?.classList.add('hidden');
   document.getElementById('publicExamResult')?.classList.add('hidden');
   document.getElementById('publicCertificateActions')?.classList.add('hidden');
@@ -3972,9 +3976,7 @@ async function submitPublicExam(event) {
   const retry = document.getElementById('publicExamRetryButton');
   retry.classList.toggle('hidden', data.aprobado || Number(data.intentos_restantes || 0) <= 0);
   publicExamData.intentos_disponibles = Number(data.intentos_restantes || 0);
-  document.getElementById('publicSignatureCard')?.classList.remove('hidden');
-  document.getElementById('publicCompletionBox')?.classList.add('hidden');
-  resetPublicSignatureCanvas();
+  document.getElementById('publicCompletionBox')?.classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -4146,7 +4148,7 @@ function stopPublicSignature(event) {
 async function savePublicParticipantSignature() {
   if (!client || !publicSignatureCanvas) return;
   if (!publicSignatureHasStroke) {
-    setPublicExamMessage('Registra tu firma antes de finalizar.', 'error', 'publicSignatureMessage');
+    setPublicExamMessage('Registra tu firma antes de continuar.', 'error', 'publicSignatureMessage');
     return;
   }
   const dni = (document.getElementById('publicExamDni')?.value || '').replace(/\D/g,'').slice(0,8);
@@ -4158,17 +4160,15 @@ async function savePublicParticipantSignature() {
     p_dni: dni,
     p_firma: firma
   });
-  if (button) { button.disabled = false; button.textContent = 'Registrar firma y finalizar'; }
+  if (button) { button.disabled = false; button.textContent = 'Registrar firma y continuar'; }
   if (error || !data?.ok) {
     console.error(error);
     const missing = /guardar_firma_participante_examen|schema cache|function/i.test(error?.message || '');
     setPublicExamMessage(missing ? 'La función de firma todavía no está habilitada. Ejecuta el SQL de la Etapa 8.' : (data?.error || 'No fue posible guardar la firma.'), 'error', 'publicSignatureMessage');
     return;
   }
-  document.getElementById('publicSignatureCard')?.classList.add('hidden');
-  document.getElementById('publicCompletionBox')?.classList.remove('hidden');
-  setPublicExamMessage('', 'success', 'publicSignatureMessage');
-  window.scrollTo({ top: document.getElementById('publicExamResult')?.offsetTop || 0, behavior: 'smooth' });
+  setPublicExamMessage('Firma registrada correctamente. Iniciando examen…', 'success', 'publicSignatureMessage');
+  setTimeout(() => startPublicExam(), 250);
 }
 
 async function showExistingEvaluationSignatureState(dni) {
@@ -4199,8 +4199,11 @@ async function showExistingEvaluationSignatureState(dni) {
     document.getElementById('publicSignatureCard')?.classList.remove('hidden');
     document.getElementById('publicCompletionBox')?.classList.add('hidden');
     resetPublicSignatureCanvas();
+    setPublicExamMessage('Evaluación encontrada. La firma quedó pendiente; regístrala para completar tu participación.', 'success');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return true;
   }
-  setPublicExamMessage('Evaluación encontrada. Completa la firma si todavía está pendiente.', 'success');
+  setPublicExamMessage('Evaluación encontrada.', 'success');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   return true;
 }

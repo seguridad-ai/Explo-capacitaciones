@@ -285,3 +285,33 @@ body.modal-open{
   font-size:9.5px;
   line-height:1.45;
 }
+
+
+/* ETAPA 13D · Eliminar capacitaciones */
+.history-delete-btn{
+  border:1px solid #dc2626;
+  background:#fff;
+  color:#dc2626;
+  border-radius:9px;
+  min-height:38px;
+  padding:0 14px;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.history-delete-btn:hover{
+  background:#fff1f1;
+}
+.danger-outline-btn{
+  border:1px solid #dc2626;
+  background:#fff;
+  color:#dc2626;
+  border-radius:9px;
+  min-height:40px;
+  padding:0 15px;
+  font-weight:800;
+  cursor:pointer;
+}
+.danger-outline-btn:hover{
+  background:#fff1f1;
+}

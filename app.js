@@ -1505,6 +1505,71 @@ function scheduleCanManage() {
   return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
 }
 
+function trainingCanDelete(item) {
+  if (!scheduleCanManage() || !item) return false;
+  const state = normalizeTrainingState(item.estado);
+  return ['ACTIVA','BORRADOR'].includes(state);
+}
+
+async function deleteTrainingFromSchedule(trainingId) {
+  const item = scheduleRecords.find(x => x.id === trainingId);
+  if (!item) return;
+
+  if (!trainingCanDelete(item)) {
+    alert('Solo se pueden eliminar capacitaciones ACTIVAS o en BORRADOR.');
+    return;
+  }
+
+  const metrics = trainingMetrics(item);
+  const state = normalizeTrainingState(item.estado);
+  const details = [
+    `Capacitación: ${item.codigo || '—'} · ${item.tema || 'Sin tema'}`,
+    `Estado: ${state}`,
+    `Participantes registrados: ${metrics.participantCount}`,
+    `Preguntas: ${metrics.questionCount}`
+  ].join('\n');
+
+  const warning = state === 'ACTIVA'
+    ? `Esta capacitación está ACTIVA. Al eliminarla, su enlace dejará de funcionar inmediatamente.\n\n${details}\n\nTambién se eliminarán definitivamente participantes, firmas, notas, examen, intentos, respuestas y resultados asociados.\n\n¿Deseas continuar?`
+    : `Vas a eliminar definitivamente esta capacitación en BORRADOR.\n\n${details}\n\nTambién se eliminarán sus participantes, firmas, notas, examen, intentos, respuestas y resultados asociados.\n\n¿Deseas continuar?`;
+
+  if (!window.confirm(warning)) return;
+
+  const secondConfirm = window.confirm(
+    `CONFIRMACIÓN FINAL\n\n¿Eliminar definitivamente "${item.tema || item.codigo || 'esta capacitación'}"?\n\nEsta acción no se puede deshacer.`
+  );
+  if (!secondConfirm) return;
+
+  scheduleMessage('Eliminando capacitación…', 'success');
+
+  try {
+    const { data, error } = await client.rpc('eliminar_capacitacion', {
+      p_capacitacion_id: trainingId
+    });
+
+    if (error || !data?.ok) {
+      console.error('eliminar_capacitacion', error, data);
+      throw new Error(data?.error || error?.message || 'No fue posible eliminar la capacitación.');
+    }
+
+    if (selectedTrainingDetailId === trainingId) {
+      selectedTrainingDetailId = null;
+      selectedTrainingDetailData = null;
+      showTrainingLibrary();
+    }
+
+    scheduleRecords = [];
+    trainingLibraryExams = [];
+    trainingLibraryParticipants = [];
+    trainingLibraryQuestions = [];
+
+    await loadScheduleModule(true);
+    scheduleMessage(`Capacitación ${data.codigo || ''} eliminada correctamente.`, 'success');
+  } catch (err) {
+    scheduleMessage(err?.message || 'No fue posible eliminar la capacitación.');
+  }
+}
+
 function scheduleUnitLabel(item) {
   if (item?.sede_id) {
     const s = scheduleSites.find(x => x.id === item.sede_id);
@@ -1700,6 +1765,7 @@ function renderScheduleCards() {
         <button class="history-action copy" type="button" data-training-copy="${item.id}" ${link ? '' : 'disabled'} title="Copiar enlace">▣</button>
         <button class="history-detail-btn" type="button" data-training-detail="${item.id}">◉ Ver detalles</button>
         ${canManage ? `<button class="history-edit-btn" type="button" data-training-edit="${item.id}">Editar</button>` : ''}
+        ${trainingCanDelete(item) ? `<button class="history-delete-btn" type="button" data-training-delete="${item.id}" title="Eliminar capacitación">Eliminar</button>` : ''}
       </div>
     </article>`;
   }).join('');
@@ -2088,6 +2154,7 @@ document.getElementById('scheduleSearch')?.addEventListener('input', renderSched
 document.getElementById('backTrainingLibraryButton')?.addEventListener('click', showTrainingLibrary);
 document.getElementById('detailToggleStateButton')?.addEventListener('click', toggleSelectedTrainingState);
 document.getElementById('detailEditTrainingButton')?.addEventListener('click', () => { if (selectedTrainingDetailId) editTrainingFromSchedule(selectedTrainingDetailId); });
+document.getElementById('detailDeleteTrainingButton')?.addEventListener('click', () => { if (selectedTrainingDetailId) deleteTrainingFromSchedule(selectedTrainingDetailId); });
 document.getElementById('exportDetailParticipantsButton')?.addEventListener('click', exportDetailParticipantsCsv);
 document.getElementById('detailDownloadPdfButton')?.addEventListener('click', downloadTrainingPdf);
 document.getElementById('detailCopyLinkButton')?.addEventListener('click', () => { const value=document.getElementById('detailPublicLink')?.value || ''; if(value && value.startsWith('http')) copyText(value,'Enlace copiado.'); });
@@ -2099,6 +2166,8 @@ document.getElementById('programacion')?.addEventListener('click', event => {
   if (detail) { openTrainingDetail(detail.dataset.trainingDetail); return; }
   const edit = event.target.closest('[data-training-edit]');
   if (edit) { editTrainingFromSchedule(edit.dataset.trainingEdit); return; }
+  const del = event.target.closest('[data-training-delete]');
+  if (del) { deleteTrainingFromSchedule(del.dataset.trainingDelete); return; }
   const copy = event.target.closest('[data-training-copy]');
   if (copy) {
     const item = scheduleRecords.find(x=>x.id===copy.dataset.trainingCopy);

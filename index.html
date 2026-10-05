@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261005-38" />
+  <link rel="stylesheet" href="styles.css?v=20261005-39" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -140,6 +140,83 @@
   </section>
 
   
+  
+  <section id="publicInductionScreen" class="public-induction-screen hidden" aria-label="Inducción de ingreso">
+    <div class="public-induction-shell">
+      <header class="public-induction-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div>
+          <span class="eyebrow">INDUCCIÓN DE INGRESO</span>
+          <h1 id="publicInductionTitle">Inducción Sede Lima</h1>
+          <p id="publicInductionCode">Código de inducción</p>
+        </div>
+      </header>
+
+      <main class="public-induction-card">
+        <section id="publicInductionRegistrationStep">
+          <div class="public-induction-step-title">
+            <span>1</span>
+            <div><h2>Registro del trabajador</h2><p>Completa tus datos y registra tu firma antes de iniciar el examen.</p></div>
+          </div>
+
+          <div id="publicInductionMeta" class="public-induction-meta"></div>
+
+          <div class="public-induction-form-grid">
+            <label><span>DNI *</span><input id="publicInductionDni" type="text" inputmode="numeric" maxlength="8" placeholder="8 dígitos" autocomplete="off" /></label>
+            <label><span>Nombre *</span><input id="publicInductionName" maxlength="220" placeholder="Apellidos y nombres" autocomplete="name" /></label>
+            <label><span>Fecha de ingreso *</span><input id="publicInductionEntryDate" type="date" /></label>
+            <label><span>Puesto de trabajo u ocupación *</span><input id="publicInductionPosition" maxlength="180" placeholder="Ej. Ayudante de perforación" /></label>
+            <label class="public-induction-full"><span>Área de trabajo *</span><input id="publicInductionArea" maxlength="180" placeholder="Ej. Operaciones" /></label>
+          </div>
+
+          <section class="public-induction-signature">
+            <span class="eyebrow">FIRMA *</span>
+            <h3>Firma del trabajador</h3>
+            <p>Firma dentro del recuadro para registrar tu participación.</p>
+            <div class="public-induction-signature-wrap"><canvas id="publicInductionSignatureCanvas" width="900" height="300"></canvas></div>
+            <button id="clearPublicInductionSignature" class="secondary-btn" type="button">Limpiar firma</button>
+          </section>
+
+          <div id="publicInductionRegistrationMessage" class="form-message"></div>
+          <button id="publicInductionRegisterButton" class="primary-btn public-induction-main-button" type="button">Registrarme y continuar al examen</button>
+        </section>
+
+        <section id="publicInductionExamStep" class="hidden">
+          <div class="public-induction-step-title">
+            <span>2</span>
+            <div><h2>Examen de inducción</h2><p id="publicInductionExamParticipant">Participante</p></div>
+          </div>
+
+          <div class="public-induction-exam-summary">
+            <div><span>Tema</span><strong id="publicInductionExamTopic">—</strong></div>
+            <div><span>Nota mínima</span><strong id="publicInductionPassGrade">—</strong></div>
+            <div><span>Preguntas</span><strong id="publicInductionQuestionCount">—</strong></div>
+          </div>
+
+          <form id="publicInductionExamForm">
+            <div id="publicInductionQuestionList" class="public-induction-question-list"></div>
+            <div id="publicInductionExamMessage" class="form-message"></div>
+            <button class="primary-btn public-induction-main-button" type="submit">Finalizar y enviar examen</button>
+          </form>
+        </section>
+
+        <section id="publicInductionResultStep" class="public-induction-result hidden">
+          <div id="publicInductionResultIcon" class="public-result-icon">✓</div>
+          <span class="eyebrow">RESULTADO</span>
+          <h2 id="publicInductionResultTitle">Inducción completada</h2>
+          <div id="publicInductionGrade" class="public-result-grade">—</div>
+          <p id="publicInductionResultText">—</p>
+          <div class="public-completion-box">
+            <strong>✓ Registro completado</strong>
+            <span>Tus datos, firma y evaluación quedaron registrados correctamente.</span>
+          </div>
+        </section>
+      </main>
+
+      <footer class="public-exam-footer"><span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span><span>By RonyC</span></footer>
+    </div>
+  </section>
+
   <section id="publicPracticeScreen" class="public-practice-screen hidden" aria-label="Quiz de práctica">
     <div class="public-practice-shell">
       <header class="public-practice-header">
@@ -1304,28 +1381,33 @@
               <div class="induction-step-head">
                 <div>
                   <span class="eyebrow">PASO 3</span>
-                  <h4>Trabajadores de Sede Lima</h4>
-                  <p>Selecciona a los trabajadores que quedarán asignados a esta inducción.</p>
+                  <h4>Compartir con trabajadores nuevos</h4>
+                  <p>No se registran previamente. Cada trabajador completará sus propios datos desde el enlace.</p>
                 </div>
               </div>
 
-              <div class="induction-worker-toolbar">
-                <input id="inductionWorkerSearch" type="search" placeholder="Buscar DNI, nombre, puesto o área..." />
-                <button id="selectAllInductionWorkers" class="secondary-btn" type="button">Seleccionar todos</button>
+              <div class="induction-public-link-card">
+                <span class="eyebrow">ENLACE DE REGISTRO Y EXAMEN</span>
+                <h4>Inducción Sede Lima</h4>
+                <p>Al abrir el enlace, el trabajador registrará DNI, nombre, fecha de ingreso, puesto, área y firma; luego pasará directamente al examen.</p>
+                <div class="induction-public-link-row">
+                  <input id="inductionPublicLink" readonly />
+                  <button id="copyInductionPublicLink" class="secondary-btn" type="button">Copiar</button>
+                  <button id="whatsappInductionPublicLink" class="whatsapp-btn" type="button">WhatsApp</button>
+                </div>
               </div>
 
-              <div class="table-wrap induction-workers-table-wrap">
-                <table class="data-table">
-                  <thead><tr><th></th><th>DNI</th><th>Apellidos y nombres</th><th>Puesto</th><th>Área</th></tr></thead>
-                  <tbody id="inductionWorkersBody"></tbody>
-                </table>
+              <div class="induction-share-summary">
+                <div><span>Código</span><strong id="inductionShareCode">—</strong></div>
+                <div><span>Preguntas</span><strong id="inductionShareQuestions">0</strong></div>
+                <div><span>Estado al finalizar</span><strong>ACTIVA</strong></div>
               </div>
 
               <div id="inductionWorkersMessage" class="form-message"></div>
 
               <div class="modal-actions">
                 <button id="backInductionStep2" class="secondary-btn" type="button">← Examen</button>
-                <button id="finishInductionButton" class="primary-btn" type="button">Guardar inducción</button>
+                <button id="finishInductionButton" class="primary-btn" type="button">Activar inducción y finalizar</button>
               </div>
             </section>
           </div>
@@ -1595,7 +1677,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261005-38"></script>
-  <script src="app.js?v=20261005-38"></script>
+  <script src="config.js?v=20261005-39"></script>
+  <script src="app.js?v=20261005-39"></script>
 </body>
 </html>

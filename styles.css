@@ -509,3 +509,76 @@ body.modal-open{
   .induction-step-head button{width:100%}
   .induction-worker-toolbar{grid-template-columns:1fr}
 }
+
+
+/* ETAPA 14B · Compartir inducción + registro público */
+.induction-public-link-card{border:1px solid #cbdcf7;background:#f4f8ff;border-radius:14px;padding:18px}
+.induction-public-link-card h4{margin:5px 0;color:#17263c;font-size:18px}
+.induction-public-link-card p{color:#65758a;font-size:10px;line-height:1.5}
+.induction-public-link-row{display:grid;grid-template-columns:1fr auto auto;gap:9px;margin-top:12px}
+.induction-public-link-row input{height:42px;border:1px solid #c5d2e5;border-radius:9px;padding:0 11px;background:#fff}
+.whatsapp-btn{border:0;border-radius:9px;background:#17aa50;color:#fff;font-weight:800;padding:0 15px;cursor:pointer}
+.induction-share-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:13px}
+.induction-share-summary>div{border:1px solid #dfe4ea;border-radius:10px;padding:12px;background:#fff}
+.induction-share-summary span{display:block;font-size:8px;color:#7b8795}
+.induction-share-summary strong{display:block;margin-top:3px;color:#17263c;font-size:12px}
+.induction-share-btn{border:0;border-radius:8px;background:#18a955;color:#fff;padding:9px 12px;font-weight:800;cursor:pointer}
+
+.public-induction-screen{min-height:100vh;background:#f2f6fc;padding:28px 18px}
+.public-induction-shell{width:min(1080px,100%);margin:0 auto}
+.public-induction-header{background:#fff;border:1px solid #e0e5ec;border-radius:18px;padding:22px 28px;display:flex;align-items:center;gap:26px;box-shadow:0 8px 24px rgba(23,38,60,.05)}
+.public-induction-header img{width:150px;height:auto}
+.public-induction-header h1{margin:5px 0 2px;color:#0d2747;font-size:29px}
+.public-induction-header p{margin:0;color:#7b8795;font-size:11px}
+.public-induction-card{margin-top:20px;background:#fff;border:1px solid #e0e5ec;border-radius:18px;padding:28px;box-shadow:0 8px 24px rgba(23,38,60,.05)}
+.public-induction-step-title{display:flex;gap:14px;align-items:center;margin-bottom:20px}
+.public-induction-step-title>span{width:50px;height:50px;border-radius:14px;background:#fff0f0;color:#c00000;display:grid;place-items:center;font-size:19px;font-weight:850;flex:0 0 auto}
+.public-induction-step-title h2{margin:0;color:#17263c;font-size:22px}
+.public-induction-step-title p{margin:4px 0 0;color:#728095;font-size:11px}
+.public-induction-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.public-induction-meta>div,.public-induction-exam-summary>div{border:1px solid #dfe5ec;border-radius:10px;padding:11px;background:#f9fbfd}
+.public-induction-meta span,.public-induction-exam-summary span{display:block;font-size:8px;color:#7c8796}
+.public-induction-meta strong,.public-induction-exam-summary strong{display:block;margin-top:3px;font-size:10px;color:#17263c}
+.public-induction-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.public-induction-form-grid label{display:flex;flex-direction:column;gap:6px}
+.public-induction-form-grid label>span{font-size:10px;font-weight:750;color:#17263c}
+.public-induction-form-grid input{height:48px;border:1px solid #cad3de;border-radius:10px;padding:0 12px;font:inherit}
+.public-induction-full{grid-column:1/-1}
+.public-induction-signature{margin-top:18px;border-top:1px solid #e3e7ec;padding-top:17px}
+.public-induction-signature h3{margin:4px 0;color:#17263c}
+.public-induction-signature p{margin:0 0 10px;color:#778395;font-size:10px}
+.public-induction-signature-wrap{height:190px;border:1px dashed #aeb9c7;border-radius:12px;background:#fff;overflow:hidden}
+.public-induction-signature-wrap canvas{width:100%;height:100%;display:block;touch-action:none}
+.public-induction-signature button{margin-top:9px}
+.public-induction-main-button{width:100%;min-height:48px;margin-top:15px;font-size:13px}
+.public-induction-exam-summary{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:15px}
+.public-induction-question-list{display:grid;gap:12px}
+.public-induction-question{border:1px solid #dfe4ea;border-radius:13px;padding:16px}
+.public-induction-question-head{display:flex;justify-content:space-between;color:#7a8796;font-size:9px}
+.public-induction-question h3{font-size:13px;color:#17263c;line-height:1.45;margin:9px 0 12px}
+.public-induction-options{display:grid;gap:8px}
+.public-induction-options label{display:grid;grid-template-columns:20px 24px 1fr;gap:8px;align-items:center;border:1px solid #dfe4ea;border-radius:9px;padding:10px;cursor:pointer}
+.public-induction-options b{color:#17263c}
+.public-induction-options span{font-size:10px;color:#38485b}
+.public-induction-free-text{width:100%;border:1px solid #cfd6df;border-radius:9px;padding:10px;font:inherit;resize:vertical}
+.public-induction-result{text-align:center;padding:30px 10px}
+.public-induction-result .public-completion-box{margin:18px auto 0;max-width:600px}
+
+@media(max-width:700px){
+  .induction-public-link-row{grid-template-columns:1fr}
+  .induction-public-link-row button{height:44px}
+  .induction-share-summary{grid-template-columns:1fr}
+  .public-induction-screen{padding:14px 10px}
+  .public-induction-header{flex-direction:column;text-align:center;padding:20px}
+  .public-induction-header img{width:170px}
+  .public-induction-header h1{font-size:25px}
+  .public-induction-card{padding:18px 14px}
+  .public-induction-step-title{align-items:flex-start}
+  .public-induction-step-title h2{font-size:20px}
+  .public-induction-meta{grid-template-columns:1fr 1fr}
+  .public-induction-form-grid{grid-template-columns:1fr}
+  .public-induction-full{grid-column:auto}
+  .public-induction-form-grid input{height:56px;font-size:16px}
+  .public-induction-signature-wrap{height:210px}
+  .public-induction-exam-summary{grid-template-columns:1fr}
+}

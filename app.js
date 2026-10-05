@@ -199,10 +199,15 @@ async function initializeAuth() {
 
   const publicParams = new URLSearchParams(window.location.search);
   const publicExamCode = publicParams.get('exam');
+  const publicInductionTokenParam = publicParams.get('induction');
   const publicPracticeCodeParam = publicParams.get('practice');
   const publicEvaluationCodeParam = publicParams.get('evaluation');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
+    return;
+  }
+  if (publicInductionTokenParam) {
+    await initializePublicInductionMode(publicInductionTokenParam);
     return;
   }
   if (publicPracticeCodeParam) {
@@ -4369,6 +4374,7 @@ function renderInductions() {
         </div>
       </div>
       <div class="induction-card-actions">
+        ${item.tipo==='LIMA' && item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
         ${canManage ? `<button class="secondary-btn" type="button" data-induction-edit="${item.id}">Editar</button>` : ''}
         ${canManage ? `<button class="induction-delete-btn" type="button" data-induction-delete="${item.id}">Eliminar</button>` : ''}
       </div>
@@ -4378,6 +4384,18 @@ function renderInductions() {
   list.querySelectorAll('[data-induction-edit]').forEach(btn => btn.addEventListener('click', () => {
     const item = inductionRecords.find(x=>x.id===btn.dataset.inductionEdit);
     openInductionWizard(item);
+  }));
+
+  list.querySelectorAll('[data-induction-share]').forEach(btn => btn.addEventListener('click', async () => {
+    const item = inductionRecords.find(x=>x.id===btn.dataset.inductionShare);
+    if (!item?.public_token) return;
+    const link = buildInductionPublicLink(item.public_token);
+    try {
+      await navigator.clipboard.writeText(link);
+      inductionMessage('Enlace de inducción copiado correctamente.','success');
+    } catch {
+      window.prompt('Copia este enlace:', link);
+    }
   }));
 
   list.querySelectorAll('[data-induction-delete]').forEach(btn => btn.addEventListener('click', async () => {
@@ -4846,56 +4864,30 @@ async function saveInductionQuestion() {
   await loadInductionQuestions(activeInductionId);
 }
 
-async function loadInductionWorkers() {
-  const induction=inductionRecords.find(x=>x.id===activeInductionId);
-  const siteId=induction?.sede_id || document.getElementById('inductionSite').value;
-  if (!siteId) return;
-
-  const [workers,assigned]=await Promise.all([
-    client.from('trabajadores')
-      .select('id,dni,nombres,apellidos,cargo,area,sede_id,activo')
-      .eq('sede_id',siteId)
-      .eq('activo',true)
-      .order('apellidos'),
-    client.from('induccion_participantes')
-      .select('trabajador_id')
-      .eq('induccion_id',activeInductionId)
-  ]);
-
-  inductionWorkersCache=(workers.data||[]).map(w=>({
-    ...w,
-    selected:(assigned.data||[]).some(a=>a.trabajador_id===w.id)
-  }));
-  renderInductionWorkers();
+function buildInductionPublicLink(token) {
+  return `${window.location.origin}${window.location.pathname}?induction=${encodeURIComponent(token)}`;
 }
 
-function renderInductionWorkers() {
-  const tbody=document.getElementById('inductionWorkersBody');
-  if (!tbody) return;
-  const q=(document.getElementById('inductionWorkerSearch')?.value||'').trim().toLowerCase();
+async function loadInductionShareStep() {
+  if (!activeInductionId) return;
 
-  const rows=inductionWorkersCache.filter(w=>{
-    const text=`${w.dni} ${w.apellidos} ${w.nombres} ${w.cargo||''} ${w.area||''}`.toLowerCase();
-    return !q || text.includes(q);
-  });
+  const {data,error}=await client
+    .from('inducciones')
+    .select('id,codigo,public_token,tema,titulo,estado')
+    .eq('id',activeInductionId)
+    .single();
 
-  if (!rows.length) {
-    tbody.innerHTML='<tr><td colspan="5" class="table-empty">No se encontraron trabajadores activos de Sede Lima.</td></tr>';
+  if (error) {
+    const msg=document.getElementById('inductionWorkersMessage');
+    msg.textContent=error.message;
+    msg.className='form-message visible error';
     return;
   }
 
-  tbody.innerHTML=rows.map(w=>`<tr>
-    <td><input type="checkbox" class="induction-worker-check" data-worker-id="${w.id}" ${w.selected?'checked':''}/></td>
-    <td>${escapeHtml(w.dni)}</td>
-    <td><strong>${escapeHtml(`${w.apellidos} ${w.nombres}`)}</strong></td>
-    <td>${escapeHtml(w.cargo||'—')}</td>
-    <td>${escapeHtml(w.area||'—')}</td>
-  </tr>`).join('');
-
-  tbody.querySelectorAll('.induction-worker-check').forEach(ch=>ch.addEventListener('change',()=>{
-    const w=inductionWorkersCache.find(x=>x.id===ch.dataset.workerId);
-    if (w) w.selected=ch.checked;
-  }));
+  const link=buildInductionPublicLink(data.public_token);
+  document.getElementById('inductionPublicLink').value=link;
+  document.getElementById('inductionShareCode').textContent=data.codigo || '—';
+  document.getElementById('inductionShareQuestions').textContent=String(inductionQuestionsCache.length);
 }
 
 async function saveInductionExamAndContinue() {
@@ -4906,41 +4898,32 @@ async function saveInductionExamAndContinue() {
     return;
   }
   msg.textContent='';
-  await loadInductionWorkers();
+  await loadInductionShareStep();
   setInductionWizardStep(3);
 }
 
 async function finishInductionAssignment() {
   if (!activeInductionId) return;
 
-  document.querySelectorAll('.induction-worker-check').forEach(ch=>{
-    const w=inductionWorkersCache.find(x=>x.id===ch.dataset.workerId);
-    if (w) w.selected=ch.checked;
-  });
-
-  const selected=inductionWorkersCache.filter(w=>w.selected);
   const msg=document.getElementById('inductionWorkersMessage');
-  const show=(text,type='error')=>{
-    msg.textContent=text;
-    msg.className=`form-message ${text?'visible':''} ${type}`;
-  };
+  msg.textContent='';
+  msg.className='form-message';
 
-  if (!selected.length) {
-    show('Selecciona al menos un trabajador.');
+  const {error}=await client
+    .from('inducciones')
+    .update({estado:'ACTIVA'})
+    .eq('id',activeInductionId);
+
+  if (error) {
+    msg.textContent=error.message;
+    msg.className='form-message visible error';
     return;
   }
-
-  const {error:deleteError}=await client.from('induccion_participantes').delete().eq('induccion_id',activeInductionId);
-  if (deleteError) { show(deleteError.message); return; }
-
-  const rows=selected.map(w=>({induccion_id:activeInductionId,trabajador_id:w.id,estado:'ASIGNADO'}));
-  const {error}=await client.from('induccion_participantes').insert(rows);
-  if (error) { show(error.message); return; }
 
   closeInductionModal();
   inductionRecords=[];
   await loadInductionModule(true);
-  inductionMessage(`Inducción guardada y asignada a ${selected.length} trabajador(es).`,'success');
+  inductionMessage('Inducción activada. Ya puedes compartir el enlace con los trabajadores nuevos.','success');
 }
 
 document.getElementById('newInductionButton')?.addEventListener('click', async () => {
@@ -4968,11 +4951,23 @@ document.getElementById('saveInductionExamButton')?.addEventListener('click',sav
 document.getElementById('backInductionStep2')?.addEventListener('click',()=>setInductionWizardStep(2));
 document.getElementById('finishInductionButton')?.addEventListener('click',finishInductionAssignment);
 
-document.getElementById('inductionWorkerSearch')?.addEventListener('input',renderInductionWorkers);
-document.getElementById('selectAllInductionWorkers')?.addEventListener('click',()=>{
-  const shouldSelect=inductionWorkersCache.some(w=>!w.selected);
-  inductionWorkersCache.forEach(w=>w.selected=shouldSelect);
-  renderInductionWorkers();
+document.getElementById('copyInductionPublicLink')?.addEventListener('click',async()=>{
+  const link=document.getElementById('inductionPublicLink')?.value || '';
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    const msg=document.getElementById('inductionWorkersMessage');
+    msg.textContent='Enlace copiado correctamente.';
+    msg.className='form-message visible success';
+  } catch {
+    window.prompt('Copia este enlace:',link);
+  }
+});
+document.getElementById('whatsappInductionPublicLink')?.addEventListener('click',()=>{
+  const link=document.getElementById('inductionPublicLink')?.value || '';
+  if (!link) return;
+  const text=`Inducción de ingreso - Explo Drilling Perú\n\nRegistra tus datos, firma y desarrolla tu examen en el siguiente enlace:\n${link}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
 });
 
 document.getElementById('inductionSpeakerDni')?.addEventListener('input',e=>{
@@ -4991,6 +4986,270 @@ document.querySelectorAll('[data-induction-type-filter]').forEach(button=>button
   document.querySelectorAll('[data-induction-type-filter]').forEach(x=>x.classList.toggle('active',x===button));
   renderInductions();
 }));
+
+
+// ============================================================
+// ETAPA 14B · INDUCCIÓN PÚBLICA PARA TRABAJADORES NUEVOS
+// ============================================================
+
+let publicInductionToken = '';
+let publicInductionData = null;
+let publicInductionParticipantId = null;
+let publicInductionSignatureCanvas = null;
+let publicInductionSignatureCtx = null;
+let publicInductionSignatureDrawing = false;
+let publicInductionSignatureHasStroke = false;
+let publicInductionLastPoint = null;
+
+async function initializePublicInductionMode(token) {
+  publicInductionToken=(token||'').trim();
+
+  document.getElementById('loadingScreen')?.classList.add('hidden');
+  document.getElementById('authScreen')?.classList.add('hidden');
+  document.getElementById('appShell')?.classList.add('hidden');
+  document.getElementById('publicExamScreen')?.classList.add('hidden');
+  document.getElementById('publicPracticeScreen')?.classList.add('hidden');
+  document.getElementById('publicEvaluationScreen')?.classList.add('hidden');
+  document.getElementById('publicInductionScreen')?.classList.remove('hidden');
+
+  const {data,error}=await client.rpc('obtener_induccion_publica',{p_token:publicInductionToken});
+  if (error || !data?.ok) {
+    console.error(error,data);
+    const box=document.getElementById('publicInductionRegistrationMessage');
+    box.textContent=data?.error || error?.message || 'No fue posible abrir la inducción.';
+    box.className='form-message visible error';
+    document.getElementById('publicInductionRegisterButton').disabled=true;
+    return;
+  }
+
+  publicInductionData=data;
+  const i=data.induccion || {};
+  document.getElementById('publicInductionTitle').textContent=i.tema || 'Inducción Sede Lima';
+  document.getElementById('publicInductionCode').textContent=i.codigo || 'Inducción';
+  document.getElementById('publicInductionMeta').innerHTML=`
+    <div><span>Empresa</span><strong>${escapeHtml(i.empresa || 'EXPLO DRILLING PERU S.R.L.')}</strong></div>
+    <div><span>Tema</span><strong>${escapeHtml(i.tema || '—')}</strong></div>
+    <div><span>Fecha</span><strong>${escapeHtml(formatDatePE(i.fecha))}</strong></div>
+    <div><span>Tiempo</span><strong>${i.tiempo_horas ? `${Number(i.tiempo_horas)} h` : '—'}</strong></div>
+  `;
+  initPublicInductionSignature();
+}
+
+function initPublicInductionSignature() {
+  publicInductionSignatureCanvas=document.getElementById('publicInductionSignatureCanvas');
+  if (!publicInductionSignatureCanvas) return;
+  publicInductionSignatureCtx=publicInductionSignatureCanvas.getContext('2d');
+  publicInductionSignatureCtx.lineCap='round';
+  publicInductionSignatureCtx.lineJoin='round';
+  publicInductionSignatureCtx.lineWidth=4;
+  publicInductionSignatureCtx.strokeStyle='#17263c';
+
+  const point=ev=>{
+    const rect=publicInductionSignatureCanvas.getBoundingClientRect();
+    const touch=ev.touches?.[0] || ev.changedTouches?.[0];
+    const clientX=touch ? touch.clientX : ev.clientX;
+    const clientY=touch ? touch.clientY : ev.clientY;
+    return {
+      x:(clientX-rect.left)*(publicInductionSignatureCanvas.width/rect.width),
+      y:(clientY-rect.top)*(publicInductionSignatureCanvas.height/rect.height)
+    };
+  };
+  const start=ev=>{ev.preventDefault();publicInductionSignatureDrawing=true;publicInductionLastPoint=point(ev);};
+  const move=ev=>{
+    if (!publicInductionSignatureDrawing) return;
+    ev.preventDefault();
+    const p=point(ev);
+    publicInductionSignatureCtx.beginPath();
+    publicInductionSignatureCtx.moveTo(publicInductionLastPoint.x,publicInductionLastPoint.y);
+    publicInductionSignatureCtx.lineTo(p.x,p.y);
+    publicInductionSignatureCtx.stroke();
+    publicInductionLastPoint=p;
+    publicInductionSignatureHasStroke=true;
+  };
+  const end=ev=>{if(publicInductionSignatureDrawing)ev.preventDefault();publicInductionSignatureDrawing=false;publicInductionLastPoint=null;};
+
+  publicInductionSignatureCanvas.onpointerdown=start;
+  publicInductionSignatureCanvas.onpointermove=move;
+  publicInductionSignatureCanvas.onpointerup=end;
+  publicInductionSignatureCanvas.onpointercancel=end;
+  publicInductionSignatureCanvas.onpointerleave=end;
+}
+
+function clearPublicInductionSignature() {
+  if (!publicInductionSignatureCanvas || !publicInductionSignatureCtx) initPublicInductionSignature();
+  if (!publicInductionSignatureCanvas || !publicInductionSignatureCtx) return;
+  publicInductionSignatureCtx.clearRect(0,0,publicInductionSignatureCanvas.width,publicInductionSignatureCanvas.height);
+  publicInductionSignatureHasStroke=false;
+}
+
+async function registerPublicInductionParticipant() {
+  const msg=document.getElementById('publicInductionRegistrationMessage');
+  const show=(text,type='error')=>{
+    msg.textContent=text;
+    msg.className=`form-message ${text?'visible':''} ${type}`;
+  };
+  show('');
+
+  const dni=document.getElementById('publicInductionDni').value.replace(/\D/g,'').slice(0,8);
+  const nombre=document.getElementById('publicInductionName').value.trim();
+  const fecha=document.getElementById('publicInductionEntryDate').value;
+  const puesto=document.getElementById('publicInductionPosition').value.trim();
+  const area=document.getElementById('publicInductionArea').value.trim();
+
+  if (!/^\d{8}$/.test(dni)) {show('Ingresa un DNI válido de 8 dígitos.');return;}
+  if (!nombre || !fecha || !puesto || !area) {show('Completa todos los campos obligatorios.');return;}
+  if (!publicInductionSignatureHasStroke) {show('Registra tu firma para continuar.');return;}
+
+  const button=document.getElementById('publicInductionRegisterButton');
+  button.disabled=true;
+  button.textContent='Registrando…';
+
+  const firma=publicInductionSignatureCanvas.toDataURL('image/png');
+  const {data,error}=await client.rpc('registrar_participante_induccion',{
+    p_token:publicInductionToken,
+    p_dni:dni,
+    p_nombre:nombre,
+    p_fecha_ingreso:fecha,
+    p_puesto:puesto,
+    p_area:area,
+    p_firma:firma
+  });
+
+  button.disabled=false;
+  button.textContent='Registrarme y continuar al examen';
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    show(data?.error || error?.message || 'No fue posible completar el registro.');
+    return;
+  }
+
+  publicInductionParticipantId=data.participante_id;
+  startPublicInductionExam(nombre);
+}
+
+function startPublicInductionExam(nombre) {
+  const questions=publicInductionData?.preguntas || [];
+  const i=publicInductionData?.induccion || {};
+
+  document.getElementById('publicInductionRegistrationStep')?.classList.add('hidden');
+  document.getElementById('publicInductionResultStep')?.classList.add('hidden');
+  document.getElementById('publicInductionExamStep')?.classList.remove('hidden');
+
+  document.getElementById('publicInductionExamParticipant').textContent=nombre || 'Participante';
+  document.getElementById('publicInductionExamTopic').textContent=i.tema || '—';
+  document.getElementById('publicInductionPassGrade').textContent=String(i.nota_minima ?? '—');
+  document.getElementById('publicInductionQuestionCount').textContent=String(questions.length);
+
+  renderPublicInductionQuestions(questions);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function renderPublicInductionQuestions(questions) {
+  const list=document.getElementById('publicInductionQuestionList');
+  if (!list) return;
+
+  if (!questions.length) {
+    list.innerHTML='<div class="training-library-empty">Esta inducción todavía no tiene preguntas disponibles.</div>';
+    return;
+  }
+
+  list.innerHTML=questions.map((q,index)=>`
+    <article class="public-induction-question" data-induction-public-question="${q.id}" data-question-type="${q.tipo}">
+      <div class="public-induction-question-head"><span>Pregunta ${index+1}</span><b>${Number(q.peso)} pt${Number(q.peso)===1?'':'s'}</b></div>
+      <h3>${escapeHtml(q.enunciado)}</h3>
+      ${renderPublicInductionAnswer(q)}
+    </article>
+  `).join('');
+}
+
+function renderPublicInductionAnswer(q) {
+  if (q.tipo==='RESPUESTA_LIBRE') {
+    return `<textarea class="public-induction-free-text" rows="4" placeholder="Escribe tu respuesta"></textarea>`;
+  }
+  const multi=q.tipo==='VARIAS_RESPUESTAS';
+  return `<div class="public-induction-options">
+    ${(q.opciones||[]).map((o,i)=>`
+      <label>
+        <input type="${multi?'checkbox':'radio'}" ${multi?'':`name="piq_${q.id}"`} value="${o.id}" />
+        <b>${String.fromCharCode(65+i)}</b>
+        <span>${escapeHtml(o.texto)}</span>
+      </label>
+    `).join('')}
+  </div>`;
+}
+
+async function submitPublicInductionExam(event) {
+  event.preventDefault();
+  if (!publicInductionParticipantId) return;
+
+  const questions=publicInductionData?.preguntas || [];
+  const respuestas=[];
+  let missing=false;
+
+  for (const q of questions) {
+    const card=document.querySelector(`[data-induction-public-question="${q.id}"]`);
+    if (!card) continue;
+
+    if (q.tipo==='RESPUESTA_LIBRE') {
+      const text=card.querySelector('textarea')?.value.trim() || '';
+      if (!text) missing=true;
+      respuestas.push({pregunta_id:q.id,texto:text});
+    } else {
+      const selected=[...card.querySelectorAll('input:checked')].map(x=>x.value);
+      if (!selected.length) missing=true;
+      respuestas.push({pregunta_id:q.id,seleccionadas:selected});
+    }
+  }
+
+  const msg=document.getElementById('publicInductionExamMessage');
+  if (missing) {
+    msg.textContent='Responde todas las preguntas antes de enviar el examen.';
+    msg.className='form-message visible error';
+    return;
+  }
+
+  msg.textContent='';
+  const submit=document.querySelector('#publicInductionExamForm button[type="submit"]');
+  submit.disabled=true;
+  submit.textContent='Enviando…';
+
+  const {data,error}=await client.rpc('finalizar_examen_induccion',{
+    p_token:publicInductionToken,
+    p_participante_id:publicInductionParticipantId,
+    p_respuestas:respuestas
+  });
+
+  submit.disabled=false;
+  submit.textContent='Finalizar y enviar examen';
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    msg.textContent=data?.error || error?.message || 'No fue posible registrar la evaluación.';
+    msg.className='form-message visible error';
+    return;
+  }
+
+  document.getElementById('publicInductionExamStep')?.classList.add('hidden');
+  document.getElementById('publicInductionResultStep')?.classList.remove('hidden');
+
+  const icon=document.getElementById('publicInductionResultIcon');
+  icon.textContent=data.aprobado?'✓':'!';
+  icon.classList.toggle('fail',!data.aprobado);
+  document.getElementById('publicInductionResultTitle').textContent=data.aprobado?'¡Inducción aprobada!':'Inducción completada';
+  document.getElementById('publicInductionGrade').innerHTML=`${Number(data.nota).toFixed(1)} <small>/ 20</small>`;
+  document.getElementById('publicInductionResultText').textContent=
+    `${data.correctas} de ${data.total} respuestas correctas · Nota mínima: ${data.nota_minima}`;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+document.getElementById('publicInductionDni')?.addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/\D/g,'').slice(0,8);
+});
+document.getElementById('clearPublicInductionSignature')?.addEventListener('click',clearPublicInductionSignature);
+document.getElementById('publicInductionRegisterButton')?.addEventListener('click',registerPublicInductionParticipant);
+document.getElementById('publicInductionExamForm')?.addEventListener('submit',submitPublicInductionExam);
+
 
 // ============================================================
 // ETAPA 12 · PRACTICAR

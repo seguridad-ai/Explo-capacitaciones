@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261004-37" />
+  <link rel="stylesheet" href="styles.css?v=20261005-38" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1143,74 +1143,238 @@
 
         <div id="inductionModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
-          <div class="modal-card induction-modal-card">
+          <div class="modal-card induction-wizard-card">
             <div class="modal-head">
               <div>
-                <span class="eyebrow">REGISTRO DE INDUCCIÓN</span>
+                <span class="eyebrow">INDUCCIÓN DE INGRESO</span>
                 <h3 id="inductionModalTitle">Nueva inducción</h3>
-                <p class="modal-subtitle">Selecciona si corresponde a Sede Lima o a un Proyecto.</p>
+                <p class="modal-subtitle">Programa la inducción, registra el examen y luego asigna a los trabajadores.</p>
               </div>
               <button id="closeInductionModal" class="modal-close" type="button">×</button>
             </div>
 
-            <form id="inductionForm" novalidate>
-              <input id="inductionId" type="hidden" />
-              <div class="form-grid">
-                <label>
-                  <span>Tipo de inducción *</span>
-                  <select id="inductionType">
-                    <option value="LIMA">Sede Lima</option>
-                    <option value="PROYECTO">Proyecto</option>
-                  </select>
-                </label>
+            <div class="induction-stepper">
+              <div class="induction-step active" data-induction-step-indicator="1"><span>1</span><b>Programación</b></div>
+              <div class="induction-step" data-induction-step-indicator="2"><span>2</span><b>Examen</b></div>
+              <div class="induction-step" data-induction-step-indicator="3"><span>3</span><b>Trabajadores</b></div>
+            </div>
 
-                <label id="inductionLimaField">
-                  <span>Sede *</span>
-                  <select id="inductionSite"><option value="">Seleccione Lima</option></select>
-                </label>
+            <input id="inductionId" type="hidden" />
 
-                <label id="inductionProjectField" class="hidden">
-                  <span>Proyecto *</span>
-                  <select id="inductionProject"><option value="">Seleccione un proyecto</option></select>
-                </label>
+            <section id="inductionStep1" class="induction-wizard-step">
+              <div class="induction-type-choice">
+                <button id="inductionChoiceLima" class="induction-choice active" type="button">
+                  <span>⌂</span><strong>Sede Lima</strong><small>Inducción para personal que ingresa a Lima</small>
+                </button>
+                <button id="inductionChoiceProject" class="induction-choice" type="button">
+                  <span>◆</span><strong>Proyecto</strong><small>Se configurará con los datos del proyecto</small>
+                </button>
+              </div>
 
-                <label class="form-span-2">
-                  <span>Título *</span>
-                  <input id="inductionTitle" maxlength="180" placeholder="Ej. Inducción general para personal nuevo" />
-                </label>
+              <div id="inductionLimaProgramming">
+                <div class="form-grid induction-program-grid">
+                  <label>
+                    <span>Empresa *</span>
+                    <input id="inductionCompany" value="EXPLO DRILLING PERU S.R.L." readonly />
+                  </label>
 
-                <label>
-                  <span>Fecha *</span>
-                  <input id="inductionDate" type="date" />
-                </label>
+                  <label>
+                    <span>Contratista</span>
+                    <input id="inductionContractor" placeholder="N.A." />
+                    <small>Si se deja vacío, se registrará N.A.</small>
+                  </label>
 
-                <label>
-                  <span>Nota mínima *</span>
-                  <input id="inductionMinGrade" type="number" min="0" max="20" step="0.1" value="14" />
-                </label>
+                  <label>
+                    <span>Sede *</span>
+                    <select id="inductionSite"><option value="">Seleccione Lima</option></select>
+                  </label>
 
-                <label>
-                  <span>Estado *</span>
-                  <select id="inductionStatus">
-                    <option value="BORRADOR">BORRADOR</option>
-                    <option value="ACTIVA">ACTIVA</option>
-                    <option value="CERRADA">CERRADA</option>
-                  </select>
-                </label>
+                  <label>
+                    <span>Distrito *</span>
+                    <input id="inductionDistrict" maxlength="120" placeholder="Distrito" />
+                  </label>
 
-                <label class="form-span-2">
-                  <span>Descripción</span>
-                  <textarea id="inductionDescription" rows="4" maxlength="700" placeholder="Describe el alcance de la inducción..."></textarea>
-                </label>
+                  <label>
+                    <span>Provincia *</span>
+                    <input id="inductionProvince" maxlength="120" placeholder="Provincia" />
+                  </label>
+
+                  <label class="form-span-2">
+                    <span>Tema *</span>
+                    <input id="inductionTopic" maxlength="220" placeholder="Tema de la inducción" />
+                  </label>
+
+                  <label>
+                    <span>Expositor *</span>
+                    <input id="inductionSpeaker" maxlength="180" placeholder="Apellidos y nombres" />
+                  </label>
+
+                  <label>
+                    <span>Cargo *</span>
+                    <input id="inductionSpeakerPosition" maxlength="160" placeholder="Cargo del expositor" />
+                  </label>
+
+                  <label>
+                    <span>DNI *</span>
+                    <input id="inductionSpeakerDni" maxlength="8" inputmode="numeric" placeholder="8 dígitos" />
+                  </label>
+
+                  <label>
+                    <span>Fecha *</span>
+                    <input id="inductionDate" type="date" />
+                  </label>
+
+                  <label>
+                    <span>Área *</span>
+                    <input id="inductionArea" maxlength="160" placeholder="Área" />
+                  </label>
+
+                  <label>
+                    <span>Tiempo (horas) *</span>
+                    <input id="inductionHours" type="number" min="0.5" step="0.5" placeholder="Ej. 2" />
+                  </label>
+
+                  <label>
+                    <span>Nota mínima *</span>
+                    <input id="inductionMinGrade" type="number" min="0" max="20" step="0.1" value="14" />
+                  </label>
+
+                  <label>
+                    <span>Estado *</span>
+                    <select id="inductionStatus">
+                      <option value="BORRADOR">BORRADOR</option>
+                      <option value="ACTIVA">ACTIVA</option>
+                    </select>
+                  </label>
+
+                  <label class="form-span-2">
+                    <span>Descripción / alcance</span>
+                    <textarea id="inductionDescription" rows="3" maxlength="700" placeholder="Descripción opcional"></textarea>
+                  </label>
+                </div>
+
+                <div class="induction-speaker-signature">
+                  <div>
+                    <span class="eyebrow">FIRMA DEL EXPOSITOR *</span>
+                    <h4>Registra la firma del expositor</h4>
+                  </div>
+                  <div class="induction-signature-wrap">
+                    <canvas id="inductionSpeakerSignatureCanvas" width="900" height="260"></canvas>
+                  </div>
+                  <div class="induction-signature-actions">
+                    <button id="clearInductionSpeakerSignature" class="secondary-btn" type="button">Limpiar firma</button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="inductionProjectProgramming" class="induction-project-placeholder hidden">
+                <span class="eyebrow">INDUCCIÓN DE PROYECTO</span>
+                <h4>Flujo de Proyecto</h4>
+                <p>La estructura específica para proyectos se desarrollará sobre esta misma base en la siguiente etapa.</p>
               </div>
 
               <div id="inductionFormMessage" class="form-message"></div>
 
               <div class="modal-actions">
                 <button id="cancelInductionModal" class="secondary-btn" type="button">Cancelar</button>
-                <button class="primary-btn" type="submit">Guardar inducción</button>
+                <button id="saveInductionProgrammingButton" class="primary-btn" type="button">Registrar y continuar al examen</button>
               </div>
-            </form>
+            </section>
+
+            <section id="inductionStep2" class="induction-wizard-step hidden">
+              <div class="induction-step-head">
+                <div>
+                  <span class="eyebrow">PASO 2</span>
+                  <h4>Preguntas del examen</h4>
+                  <p>Registra las preguntas que deberán responder los trabajadores.</p>
+                </div>
+                <button id="addInductionQuestionButton" class="primary-btn" type="button">+ Agregar pregunta</button>
+              </div>
+
+              <div id="inductionQuestionList" class="induction-question-list"></div>
+              <div id="inductionExamMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="backInductionStep1" class="secondary-btn" type="button">← Programación</button>
+                <button id="saveInductionExamButton" class="primary-btn" type="button">Guardar examen y pasar a trabajadores</button>
+              </div>
+            </section>
+
+            <section id="inductionStep3" class="induction-wizard-step hidden">
+              <div class="induction-step-head">
+                <div>
+                  <span class="eyebrow">PASO 3</span>
+                  <h4>Trabajadores de Sede Lima</h4>
+                  <p>Selecciona a los trabajadores que quedarán asignados a esta inducción.</p>
+                </div>
+              </div>
+
+              <div class="induction-worker-toolbar">
+                <input id="inductionWorkerSearch" type="search" placeholder="Buscar DNI, nombre, puesto o área..." />
+                <button id="selectAllInductionWorkers" class="secondary-btn" type="button">Seleccionar todos</button>
+              </div>
+
+              <div class="table-wrap induction-workers-table-wrap">
+                <table class="data-table">
+                  <thead><tr><th></th><th>DNI</th><th>Apellidos y nombres</th><th>Puesto</th><th>Área</th></tr></thead>
+                  <tbody id="inductionWorkersBody"></tbody>
+                </table>
+              </div>
+
+              <div id="inductionWorkersMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="backInductionStep2" class="secondary-btn" type="button">← Examen</button>
+                <button id="finishInductionButton" class="primary-btn" type="button">Guardar inducción</button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="inductionQuestionModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card induction-question-modal">
+            <div class="modal-head">
+              <div><span class="eyebrow">PREGUNTA DEL EXAMEN</span><h3 id="inductionQuestionModalTitle">Nueva pregunta</h3></div>
+              <button id="closeInductionQuestionModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <input id="inductionQuestionId" type="hidden" />
+
+            <div class="form-grid">
+              <label class="form-span-2">
+                <span>Pregunta *</span>
+                <textarea id="inductionQuestionText" rows="3" maxlength="600"></textarea>
+              </label>
+
+              <label>
+                <span>Tipo de pregunta *</span>
+                <select id="inductionQuestionType">
+                  <option value="OPCION_MULTIPLE">Opción múltiple</option>
+                  <option value="VERDADERO_FALSO">Verdadero / Falso</option>
+                  <option value="VARIAS_RESPUESTAS">Varias respuestas</option>
+                  <option value="RESPUESTA_LIBRE">Respuesta libre</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Peso / puntos *</span>
+                <input id="inductionQuestionWeight" type="number" min="0.5" step="0.5" value="1" />
+              </label>
+
+              <label class="form-span-2">
+                <span>Explicación educativa</span>
+                <textarea id="inductionQuestionExplanation" rows="2" maxlength="700" placeholder="Mensaje que podrá usarse posteriormente como retroalimentación."></textarea>
+              </label>
+            </div>
+
+            <div id="inductionQuestionAnswers"></div>
+            <div id="inductionQuestionMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="cancelInductionQuestionModal" class="secondary-btn" type="button">Cancelar</button>
+              <button id="saveInductionQuestionButton" class="primary-btn" type="button">Guardar pregunta</button>
+            </div>
           </div>
         </div>
       </section>
@@ -1431,7 +1595,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261004-37"></script>
-  <script src="app.js?v=20261004-37"></script>
+  <script src="config.js?v=20261005-38"></script>
+  <script src="app.js?v=20261005-38"></script>
 </body>
 </html>

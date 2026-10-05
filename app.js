@@ -4258,13 +4258,27 @@ document.getElementById('userModal')?.addEventListener('click', (event) => { if 
 
 
 // ============================================================
-// ETAPA 14 · INDUCCIONES: LIMA Y PROYECTOS
+// ETAPA 14A · INDUCCIÓN SEDE LIMA
+// Programación -> Examen -> Trabajadores
 // ============================================================
 
 let inductionRecords = [];
 let inductionSites = [];
 let inductionProjects = [];
 let inductionTypeFilter = 'ALL';
+
+let inductionWizardType = 'LIMA';
+let activeInductionId = null;
+let inductionQuestionsCache = [];
+let inductionWorkersCache = [];
+let inductionQuestionEditId = null;
+
+let inductionSignatureCanvas = null;
+let inductionSignatureCtx = null;
+let inductionSignatureDrawing = false;
+let inductionSignatureHasStroke = false;
+let inductionSignatureLastPoint = null;
+let inductionSavedSignature = null;
 
 function inductionCanCreate() {
   return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
@@ -4291,18 +4305,12 @@ function inductionUnitName(item) {
 
 function populateInductionUnitOptions() {
   const site = document.getElementById('inductionSite');
-  const project = document.getElementById('inductionProject');
   const filter = document.getElementById('inductionUnitFilter');
 
   if (site) {
     const lima = inductionSites.filter(x => x.activo && String(x.nombre || '').trim().toLowerCase() === 'lima');
     site.innerHTML = '<option value="">Seleccione Lima</option>' +
       lima.map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
-  }
-
-  if (project) {
-    project.innerHTML = '<option value="">Seleccione un proyecto</option>' +
-      inductionProjects.filter(x=>x.activo).map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
   }
 
   if (filter) {
@@ -4325,11 +4333,9 @@ function renderInductions() {
   let rows = inductionRecords.filter(item => {
     if (inductionTypeFilter !== 'ALL' && item.tipo !== inductionTypeFilter) return false;
     if (status !== 'ALL' && item.estado !== status) return false;
-
     if (unit === 'LIMA' && item.tipo !== 'LIMA') return false;
     if (unit.startsWith('PROYECTO:') && item.proyecto_id !== unit.split(':')[1]) return false;
-
-    const haystack = `${item.codigo||''} ${item.titulo||''} ${item.descripcion||''} ${inductionUnitName(item)}`.toLowerCase();
+    const haystack = `${item.codigo||''} ${item.tema||item.titulo||''} ${item.expositor||''} ${item.area||''} ${inductionUnitName(item)}`.toLowerCase();
     return !search || haystack.includes(search);
   });
 
@@ -4344,22 +4350,21 @@ function renderInductions() {
   list.innerHTML = rows.map(item => {
     const canManage = inductionCanManage(item);
     return `<article class="induction-card">
-      <div class="induction-card-type ${item.tipo === 'LIMA' ? 'lima' : 'project'}">
-        <span>${item.tipo === 'LIMA' ? '⌂' : '◆'}</span>
-      </div>
+      <div class="induction-card-type ${item.tipo === 'LIMA' ? 'lima' : 'project'}"><span>${item.tipo === 'LIMA' ? '⌂' : '◆'}</span></div>
       <div class="induction-card-main">
         <div class="induction-card-head">
           <div>
             <span class="induction-kind">${item.tipo === 'LIMA' ? 'INDUCCIÓN SEDE LIMA' : 'INDUCCIÓN DE PROYECTO'}</span>
-            <h3>${escapeHtml(item.titulo)}</h3>
+            <h3>${escapeHtml(item.tema || item.titulo || 'Sin tema')}</h3>
           </div>
           <span class="schedule-status ${item.estado === 'ACTIVA' ? 'active' : item.estado === 'BORRADOR' ? 'draft' : 'closed'}">${escapeHtml(item.estado)}</span>
         </div>
-        <p>${escapeHtml(item.descripcion || 'Sin descripción')}</p>
+        <p>${item.expositor ? `<strong>Expositor:</strong> ${escapeHtml(item.expositor)} · ${escapeHtml(item.expositor_cargo || '')}` : escapeHtml(item.descripcion || 'Sin descripción')}</p>
         <div class="induction-card-meta">
           <span>${escapeHtml(item.codigo)}</span>
           <span>${escapeHtml(inductionUnitName(item))}</span>
-          <span>Fecha: ${formatDatePE(item.fecha)}</span>
+          <span>${formatDatePE(item.fecha)}</span>
+          <span>${item.tiempo_horas ? `${Number(item.tiempo_horas)} h` : '—'}</span>
           <span>Nota mínima: ${Number(item.nota_minima).toFixed(1).replace('.0','')}</span>
         </div>
       </div>
@@ -4372,18 +4377,14 @@ function renderInductions() {
 
   list.querySelectorAll('[data-induction-edit]').forEach(btn => btn.addEventListener('click', () => {
     const item = inductionRecords.find(x=>x.id===btn.dataset.inductionEdit);
-    openInductionModal(item);
+    openInductionWizard(item);
   }));
 
   list.querySelectorAll('[data-induction-delete]').forEach(btn => btn.addEventListener('click', async () => {
     const item = inductionRecords.find(x=>x.id===btn.dataset.inductionDelete);
-    if (!item || !confirm(`¿Eliminar la inducción "${item.titulo}"?`)) return;
-
+    if (!item || !confirm(`¿Eliminar la inducción "${item.tema || item.titulo}"?`)) return;
     const { error } = await client.from('inducciones').delete().eq('id', item.id);
-    if (error) {
-      inductionMessage(error.message);
-      return;
-    }
+    if (error) { inductionMessage(error.message); return; }
     await loadInductionModule(true);
     inductionMessage('Inducción eliminada correctamente.','success');
   }));
@@ -4391,10 +4392,7 @@ function renderInductions() {
 
 async function loadInductionModule(force=false) {
   if (!client) return;
-  if (inductionRecords.length && !force) {
-    renderInductions();
-    return;
-  }
+  if (inductionRecords.length && !force) { renderInductions(); return; }
 
   inductionMessage('');
   const list = document.getElementById('inductionList');
@@ -4408,7 +4406,7 @@ async function loadInductionModule(force=false) {
 
   if (records.error) {
     console.error(records.error);
-    inductionMessage('No fue posible cargar Inducciones. Ejecuta el SQL de la Etapa 14.');
+    inductionMessage('No fue posible cargar Inducciones. Ejecuta el SQL de la Etapa 14A.');
     return;
   }
 
@@ -4419,95 +4417,218 @@ async function loadInductionModule(force=false) {
   renderInductions();
 }
 
-function syncInductionTypeFields() {
-  const type = document.getElementById('inductionType')?.value || 'LIMA';
-  document.getElementById('inductionLimaField')?.classList.toggle('hidden', type !== 'LIMA');
-  document.getElementById('inductionProjectField')?.classList.toggle('hidden', type !== 'PROYECTO');
+function setInductionWizardStep(step) {
+  [1,2,3].forEach(n => {
+    document.getElementById(`inductionStep${n}`)?.classList.toggle('hidden', n !== step);
+    document.querySelector(`[data-induction-step-indicator="${n}"]`)?.classList.toggle('active', n === step);
+    document.querySelector(`[data-induction-step-indicator="${n}"]`)?.classList.toggle('done', n < step);
+  });
 }
 
-function openInductionModal(item=null) {
-  const modal = document.getElementById('inductionModal');
-  document.getElementById('inductionId').value = item?.id || '';
-  document.getElementById('inductionModalTitle').textContent = item ? 'Editar inducción' : 'Nueva inducción';
-  document.getElementById('inductionType').value = item?.tipo || 'LIMA';
-  document.getElementById('inductionTitle').value = item?.titulo || '';
-  document.getElementById('inductionDate').value = item?.fecha || new Date().toISOString().slice(0,10);
-  document.getElementById('inductionMinGrade').value = item?.nota_minima ?? 14;
-  document.getElementById('inductionStatus').value = item?.estado || 'BORRADOR';
-  document.getElementById('inductionDescription').value = item?.descripcion || '';
-  populateInductionUnitOptions();
-  document.getElementById('inductionSite').value = item?.sede_id || '';
-  document.getElementById('inductionProject').value = item?.proyecto_id || '';
-  document.getElementById('inductionFormMessage').textContent = '';
-  syncInductionTypeFields();
+function setInductionWizardType(type) {
+  inductionWizardType = type;
+  document.getElementById('inductionChoiceLima')?.classList.toggle('active', type === 'LIMA');
+  document.getElementById('inductionChoiceProject')?.classList.toggle('active', type === 'PROYECTO');
+  document.getElementById('inductionLimaProgramming')?.classList.toggle('hidden', type !== 'LIMA');
+  document.getElementById('inductionProjectProgramming')?.classList.toggle('hidden', type !== 'PROYECTO');
+  document.getElementById('saveInductionProgrammingButton')?.classList.toggle('hidden', type !== 'LIMA');
+}
 
+function initInductionSignatureCanvas() {
+  inductionSignatureCanvas = document.getElementById('inductionSpeakerSignatureCanvas');
+  if (!inductionSignatureCanvas) return;
+  inductionSignatureCtx = inductionSignatureCanvas.getContext('2d');
+  inductionSignatureCtx.lineCap = 'round';
+  inductionSignatureCtx.lineJoin = 'round';
+  inductionSignatureCtx.lineWidth = 4;
+  inductionSignatureCtx.strokeStyle = '#17263c';
+
+  const point = ev => {
+    const rect = inductionSignatureCanvas.getBoundingClientRect();
+    const touch = ev.touches?.[0] || ev.changedTouches?.[0];
+    const clientX = touch ? touch.clientX : ev.clientX;
+    const clientY = touch ? touch.clientY : ev.clientY;
+    return {
+      x:(clientX-rect.left)*(inductionSignatureCanvas.width/rect.width),
+      y:(clientY-rect.top)*(inductionSignatureCanvas.height/rect.height)
+    };
+  };
+
+  const start = ev => {
+    ev.preventDefault();
+    inductionSignatureDrawing = true;
+    inductionSignatureLastPoint = point(ev);
+  };
+
+  const move = ev => {
+    if (!inductionSignatureDrawing) return;
+    ev.preventDefault();
+    const p = point(ev);
+    inductionSignatureCtx.beginPath();
+    inductionSignatureCtx.moveTo(inductionSignatureLastPoint.x,inductionSignatureLastPoint.y);
+    inductionSignatureCtx.lineTo(p.x,p.y);
+    inductionSignatureCtx.stroke();
+    inductionSignatureLastPoint = p;
+    inductionSignatureHasStroke = true;
+  };
+
+  const end = ev => {
+    if (inductionSignatureDrawing) ev.preventDefault();
+    inductionSignatureDrawing = false;
+    inductionSignatureLastPoint = null;
+  };
+
+  inductionSignatureCanvas.onpointerdown = start;
+  inductionSignatureCanvas.onpointermove = move;
+  inductionSignatureCanvas.onpointerup = end;
+  inductionSignatureCanvas.onpointercancel = end;
+  inductionSignatureCanvas.onpointerleave = end;
+}
+
+function resetInductionSignature() {
+  if (!inductionSignatureCanvas || !inductionSignatureCtx) initInductionSignatureCanvas();
+  if (!inductionSignatureCanvas || !inductionSignatureCtx) return;
+  inductionSignatureCtx.clearRect(0,0,inductionSignatureCanvas.width,inductionSignatureCanvas.height);
+  inductionSignatureHasStroke = false;
+  inductionSavedSignature = null;
+}
+
+function drawSavedInductionSignature(dataUrl) {
+  resetInductionSignature();
+  if (!dataUrl || !inductionSignatureCanvas || !inductionSignatureCtx) return;
+  const img = new Image();
+  img.onload = () => {
+    inductionSignatureCtx.drawImage(img,0,0,inductionSignatureCanvas.width,inductionSignatureCanvas.height);
+    inductionSignatureHasStroke = true;
+    inductionSavedSignature = dataUrl;
+  };
+  img.src = dataUrl;
+}
+
+async function openInductionWizard(item=null) {
+  activeInductionId = item?.id || null;
+  document.getElementById('inductionId').value = activeInductionId || '';
+  document.getElementById('inductionModalTitle').textContent = item ? 'Editar inducción' : 'Nueva inducción';
+  populateInductionUnitOptions();
+
+  setInductionWizardType(item?.tipo || 'LIMA');
+  setInductionWizardStep(1);
+
+  document.getElementById('inductionCompany').value = item?.empresa || 'EXPLO DRILLING PERU S.R.L.';
+  document.getElementById('inductionContractor').value = item?.contratista === 'N.A.' ? '' : (item?.contratista || '');
+  document.getElementById('inductionSite').value = item?.sede_id || '';
+  document.getElementById('inductionDistrict').value = item?.distrito || '';
+  document.getElementById('inductionProvince').value = item?.provincia || '';
+  document.getElementById('inductionTopic').value = item?.tema || item?.titulo || '';
+  document.getElementById('inductionSpeaker').value = item?.expositor || '';
+  document.getElementById('inductionSpeakerPosition').value = item?.expositor_cargo || '';
+  document.getElementById('inductionSpeakerDni').value = item?.expositor_dni || '';
+  document.getElementById('inductionDate').value = item?.fecha || new Date().toISOString().slice(0,10);
+  document.getElementById('inductionArea').value = item?.area || '';
+  document.getElementById('inductionHours').value = item?.tiempo_horas || '';
+  document.getElementById('inductionMinGrade').value = item?.nota_minima ?? 14;
+  document.getElementById('inductionStatus').value = item?.estado === 'CERRADA' ? 'BORRADOR' : (item?.estado || 'BORRADOR');
+  document.getElementById('inductionDescription').value = item?.descripcion || '';
+  document.getElementById('inductionFormMessage').textContent = '';
+
+  initInductionSignatureCanvas();
+  if (item?.firma_expositor) drawSavedInductionSignature(item.firma_expositor);
+  else resetInductionSignature();
+
+  if (item?.id) {
+    await loadInductionQuestions(item.id);
+  } else {
+    inductionQuestionsCache = [];
+  }
+
+  const modal = document.getElementById('inductionModal');
   modal?.classList.remove('hidden');
   modal?.setAttribute('aria-hidden','false');
   document.body.classList.add('modal-open');
 }
 
 function closeInductionModal() {
-  const modal = document.getElementById('inductionModal');
-  modal?.classList.add('hidden');
-  modal?.setAttribute('aria-hidden','true');
+  document.getElementById('inductionModal')?.classList.add('hidden');
+  document.getElementById('inductionModal')?.setAttribute('aria-hidden','true');
   document.body.classList.remove('modal-open');
 }
 
-async function saveInduction(event) {
-  event.preventDefault();
-  if (!client) return;
-
-  const id = document.getElementById('inductionId').value || null;
-  const type = document.getElementById('inductionType').value;
-  const title = document.getElementById('inductionTitle').value.trim();
-  const date = document.getElementById('inductionDate').value;
-  const note = Number(document.getElementById('inductionMinGrade').value);
-  const state = document.getElementById('inductionStatus').value;
-  const description = document.getElementById('inductionDescription').value.trim() || null;
-  const siteId = type === 'LIMA' ? (document.getElementById('inductionSite').value || null) : null;
-  const projectId = type === 'PROYECTO' ? (document.getElementById('inductionProject').value || null) : null;
+async function saveInductionProgramming() {
+  if (inductionWizardType !== 'LIMA') return;
 
   const msg = document.getElementById('inductionFormMessage');
-  const setMsg = (text,type='error') => {
-    msg.textContent = text;
-    msg.className = `form-message ${text ? 'visible' : ''} ${type}`;
+  const show = (text,type='error') => {
+    msg.textContent=text;
+    msg.className=`form-message ${text?'visible':''} ${type}`;
   };
-  setMsg('');
+  show('');
 
-  if (!title || !date) {
-    setMsg('Completa título y fecha.');
+  const empresa = 'EXPLO DRILLING PERU S.R.L.';
+  const contratista = document.getElementById('inductionContractor').value.trim() || 'N.A.';
+  const sede_id = document.getElementById('inductionSite').value || null;
+  const distrito = document.getElementById('inductionDistrict').value.trim();
+  const provincia = document.getElementById('inductionProvince').value.trim();
+  const tema = document.getElementById('inductionTopic').value.trim();
+  const expositor = document.getElementById('inductionSpeaker').value.trim();
+  const expositor_cargo = document.getElementById('inductionSpeakerPosition').value.trim();
+  const expositor_dni = document.getElementById('inductionSpeakerDni').value.replace(/\D/g,'').slice(0,8);
+  const fecha = document.getElementById('inductionDate').value;
+  const area = document.getElementById('inductionArea').value.trim();
+  const tiempo_horas = Number(document.getElementById('inductionHours').value);
+  const nota_minima = Number(document.getElementById('inductionMinGrade').value);
+  const estado = document.getElementById('inductionStatus').value;
+  const descripcion = document.getElementById('inductionDescription').value.trim() || null;
+
+  if (!sede_id || !distrito || !provincia || !tema || !expositor || !expositor_cargo || !fecha || !area) {
+    show('Completa todos los campos obligatorios.');
+    return;
+  }
+  if (!/^\d{8}$/.test(expositor_dni)) {
+    show('El DNI del expositor debe tener 8 dígitos.');
+    return;
+  }
+  if (!Number.isFinite(tiempo_horas) || tiempo_horas <= 0) {
+    show('Ingresa el tiempo de la inducción en horas.');
+    return;
+  }
+  if (!Number.isFinite(nota_minima) || nota_minima < 0 || nota_minima > 20) {
+    show('La nota mínima debe estar entre 0 y 20.');
+    return;
+  }
+  if (!inductionSignatureHasStroke && !inductionSavedSignature) {
+    show('Registra la firma del expositor.');
     return;
   }
 
-  if (type === 'LIMA' && !siteId) {
-    setMsg('Selecciona la Sede Lima.');
-    return;
-  }
-
-  if (type === 'PROYECTO' && !projectId) {
-    setMsg('Selecciona el proyecto.');
-    return;
-  }
-
-  if (!Number.isFinite(note) || note < 0 || note > 20) {
-    setMsg('La nota mínima debe estar entre 0 y 20.');
-    return;
-  }
+  const firma_expositor = inductionSignatureHasStroke
+    ? inductionSignatureCanvas.toDataURL('image/png')
+    : inductionSavedSignature;
 
   const payload = {
-    tipo:type,
-    titulo:title,
-    descripcion:description,
-    sede_id:siteId,
-    proyecto_id:projectId,
-    fecha:date,
-    nota_minima:note,
-    estado:state
+    tipo:'LIMA',
+    titulo:tema,
+    tema,
+    empresa,
+    contratista,
+    sede_id,
+    proyecto_id:null,
+    distrito,
+    provincia,
+    expositor,
+    expositor_cargo,
+    expositor_dni,
+    fecha,
+    area,
+    tiempo_horas,
+    firma_expositor,
+    nota_minima,
+    estado,
+    descripcion
   };
 
   let result;
-  if (id) {
-    result = await client.from('inducciones').update(payload).eq('id',id).select().single();
+  if (activeInductionId) {
+    result = await client.from('inducciones').update(payload).eq('id',activeInductionId).select().single();
   } else {
     payload.created_by = currentProfile?.id || null;
     result = await client.from('inducciones').insert(payload).select().single();
@@ -4515,38 +4636,361 @@ async function saveInduction(event) {
 
   if (result.error) {
     console.error(result.error);
-    setMsg(result.error.message);
+    show(result.error.message);
     return;
   }
 
+  activeInductionId = result.data.id;
+  document.getElementById('inductionId').value = activeInductionId;
+  inductionSavedSignature = firma_expositor;
+  await loadInductionQuestions(activeInductionId);
+  setInductionWizardStep(2);
+}
+
+async function loadInductionQuestions(inductionId) {
+  const { data,error } = await client
+    .from('induccion_preguntas')
+    .select('id,induccion_id,orden,enunciado,tipo,peso,explicacion,respuestas_aceptadas,activo,induccion_opciones(id,orden,texto,es_correcta)')
+    .eq('induccion_id',inductionId)
+    .eq('activo',true)
+    .order('orden');
+
+  if (error) {
+    console.error(error);
+    inductionQuestionsCache = [];
+    renderInductionQuestions();
+    return;
+  }
+
+  inductionQuestionsCache = (data||[]).map(q => ({
+    ...q,
+    opciones:(q.induccion_opciones||[]).sort((a,b)=>a.orden-b.orden)
+  }));
+  renderInductionQuestions();
+}
+
+function renderInductionQuestions() {
+  const list = document.getElementById('inductionQuestionList');
+  if (!list) return;
+
+  if (!inductionQuestionsCache.length) {
+    list.innerHTML = '<div class="training-library-empty">Aún no hay preguntas. Agrega la primera pregunta del examen.</div>';
+    return;
+  }
+
+  list.innerHTML = inductionQuestionsCache.map((q,index) => `
+    <article class="induction-question-card">
+      <div>
+        <span class="induction-question-number">${index+1}</span>
+        <div>
+          <strong>${escapeHtml(q.enunciado)}</strong>
+          <small>${escapeHtml(inductionQuestionTypeLabel(q.tipo))} · ${Number(q.peso)} punto(s)</small>
+          ${q.opciones?.length ? `<div class="induction-question-options">${q.opciones.map((o,i)=>`<span class="${o.es_correcta?'correct':''}">${String.fromCharCode(65+i)}) ${escapeHtml(o.texto)}</span>`).join('')}</div>` : ''}
+          ${q.tipo==='RESPUESTA_LIBRE' ? `<div class="induction-free-answer">Respuesta(s) aceptada(s): ${(q.respuestas_aceptadas||[]).map(escapeHtml).join(', ')}</div>` : ''}
+        </div>
+      </div>
+      <div class="induction-question-actions">
+        <button type="button" class="table-link" data-induction-q-edit="${q.id}">Editar</button>
+        <button type="button" class="table-action danger" data-induction-q-delete="${q.id}">Eliminar</button>
+      </div>
+    </article>
+  `).join('');
+
+  list.querySelectorAll('[data-induction-q-edit]').forEach(b => b.addEventListener('click',()=>{
+    const q=inductionQuestionsCache.find(x=>x.id===b.dataset.inductionQEdit);
+    openInductionQuestionModal(q);
+  }));
+
+  list.querySelectorAll('[data-induction-q-delete]').forEach(b => b.addEventListener('click',async()=>{
+    if (!confirm('¿Eliminar esta pregunta?')) return;
+    const {error}=await client.from('induccion_preguntas').delete().eq('id',b.dataset.inductionQDelete);
+    if (error) alert(error.message);
+    else await loadInductionQuestions(activeInductionId);
+  }));
+}
+
+function inductionQuestionTypeLabel(type) {
+  return {
+    OPCION_MULTIPLE:'Opción múltiple',
+    VERDADERO_FALSO:'Verdadero / Falso',
+    VARIAS_RESPUESTAS:'Varias respuestas',
+    RESPUESTA_LIBRE:'Respuesta libre'
+  }[type] || type;
+}
+
+function renderInductionQuestionAnswerEditor(question=null) {
+  const type = document.getElementById('inductionQuestionType').value;
+  const box = document.getElementById('inductionQuestionAnswers');
+  if (!box) return;
+
+  if (type === 'RESPUESTA_LIBRE') {
+    const accepted = Array.isArray(question?.respuestas_aceptadas) ? question.respuestas_aceptadas.join(' | ') : '';
+    box.innerHTML = `<label class="induction-free-editor"><span>Respuesta(s) aceptada(s) *</span><input id="inductionAcceptedAnswers" value="${escapeHtml(accepted)}" placeholder="Ej. detener trabajo | paralizar tarea" /><small>Separa varias respuestas aceptadas con |</small></label>`;
+    return;
+  }
+
+  if (type === 'VERDADERO_FALSO') {
+    const correct = question?.opciones?.find(o=>o.es_correcta)?.texto || 'Verdadero';
+    box.innerHTML = `
+      <div class="induction-answer-editor">
+        <p>Marca la respuesta correcta:</p>
+        <label><input type="radio" name="inductionCorrectSingle" value="Verdadero" ${correct==='Verdadero'?'checked':''}/><span>Verdadero</span></label>
+        <label><input type="radio" name="inductionCorrectSingle" value="Falso" ${correct==='Falso'?'checked':''}/><span>Falso</span></label>
+      </div>`;
+    return;
+  }
+
+  const existing = question?.opciones || [];
+  box.innerHTML = `<div class="induction-answer-editor"><p>${type==='VARIAS_RESPUESTAS'?'Marca todas las respuestas correctas:':'Marca la respuesta correcta:'}</p>
+    ${[0,1,2,3].map(i => {
+      const o=existing[i]||{};
+      const inputType=type==='VARIAS_RESPUESTAS'?'checkbox':'radio';
+      const name=type==='VARIAS_RESPUESTAS'?'':'name="inductionCorrectSingle"';
+      return `<label class="induction-option-row">
+        <input type="${inputType}" ${name} class="induction-correct-marker" data-option-index="${i}" ${o.es_correcta?'checked':''}/>
+        <b>${String.fromCharCode(65+i)}</b>
+        <input class="induction-option-text" data-option-index="${i}" value="${escapeHtml(o.texto||'')}" placeholder="Alternativa ${String.fromCharCode(65+i)}" />
+      </label>`;
+    }).join('')}
+  </div>`;
+}
+
+function openInductionQuestionModal(question=null) {
+  inductionQuestionEditId = question?.id || null;
+  document.getElementById('inductionQuestionId').value = inductionQuestionEditId || '';
+  document.getElementById('inductionQuestionModalTitle').textContent = question ? 'Editar pregunta' : 'Nueva pregunta';
+  document.getElementById('inductionQuestionText').value = question?.enunciado || '';
+  document.getElementById('inductionQuestionType').value = question?.tipo || 'OPCION_MULTIPLE';
+  document.getElementById('inductionQuestionWeight').value = question?.peso || 1;
+  document.getElementById('inductionQuestionExplanation').value = question?.explicacion || '';
+  document.getElementById('inductionQuestionMessage').textContent = '';
+  renderInductionQuestionAnswerEditor(question);
+
+  const modal=document.getElementById('inductionQuestionModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+}
+
+function closeInductionQuestionModal() {
+  document.getElementById('inductionQuestionModal')?.classList.add('hidden');
+  document.getElementById('inductionQuestionModal')?.setAttribute('aria-hidden','true');
+  inductionQuestionEditId = null;
+}
+
+async function saveInductionQuestion() {
+  if (!activeInductionId) return;
+
+  const msg=document.getElementById('inductionQuestionMessage');
+  const show=(text,type='error')=>{
+    msg.textContent=text;
+    msg.className=`form-message ${text?'visible':''} ${type}`;
+  };
+  show('');
+
+  const enunciado=document.getElementById('inductionQuestionText').value.trim();
+  const tipo=document.getElementById('inductionQuestionType').value;
+  const peso=Number(document.getElementById('inductionQuestionWeight').value);
+  const explicacion=document.getElementById('inductionQuestionExplanation').value.trim() || null;
+
+  if (!enunciado) { show('Ingresa la pregunta.'); return; }
+  if (!Number.isFinite(peso) || peso<=0) { show('Ingresa un peso válido.'); return; }
+
+  let opciones=[];
+  let respuestas_aceptadas=[];
+
+  if (tipo==='RESPUESTA_LIBRE') {
+    const raw=(document.getElementById('inductionAcceptedAnswers')?.value||'').trim();
+    respuestas_aceptadas=raw.split('|').map(x=>x.trim()).filter(Boolean);
+    if (!respuestas_aceptadas.length) { show('Ingresa al menos una respuesta aceptada.'); return; }
+  } else if (tipo==='VERDADERO_FALSO') {
+    const correct=document.querySelector('input[name="inductionCorrectSingle"]:checked')?.value;
+    if (!correct) { show('Selecciona la respuesta correcta.'); return; }
+    opciones=[
+      {orden:1,texto:'Verdadero',es_correcta:correct==='Verdadero'},
+      {orden:2,texto:'Falso',es_correcta:correct==='Falso'}
+    ];
+  } else {
+    const texts=[...document.querySelectorAll('.induction-option-text')].map(x=>x.value.trim());
+    if (texts.some(x=>!x)) { show('Completa las cuatro alternativas.'); return; }
+
+    if (tipo==='OPCION_MULTIPLE') {
+      const checked=document.querySelector('input[name="inductionCorrectSingle"]:checked');
+      if (!checked) { show('Selecciona la respuesta correcta.'); return; }
+      const correctIndex=Number(checked.dataset.optionIndex);
+      opciones=texts.map((texto,i)=>({orden:i+1,texto,es_correcta:i===correctIndex}));
+    } else {
+      const markers=[...document.querySelectorAll('.induction-correct-marker')];
+      if (!markers.some(x=>x.checked)) { show('Selecciona al menos una respuesta correcta.'); return; }
+      opciones=texts.map((texto,i)=>({orden:i+1,texto,es_correcta:!!markers[i]?.checked}));
+    }
+  }
+
+  const {data,error}=await client.rpc('guardar_pregunta_induccion',{
+    p_induccion_id:activeInductionId,
+    p_pregunta_id:inductionQuestionEditId || null,
+    p_enunciado:enunciado,
+    p_tipo:tipo,
+    p_peso:peso,
+    p_explicacion:explicacion,
+    p_opciones:opciones,
+    p_respuestas_aceptadas:respuestas_aceptadas
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    show(data?.error || error?.message || 'No fue posible guardar la pregunta.');
+    return;
+  }
+
+  closeInductionQuestionModal();
+  await loadInductionQuestions(activeInductionId);
+}
+
+async function loadInductionWorkers() {
+  const induction=inductionRecords.find(x=>x.id===activeInductionId);
+  const siteId=induction?.sede_id || document.getElementById('inductionSite').value;
+  if (!siteId) return;
+
+  const [workers,assigned]=await Promise.all([
+    client.from('trabajadores')
+      .select('id,dni,nombres,apellidos,cargo,area,sede_id,activo')
+      .eq('sede_id',siteId)
+      .eq('activo',true)
+      .order('apellidos'),
+    client.from('induccion_participantes')
+      .select('trabajador_id')
+      .eq('induccion_id',activeInductionId)
+  ]);
+
+  inductionWorkersCache=(workers.data||[]).map(w=>({
+    ...w,
+    selected:(assigned.data||[]).some(a=>a.trabajador_id===w.id)
+  }));
+  renderInductionWorkers();
+}
+
+function renderInductionWorkers() {
+  const tbody=document.getElementById('inductionWorkersBody');
+  if (!tbody) return;
+  const q=(document.getElementById('inductionWorkerSearch')?.value||'').trim().toLowerCase();
+
+  const rows=inductionWorkersCache.filter(w=>{
+    const text=`${w.dni} ${w.apellidos} ${w.nombres} ${w.cargo||''} ${w.area||''}`.toLowerCase();
+    return !q || text.includes(q);
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML='<tr><td colspan="5" class="table-empty">No se encontraron trabajadores activos de Sede Lima.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML=rows.map(w=>`<tr>
+    <td><input type="checkbox" class="induction-worker-check" data-worker-id="${w.id}" ${w.selected?'checked':''}/></td>
+    <td>${escapeHtml(w.dni)}</td>
+    <td><strong>${escapeHtml(`${w.apellidos} ${w.nombres}`)}</strong></td>
+    <td>${escapeHtml(w.cargo||'—')}</td>
+    <td>${escapeHtml(w.area||'—')}</td>
+  </tr>`).join('');
+
+  tbody.querySelectorAll('.induction-worker-check').forEach(ch=>ch.addEventListener('change',()=>{
+    const w=inductionWorkersCache.find(x=>x.id===ch.dataset.workerId);
+    if (w) w.selected=ch.checked;
+  }));
+}
+
+async function saveInductionExamAndContinue() {
+  const msg=document.getElementById('inductionExamMessage');
+  if (!inductionQuestionsCache.length) {
+    msg.textContent='Agrega al menos una pregunta al examen antes de continuar.';
+    msg.className='form-message visible error';
+    return;
+  }
+  msg.textContent='';
+  await loadInductionWorkers();
+  setInductionWizardStep(3);
+}
+
+async function finishInductionAssignment() {
+  if (!activeInductionId) return;
+
+  document.querySelectorAll('.induction-worker-check').forEach(ch=>{
+    const w=inductionWorkersCache.find(x=>x.id===ch.dataset.workerId);
+    if (w) w.selected=ch.checked;
+  });
+
+  const selected=inductionWorkersCache.filter(w=>w.selected);
+  const msg=document.getElementById('inductionWorkersMessage');
+  const show=(text,type='error')=>{
+    msg.textContent=text;
+    msg.className=`form-message ${text?'visible':''} ${type}`;
+  };
+
+  if (!selected.length) {
+    show('Selecciona al menos un trabajador.');
+    return;
+  }
+
+  const {error:deleteError}=await client.from('induccion_participantes').delete().eq('induccion_id',activeInductionId);
+  if (deleteError) { show(deleteError.message); return; }
+
+  const rows=selected.map(w=>({induccion_id:activeInductionId,trabajador_id:w.id,estado:'ASIGNADO'}));
+  const {error}=await client.from('induccion_participantes').insert(rows);
+  if (error) { show(error.message); return; }
+
   closeInductionModal();
-  inductionRecords = [];
+  inductionRecords=[];
   await loadInductionModule(true);
-  inductionMessage(id ? 'Inducción actualizada correctamente.' : 'Inducción creada correctamente.','success');
+  inductionMessage(`Inducción guardada y asignada a ${selected.length} trabajador(es).`,'success');
 }
 
 document.getElementById('newInductionButton')?.addEventListener('click', async () => {
   if (!inductionSites.length || !inductionProjects.length) await loadInductionModule(true);
-  openInductionModal();
+  openInductionWizard();
 });
 document.getElementById('closeInductionModal')?.addEventListener('click', closeInductionModal);
 document.getElementById('cancelInductionModal')?.addEventListener('click', closeInductionModal);
 document.getElementById('inductionModal')?.querySelector('.modal-backdrop')?.addEventListener('click', closeInductionModal);
-document.getElementById('inductionForm')?.addEventListener('submit', saveInduction);
-document.getElementById('inductionType')?.addEventListener('change', syncInductionTypeFields);
-document.getElementById('inductionSearch')?.addEventListener('input', renderInductions);
-document.getElementById('inductionUnitFilter')?.addEventListener('change', renderInductions);
-document.getElementById('inductionStatusFilter')?.addEventListener('change', renderInductions);
-document.getElementById('refreshInductionButton')?.addEventListener('click', () => {
-  inductionRecords = [];
+
+document.getElementById('inductionChoiceLima')?.addEventListener('click',()=>setInductionWizardType('LIMA'));
+document.getElementById('inductionChoiceProject')?.addEventListener('click',()=>setInductionWizardType('PROYECTO'));
+document.getElementById('saveInductionProgrammingButton')?.addEventListener('click',saveInductionProgramming);
+document.getElementById('clearInductionSpeakerSignature')?.addEventListener('click',resetInductionSignature);
+
+document.getElementById('addInductionQuestionButton')?.addEventListener('click',()=>openInductionQuestionModal());
+document.getElementById('closeInductionQuestionModal')?.addEventListener('click',closeInductionQuestionModal);
+document.getElementById('cancelInductionQuestionModal')?.addEventListener('click',closeInductionQuestionModal);
+document.getElementById('inductionQuestionModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeInductionQuestionModal);
+document.getElementById('inductionQuestionType')?.addEventListener('change',()=>renderInductionQuestionAnswerEditor());
+document.getElementById('saveInductionQuestionButton')?.addEventListener('click',saveInductionQuestion);
+
+document.getElementById('backInductionStep1')?.addEventListener('click',()=>setInductionWizardStep(1));
+document.getElementById('saveInductionExamButton')?.addEventListener('click',saveInductionExamAndContinue);
+document.getElementById('backInductionStep2')?.addEventListener('click',()=>setInductionWizardStep(2));
+document.getElementById('finishInductionButton')?.addEventListener('click',finishInductionAssignment);
+
+document.getElementById('inductionWorkerSearch')?.addEventListener('input',renderInductionWorkers);
+document.getElementById('selectAllInductionWorkers')?.addEventListener('click',()=>{
+  const shouldSelect=inductionWorkersCache.some(w=>!w.selected);
+  inductionWorkersCache.forEach(w=>w.selected=shouldSelect);
+  renderInductionWorkers();
+});
+
+document.getElementById('inductionSpeakerDni')?.addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/\D/g,'').slice(0,8);
+});
+
+document.getElementById('inductionSearch')?.addEventListener('input',renderInductions);
+document.getElementById('inductionUnitFilter')?.addEventListener('change',renderInductions);
+document.getElementById('inductionStatusFilter')?.addEventListener('change',renderInductions);
+document.getElementById('refreshInductionButton')?.addEventListener('click',()=>{
+  inductionRecords=[];
   loadInductionModule(true);
 });
-document.querySelectorAll('[data-induction-type-filter]').forEach(button => button.addEventListener('click', () => {
-  inductionTypeFilter = button.dataset.inductionTypeFilter || 'ALL';
+document.querySelectorAll('[data-induction-type-filter]').forEach(button=>button.addEventListener('click',()=>{
+  inductionTypeFilter=button.dataset.inductionTypeFilter||'ALL';
   document.querySelectorAll('[data-induction-type-filter]').forEach(x=>x.classList.toggle('active',x===button));
   renderInductions();
 }));
-
 
 // ============================================================
 // ETAPA 12 · PRACTICAR

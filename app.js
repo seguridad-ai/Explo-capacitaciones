@@ -5258,23 +5258,55 @@ async function generateInductionExamPdf(detail,button=null) {
       if (y+need>282) {
         doc.addPage();
         drawHeader(false);
-        y=42;
+        y=49;
       }
     };
     const drawHeader=(first=true)=>{
-      if (logoData) doc.addImage(logoData,'JPEG',12,9,30,18,undefined,'FAST');
-      text('SIG - SSOMAC',105,15,10,true,'center');
-      text('EXAMEN DE INDUCCIÓN PARA PERSONAL NUEVO',105,25,11,true,'center',RED);
-      text('Código: EDP-SIG-SSOMAC-EA-121',151,12.5,6.8);
-      text('N°: 9',151,18,6.8);
-      text('Versión: 1',151,23.5,6.8);
-      text('Fecha Act: Julio 2025',151,29,6.8);
-      doc.setDrawColor(25,25,25);doc.setLineWidth(.4);doc.line(12,33,198,33);
-      if (first) text('RESOLUCIÓN DEL EXAMEN',105,41,12,true,'center');
+      // Cabecera corporativa en tres bloques, siguiendo el formato oficial.
+      const x=10;
+      const top=8;
+      const boxW=190;
+      const boxH=33;
+      const logoW=31;
+      const metaW=39;
+      const centerW=boxW-logoW-metaW;
+      const centerX=x+logoW+(centerW/2);
+      const metaX=x+logoW+centerW;
+
+      doc.setDrawColor(25,25,25);
+      doc.setLineWidth(.35);
+      doc.rect(x,top,boxW,boxH);
+      doc.line(x+logoW,top,x+logoW,top+boxH);
+      doc.line(metaX,top,metaX,top+boxH);
+
+      if (logoData) {
+        doc.addImage(logoData,'JPEG',x+3.5,top+6.5,24,20,undefined,'FAST');
+      }
+
+      text('SIG - SSOMAC',centerX,top+10,10.5,true,'center');
+      text('EXAMEN DE INDUCCION PARA PERSONAL NUEVO',centerX,top+22,9.5,true,'center',RED);
+
+      const metaLabelX=metaX+1.8;
+      const metaValueX=metaX+12.6;
+      const metaRows=[
+        ['Código:','EDP-SIG-SSOMAC-EA-121'],
+        ['N°:','9'],
+        ['Versión:','1'],
+        ['Fecha Act:','Julio 2025']
+      ];
+      metaRows.forEach(([label,value],idx)=>{
+        const rowY=top+6.5+(idx*7);
+        text(label,metaLabelX,rowY,5.8,false);
+        text(value,metaValueX,rowY,5.8,true);
+      });
+
+      doc.setLineWidth(.35);
+      doc.line(x,top+38,x+boxW,top+38);
+      if (first) text('RESOLUCIÓN DEL EXAMEN',105,top+50,12,true,'center');
     };
 
     drawHeader(true);
-    y=54;
+    y=70;
     const rows=[
       ['Participante:',p.nombre || '—'],
       ['DNI:',p.dni || '—'],

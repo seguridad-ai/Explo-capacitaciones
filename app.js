@@ -4256,6 +4256,298 @@ document.getElementById('toggleSystemUserPassword')?.addEventListener('click', (
 document.getElementById('userModal')?.addEventListener('click', (event) => { if (event.target?.id === 'userModal') closeSystemUserModal(); });
 
 
+
+// ============================================================
+// ETAPA 14 · INDUCCIONES: LIMA Y PROYECTOS
+// ============================================================
+
+let inductionRecords = [];
+let inductionSites = [];
+let inductionProjects = [];
+let inductionTypeFilter = 'ALL';
+
+function inductionCanCreate() {
+  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
+}
+
+function inductionCanManage(item) {
+  if (currentProfile?.rol_codigo === 'ADMIN') return true;
+  return currentProfile?.rol_codigo === 'PROYECTO' && item?.tipo === 'PROYECTO' && !!item?.proyecto_id;
+}
+
+function inductionMessage(message='', type='error') {
+  const el = document.getElementById('inductionModuleMessage');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `module-message ${message ? 'visible' : ''} ${type}`;
+}
+
+function inductionUnitName(item) {
+  if (item?.tipo === 'LIMA') {
+    return `Sede · ${inductionSites.find(x=>x.id===item.sede_id)?.nombre || 'Lima'}`;
+  }
+  return `Proyecto · ${inductionProjects.find(x=>x.id===item.proyecto_id)?.nombre || 'Proyecto'}`;
+}
+
+function populateInductionUnitOptions() {
+  const site = document.getElementById('inductionSite');
+  const project = document.getElementById('inductionProject');
+  const filter = document.getElementById('inductionUnitFilter');
+
+  if (site) {
+    const lima = inductionSites.filter(x => x.activo && String(x.nombre || '').trim().toLowerCase() === 'lima');
+    site.innerHTML = '<option value="">Seleccione Lima</option>' +
+      lima.map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
+  }
+
+  if (project) {
+    project.innerHTML = '<option value="">Seleccione un proyecto</option>' +
+      inductionProjects.filter(x=>x.activo).map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
+  }
+
+  if (filter) {
+    filter.innerHTML = '<option value="ALL">Todas las sedes y proyectos</option>' +
+      '<option value="LIMA">Sede Lima</option>' +
+      inductionProjects.filter(x=>x.activo).map(x => `<option value="PROYECTO:${x.id}">Proyecto · ${escapeHtml(x.nombre)}</option>`).join('');
+  }
+}
+
+function renderInductions() {
+  const search = (document.getElementById('inductionSearch')?.value || '').trim().toLowerCase();
+  const unit = document.getElementById('inductionUnitFilter')?.value || 'ALL';
+  const status = document.getElementById('inductionStatusFilter')?.value || 'ALL';
+
+  document.getElementById('inductionAllCount').textContent = String(inductionRecords.length);
+  document.getElementById('inductionLimaCount').textContent = String(inductionRecords.filter(x=>x.tipo==='LIMA').length);
+  document.getElementById('inductionProjectCount').textContent = String(inductionRecords.filter(x=>x.tipo==='PROYECTO').length);
+  document.getElementById('newInductionButton')?.classList.toggle('hidden', !inductionCanCreate());
+
+  let rows = inductionRecords.filter(item => {
+    if (inductionTypeFilter !== 'ALL' && item.tipo !== inductionTypeFilter) return false;
+    if (status !== 'ALL' && item.estado !== status) return false;
+
+    if (unit === 'LIMA' && item.tipo !== 'LIMA') return false;
+    if (unit.startsWith('PROYECTO:') && item.proyecto_id !== unit.split(':')[1]) return false;
+
+    const haystack = `${item.codigo||''} ${item.titulo||''} ${item.descripcion||''} ${inductionUnitName(item)}`.toLowerCase();
+    return !search || haystack.includes(search);
+  });
+
+  const list = document.getElementById('inductionList');
+  if (!list) return;
+
+  if (!rows.length) {
+    list.innerHTML = '<div class="training-library-empty">No hay inducciones con los filtros seleccionados.</div>';
+    return;
+  }
+
+  list.innerHTML = rows.map(item => {
+    const canManage = inductionCanManage(item);
+    return `<article class="induction-card">
+      <div class="induction-card-type ${item.tipo === 'LIMA' ? 'lima' : 'project'}">
+        <span>${item.tipo === 'LIMA' ? '⌂' : '◆'}</span>
+      </div>
+      <div class="induction-card-main">
+        <div class="induction-card-head">
+          <div>
+            <span class="induction-kind">${item.tipo === 'LIMA' ? 'INDUCCIÓN SEDE LIMA' : 'INDUCCIÓN DE PROYECTO'}</span>
+            <h3>${escapeHtml(item.titulo)}</h3>
+          </div>
+          <span class="schedule-status ${item.estado === 'ACTIVA' ? 'active' : item.estado === 'BORRADOR' ? 'draft' : 'closed'}">${escapeHtml(item.estado)}</span>
+        </div>
+        <p>${escapeHtml(item.descripcion || 'Sin descripción')}</p>
+        <div class="induction-card-meta">
+          <span>${escapeHtml(item.codigo)}</span>
+          <span>${escapeHtml(inductionUnitName(item))}</span>
+          <span>Fecha: ${formatDatePE(item.fecha)}</span>
+          <span>Nota mínima: ${Number(item.nota_minima).toFixed(1).replace('.0','')}</span>
+        </div>
+      </div>
+      <div class="induction-card-actions">
+        ${canManage ? `<button class="secondary-btn" type="button" data-induction-edit="${item.id}">Editar</button>` : ''}
+        ${canManage ? `<button class="induction-delete-btn" type="button" data-induction-delete="${item.id}">Eliminar</button>` : ''}
+      </div>
+    </article>`;
+  }).join('');
+
+  list.querySelectorAll('[data-induction-edit]').forEach(btn => btn.addEventListener('click', () => {
+    const item = inductionRecords.find(x=>x.id===btn.dataset.inductionEdit);
+    openInductionModal(item);
+  }));
+
+  list.querySelectorAll('[data-induction-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    const item = inductionRecords.find(x=>x.id===btn.dataset.inductionDelete);
+    if (!item || !confirm(`¿Eliminar la inducción "${item.titulo}"?`)) return;
+
+    const { error } = await client.from('inducciones').delete().eq('id', item.id);
+    if (error) {
+      inductionMessage(error.message);
+      return;
+    }
+    await loadInductionModule(true);
+    inductionMessage('Inducción eliminada correctamente.','success');
+  }));
+}
+
+async function loadInductionModule(force=false) {
+  if (!client) return;
+  if (inductionRecords.length && !force) {
+    renderInductions();
+    return;
+  }
+
+  inductionMessage('');
+  const list = document.getElementById('inductionList');
+  if (list) list.innerHTML = '<div class="training-library-empty">Cargando inducciones…</div>';
+
+  const [records, sites, projects] = await Promise.all([
+    client.from('inducciones').select('*').order('created_at',{ascending:false}),
+    client.from('sedes').select('id,codigo,nombre,activo').order('nombre'),
+    client.from('proyectos').select('id,codigo,nombre,activo').order('nombre')
+  ]);
+
+  if (records.error) {
+    console.error(records.error);
+    inductionMessage('No fue posible cargar Inducciones. Ejecuta el SQL de la Etapa 14.');
+    return;
+  }
+
+  inductionRecords = records.data || [];
+  inductionSites = sites.data || [];
+  inductionProjects = projects.data || [];
+  populateInductionUnitOptions();
+  renderInductions();
+}
+
+function syncInductionTypeFields() {
+  const type = document.getElementById('inductionType')?.value || 'LIMA';
+  document.getElementById('inductionLimaField')?.classList.toggle('hidden', type !== 'LIMA');
+  document.getElementById('inductionProjectField')?.classList.toggle('hidden', type !== 'PROYECTO');
+}
+
+function openInductionModal(item=null) {
+  const modal = document.getElementById('inductionModal');
+  document.getElementById('inductionId').value = item?.id || '';
+  document.getElementById('inductionModalTitle').textContent = item ? 'Editar inducción' : 'Nueva inducción';
+  document.getElementById('inductionType').value = item?.tipo || 'LIMA';
+  document.getElementById('inductionTitle').value = item?.titulo || '';
+  document.getElementById('inductionDate').value = item?.fecha || new Date().toISOString().slice(0,10);
+  document.getElementById('inductionMinGrade').value = item?.nota_minima ?? 14;
+  document.getElementById('inductionStatus').value = item?.estado || 'BORRADOR';
+  document.getElementById('inductionDescription').value = item?.descripcion || '';
+  populateInductionUnitOptions();
+  document.getElementById('inductionSite').value = item?.sede_id || '';
+  document.getElementById('inductionProject').value = item?.proyecto_id || '';
+  document.getElementById('inductionFormMessage').textContent = '';
+  syncInductionTypeFields();
+
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeInductionModal() {
+  const modal = document.getElementById('inductionModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function saveInduction(event) {
+  event.preventDefault();
+  if (!client) return;
+
+  const id = document.getElementById('inductionId').value || null;
+  const type = document.getElementById('inductionType').value;
+  const title = document.getElementById('inductionTitle').value.trim();
+  const date = document.getElementById('inductionDate').value;
+  const note = Number(document.getElementById('inductionMinGrade').value);
+  const state = document.getElementById('inductionStatus').value;
+  const description = document.getElementById('inductionDescription').value.trim() || null;
+  const siteId = type === 'LIMA' ? (document.getElementById('inductionSite').value || null) : null;
+  const projectId = type === 'PROYECTO' ? (document.getElementById('inductionProject').value || null) : null;
+
+  const msg = document.getElementById('inductionFormMessage');
+  const setMsg = (text,type='error') => {
+    msg.textContent = text;
+    msg.className = `form-message ${text ? 'visible' : ''} ${type}`;
+  };
+  setMsg('');
+
+  if (!title || !date) {
+    setMsg('Completa título y fecha.');
+    return;
+  }
+
+  if (type === 'LIMA' && !siteId) {
+    setMsg('Selecciona la Sede Lima.');
+    return;
+  }
+
+  if (type === 'PROYECTO' && !projectId) {
+    setMsg('Selecciona el proyecto.');
+    return;
+  }
+
+  if (!Number.isFinite(note) || note < 0 || note > 20) {
+    setMsg('La nota mínima debe estar entre 0 y 20.');
+    return;
+  }
+
+  const payload = {
+    tipo:type,
+    titulo:title,
+    descripcion:description,
+    sede_id:siteId,
+    proyecto_id:projectId,
+    fecha:date,
+    nota_minima:note,
+    estado:state
+  };
+
+  let result;
+  if (id) {
+    result = await client.from('inducciones').update(payload).eq('id',id).select().single();
+  } else {
+    payload.created_by = currentProfile?.id || null;
+    result = await client.from('inducciones').insert(payload).select().single();
+  }
+
+  if (result.error) {
+    console.error(result.error);
+    setMsg(result.error.message);
+    return;
+  }
+
+  closeInductionModal();
+  inductionRecords = [];
+  await loadInductionModule(true);
+  inductionMessage(id ? 'Inducción actualizada correctamente.' : 'Inducción creada correctamente.','success');
+}
+
+document.getElementById('newInductionButton')?.addEventListener('click', async () => {
+  if (!inductionSites.length || !inductionProjects.length) await loadInductionModule(true);
+  openInductionModal();
+});
+document.getElementById('closeInductionModal')?.addEventListener('click', closeInductionModal);
+document.getElementById('cancelInductionModal')?.addEventListener('click', closeInductionModal);
+document.getElementById('inductionModal')?.querySelector('.modal-backdrop')?.addEventListener('click', closeInductionModal);
+document.getElementById('inductionForm')?.addEventListener('submit', saveInduction);
+document.getElementById('inductionType')?.addEventListener('change', syncInductionTypeFields);
+document.getElementById('inductionSearch')?.addEventListener('input', renderInductions);
+document.getElementById('inductionUnitFilter')?.addEventListener('change', renderInductions);
+document.getElementById('inductionStatusFilter')?.addEventListener('change', renderInductions);
+document.getElementById('refreshInductionButton')?.addEventListener('click', () => {
+  inductionRecords = [];
+  loadInductionModule(true);
+});
+document.querySelectorAll('[data-induction-type-filter]').forEach(button => button.addEventListener('click', () => {
+  inductionTypeFilter = button.dataset.inductionTypeFilter || 'ALL';
+  document.querySelectorAll('[data-induction-type-filter]').forEach(x=>x.classList.toggle('active',x===button));
+  renderInductions();
+}));
+
+
 // ============================================================
 // ETAPA 12 · PRACTICAR
 // ============================================================

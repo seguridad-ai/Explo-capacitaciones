@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261004-36" />
+  <link rel="stylesheet" href="styles.css?v=20261004-37" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1093,7 +1093,127 @@
           </div>
         </div>
       </section>
-      <section id="inducciones" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Inducciones</h2><p>Contenido, videos, evaluación y constancia.</p></div><div class="coming-card"><span>▶</span><h3>Próximamente</h3><p>Rutas de inducción con control de avance y evaluación.</p></div></section>
+      <section id="inducciones" class="page-section">
+        <div class="section-title section-title-row">
+          <div>
+            <span class="eyebrow">INDUCCIONES</span>
+            <h2>Inducciones</h2>
+            <p>Gestiona inducciones de ingreso para la Sede Lima y para proyectos.</p>
+          </div>
+          <button id="newInductionButton" class="primary-btn" type="button">+ Nueva inducción</button>
+        </div>
+
+        <div id="inductionModuleMessage" class="module-message"></div>
+
+        <div class="induction-type-grid">
+          <button class="induction-type-card active" type="button" data-induction-type-filter="ALL">
+            <span class="induction-type-icon">▣</span>
+            <div><strong>Todas las inducciones</strong><small>Vista general</small></div>
+            <b id="inductionAllCount">0</b>
+          </button>
+
+          <button class="induction-type-card" type="button" data-induction-type-filter="LIMA">
+            <span class="induction-type-icon">⌂</span>
+            <div><strong>Inducción Sede Lima</strong><small>Personal que ingresa a sede central</small></div>
+            <b id="inductionLimaCount">0</b>
+          </button>
+
+          <button class="induction-type-card" type="button" data-induction-type-filter="PROYECTO">
+            <span class="induction-type-icon">◆</span>
+            <div><strong>Inducción por Proyecto</strong><small>Contenido específico según proyecto</small></div>
+            <b id="inductionProjectCount">0</b>
+          </button>
+        </div>
+
+        <article class="induction-toolbar">
+          <input id="inductionSearch" type="search" placeholder="Buscar inducción por título o código..." />
+          <select id="inductionUnitFilter"><option value="ALL">Todas las sedes y proyectos</option></select>
+          <select id="inductionStatusFilter">
+            <option value="ALL">Todos los estados</option>
+            <option value="ACTIVA">Activas</option>
+            <option value="BORRADOR">Borradores</option>
+            <option value="CERRADA">Cerradas</option>
+          </select>
+          <button id="refreshInductionButton" class="secondary-btn" type="button">Actualizar</button>
+        </article>
+
+        <div id="inductionList" class="induction-list">
+          <div class="training-library-empty">Cargando inducciones…</div>
+        </div>
+
+        <div id="inductionModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card induction-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">REGISTRO DE INDUCCIÓN</span>
+                <h3 id="inductionModalTitle">Nueva inducción</h3>
+                <p class="modal-subtitle">Selecciona si corresponde a Sede Lima o a un Proyecto.</p>
+              </div>
+              <button id="closeInductionModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="inductionForm" novalidate>
+              <input id="inductionId" type="hidden" />
+              <div class="form-grid">
+                <label>
+                  <span>Tipo de inducción *</span>
+                  <select id="inductionType">
+                    <option value="LIMA">Sede Lima</option>
+                    <option value="PROYECTO">Proyecto</option>
+                  </select>
+                </label>
+
+                <label id="inductionLimaField">
+                  <span>Sede *</span>
+                  <select id="inductionSite"><option value="">Seleccione Lima</option></select>
+                </label>
+
+                <label id="inductionProjectField" class="hidden">
+                  <span>Proyecto *</span>
+                  <select id="inductionProject"><option value="">Seleccione un proyecto</option></select>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Título *</span>
+                  <input id="inductionTitle" maxlength="180" placeholder="Ej. Inducción general para personal nuevo" />
+                </label>
+
+                <label>
+                  <span>Fecha *</span>
+                  <input id="inductionDate" type="date" />
+                </label>
+
+                <label>
+                  <span>Nota mínima *</span>
+                  <input id="inductionMinGrade" type="number" min="0" max="20" step="0.1" value="14" />
+                </label>
+
+                <label>
+                  <span>Estado *</span>
+                  <select id="inductionStatus">
+                    <option value="BORRADOR">BORRADOR</option>
+                    <option value="ACTIVA">ACTIVA</option>
+                    <option value="CERRADA">CERRADA</option>
+                  </select>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Descripción</span>
+                  <textarea id="inductionDescription" rows="4" maxlength="700" placeholder="Describe el alcance de la inducción..."></textarea>
+                </label>
+              </div>
+
+              <div id="inductionFormMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="cancelInductionModal" class="secondary-btn" type="button">Cancelar</button>
+                <button class="primary-btn" type="submit">Guardar inducción</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
       
       <section id="practicar" class="page-section">
         <div id="practiceModeTabs" class="practice-mode-tabs">
@@ -1311,7 +1431,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261004-36"></script>
-  <script src="app.js?v=20261004-36"></script>
+  <script src="config.js?v=20261004-37"></script>
+  <script src="app.js?v=20261004-37"></script>
 </body>
 </html>

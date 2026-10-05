@@ -5051,6 +5051,7 @@ async function getInductionResultDetail(attemptId) {
 }
 
 async function openInductionResults(inductionId) {
+  activeInductionResults={...(activeInductionResults||{}),induction_id:inductionId};
   const modal=document.getElementById('inductionResultsModal');
   const body=document.getElementById('inductionResultsBody');
   const message=document.getElementById('inductionResultsMessage');
@@ -5075,7 +5076,7 @@ async function openInductionResults(inductionId) {
     return;
   }
 
-  activeInductionResults=data;
+  activeInductionResults={...data,induction_id:inductionId};
   const induction=data.induccion || {};
   const rows=Array.isArray(data.resultados) ? data.resultados : [];
 
@@ -5122,6 +5123,370 @@ async function openInductionResults(inductionId) {
     await downloadInductionExamFromAdmin(btn.dataset.inductionExam,btn);
   }));
 }
+
+
+async function getInductionRegisterData(inductionId) {
+  const {data,error}=await client.rpc('obtener_registro_induccion',{
+    p_induccion_id:inductionId
+  });
+  if (error || !data?.ok) {
+    console.error(error,data);
+    throw new Error(data?.error || error?.message || 'No fue posible obtener el registro de inducción.');
+  }
+  return data;
+}
+
+async function generateInductionRegisterPdf(record,button=null) {
+  if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
+
+  const original=button?.textContent || '';
+  if (button) {
+    button.disabled=true;
+    button.textContent='Generando PDF…';
+  }
+
+  try {
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({
+      orientation:'portrait',
+      unit:'mm',
+      format:'a4',
+      compress:true
+    });
+
+    const induction=record?.induccion || {};
+    const participants=Array.isArray(record?.participantes) ? record.participantes : [];
+
+    let logoData=null;
+    try {
+      logoData=await imageToDataUrl('assets/logo-explo.jpg');
+    } catch(e) {
+      console.warn('No se pudo cargar logo',e);
+    }
+
+    const BLACK=[18,18,18];
+    const WHITE=[255,255,255];
+    const RED=[192,0,0];
+    const DARKGRAY=[92,92,92];
+    const LIGHTGRAY=[218,218,218];
+
+    const x=7;
+    const usableW=196;
+
+    const setFont=(size=7,bold=false,color=BLACK)=>{
+      doc.setFont('helvetica',bold?'bold':'normal');
+      doc.setFontSize(size);
+      doc.setTextColor(...color);
+    };
+
+    const text=(value,tx,ty,size=7,bold=false,align='left',color=BLACK)=>{
+      setFont(size,bold,color);
+      doc.text(String(value ?? ''),tx,ty,{align});
+    };
+
+    const fitText=(value,tx,ty,maxW,maxSize=7,minSize=4.5,bold=false,align='left',color=BLACK)=>{
+      const str=String(value ?? '');
+      let size=maxSize;
+      doc.setFont('helvetica',bold?'bold':'normal');
+      while (size>minSize) {
+        doc.setFontSize(size);
+        if (doc.getTextWidth(str)<=maxW) break;
+        size-=0.25;
+      }
+      text(str,tx,ty,size,bold,align,color);
+    };
+
+    const cell=(cx,cy,cw,ch,opts={})=>{
+      const fill=opts.fill || null;
+      doc.setDrawColor(...(opts.border || BLACK));
+      doc.setLineWidth(opts.lineWidth ?? .18);
+      if (fill) {
+        doc.setFillColor(...fill);
+        doc.rect(cx,cy,cw,ch,'FD');
+      } else {
+        doc.rect(cx,cy,cw,ch);
+      }
+    };
+
+    const centerLines=(value,cx,cy,cw,ch,size=6,bold=false,color=BLACK)=>{
+      setFont(size,bold,color);
+      const lines=doc.splitTextToSize(String(value ?? ''),cw-2);
+      const lineH=size*.38;
+      const total=(lines.length-1)*lineH;
+      const base=cy+(ch/2)-(total/2)+1.2;
+      lines.forEach((ln,idx)=>doc.text(ln,cx+cw/2,base+(idx*lineH),{align:'center'}));
+    };
+
+    const drawImageContain=(data,cx,cy,cw,ch,type='PNG')=>{
+      if (!data) return;
+      try {
+        doc.addImage(data,type,cx+1,cy+1,cw-2,ch-2,undefined,'FAST');
+      } catch(e) {
+        console.warn('Imagen no insertada',e);
+      }
+    };
+
+    const responsibleName=[currentProfile?.nombres,currentProfile?.apellidos].filter(Boolean).join(' ').trim();
+    const responsibleCargo=currentProfile?.cargo || '';
+    const today=inductionDocumentDatePE(new Date().toISOString());
+
+    const drawPage=(pageParticipants,pageIndex,totalPages)=>{
+      let y=7;
+
+      // ------------------------------------------------------
+      // CABECERA
+      // ------------------------------------------------------
+      const headerH=21;
+      const logoW=35;
+      const centerW=131;
+      const metaW=30;
+
+      cell(x,y,logoW,headerH);
+      cell(x+logoW,y,centerW,headerH);
+      cell(x+logoW+centerW,y,metaW,headerH);
+
+      if (logoData) {
+        try { doc.addImage(logoData,'JPEG',x+3,y+3,29,15,undefined,'FAST'); } catch(e){}
+      }
+
+      text('SIG - SSOMAC',x+logoW+(centerW/2),y+6.1,8.2,true,'center');
+
+      doc.setFillColor(...RED);
+      doc.rect(x+logoW,y+9,centerW,6.2,'F');
+      fitText(
+        'REGISTRO DE INDUCCION, CAPACITACION, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA',
+        x+logoW+(centerW/2),y+13.15,centerW-3,6.4,4.2,true,'center',WHITE
+      );
+
+      const metaX=x+logoW+centerW;
+      const metaRows=[
+        ['Código:','EDP-SIG-SSOMAC-RE-EA-121'],
+        ['N°:','2'],
+        ['Versión:','7'],
+        ['Fecha Act:','Jul-25']
+      ];
+      metaRows.forEach(([label,value],idx)=>{
+        const rh=headerH/4;
+        const ry=y+(idx*rh);
+        if (idx>0) doc.line(metaX,ry,metaX+metaW,ry);
+        doc.line(metaX+10.5,ry,metaX+10.5,ry+rh);
+        fitText(label,metaX+.8,ry+3.4,9,4.6,3.6,true);
+        fitText(value,metaX+20.2,ry+3.4,18,4.5,3.2,true,'center');
+      });
+
+      if (totalPages>1) {
+        text(`Página ${pageIndex+1} de ${totalPages}`,x+usableW-1,y+headerH+3,4.3,false,'right',[90,90,90]);
+      }
+
+      y+=headerH;
+
+      // ------------------------------------------------------
+      // DATOS DEL EMPLEADOR
+      // ------------------------------------------------------
+      const employerTitleH=4.5;
+      cell(x,y,usableW,employerTitleH);
+      text('DATOS DE EMPLEADOR:',x+1.2,y+3.1,5.8,true);
+      y+=employerTitleH;
+
+      const empHeaderH=8;
+      const empWidths=[39,30,64,32,31];
+      const empHeaders=[
+        'RAZON O DENOMINACION SOCIAL',
+        'RUC',
+        'DOMICILIO\n(Dirección, distrito, provincia, dpto.)',
+        'ACTIVIDAD ECONOMICA',
+        'N° TRABAJADORES EN EL\nCENTRO LABORAL'
+      ];
+      let cx=x;
+      empWidths.forEach((w,idx)=>{
+        cell(cx,y,w,empHeaderH,{fill:DARKGRAY});
+        centerLines(empHeaders[idx],cx,y,w,empHeaderH,5,true,WHITE);
+        cx+=w;
+      });
+      y+=empHeaderH;
+
+      const empValueH=7;
+      const domicilio='Calle Las Acacias I-7, Urb. La Capitana - Huachipa - Lurigancho - Lima';
+      const empValues=[
+        induction.empresa || 'EXPLO DRILLING PERU S.R.L.',
+        '20527775851',
+        domicilio,
+        'Perforación Diamantina',
+        ''
+      ];
+      cx=x;
+      empWidths.forEach((w,idx)=>{
+        cell(cx,y,w,empValueH);
+        centerLines(empValues[idx],cx,y,w,empValueH,4.8,false,BLACK);
+        cx+=w;
+      });
+      y+=empValueH;
+
+      // ------------------------------------------------------
+      // CLASIFICACIÓN + DATOS DE LA INDUCCIÓN
+      // ------------------------------------------------------
+      const classW=36;
+      const detailsW=usableW-classW;
+      const detailsLeftW=112;
+      const detailsRightW=detailsW-detailsLeftW;
+      const detailsH=36;
+
+      cell(x,y,classW,detailsH);
+      text('CLASIFICACIÓN',x+1.5,y+4,5.6,true);
+
+      const classifications=[
+        ['INDUCCIÓN',true],
+        ['CAPACITACIÓN',false],
+        ['ENTRENAMIENTO',false],
+        ['SIMULACRO DE EMERGENCIA',false],
+        ['VISITANTES',false],
+        ['RE-INDUCCIÓN',false],
+        ['CAMBIO DE PUESTO',false],
+        ['REUNIÓN',false],
+        ['OTROS',false]
+      ];
+      let classY=y+7;
+      classifications.forEach(([label,checked])=>{
+        doc.setLineWidth(.18);
+        doc.rect(x+2,classY-2.2,2.6,2.6);
+        if (checked) {
+          setFont(6,true,BLACK);
+          doc.text('X',x+3.3,classY+.05,{align:'center'});
+        }
+        fitText(label,x+6,classY,27,4.6,3.8,checked);
+        classY+=3.05;
+      });
+
+      const detailRows=[
+        ['TEMA:',induction.tema || ''],
+        ['EXPOSITOR:',induction.expositor || ''],
+        ['CARGO:',induction.expositor_cargo || ''],
+        ['EMPRESA:',induction.empresa || 'EXPLO DRILLING PERU S.R.L.'],
+        ['ÁREA:',induction.area || '']
+      ];
+      const detailRowH=detailsH/5;
+      detailRows.forEach(([label,value],idx)=>{
+        const ry=y+(idx*detailRowH);
+        cell(x+classW,ry,detailsLeftW,detailRowH);
+        fitText(label,x+classW+1,ry+4.4,19,5.1,4.2,true);
+        fitText(value,x+classW+22,ry+4.4,detailsLeftW-24,5.3,3.8,false);
+      });
+
+      const rx=x+classW+detailsLeftW;
+      const rightRows=[
+        ['FIRMA:',null],
+        ['DNI:',induction.expositor_dni || ''],
+        ['FECHA:',inductionDocumentDatePE(induction.fecha)],
+        ['TIEMPO:',induction.tiempo_horas ? `${Number(induction.tiempo_horas)} hora${Number(induction.tiempo_horas)===1?'':'s'}` : '']
+      ];
+      const rightRowH=detailsH/4;
+      rightRows.forEach(([label,value],idx)=>{
+        const ry=y+(idx*rightRowH);
+        cell(rx,ry,detailsRightW,rightRowH);
+        fitText(label,rx+1,ry+5.2,13,5.1,4,true);
+        if (idx===0) {
+          drawImageContain(induction.firma_expositor,rx+15,ry+.5,detailsRightW-16,rightRowH-1,'PNG');
+        } else {
+          fitText(value,rx+15,ry+5.2,detailsRightW-17,5,3.7,false);
+        }
+      });
+      y+=detailsH;
+
+      // ------------------------------------------------------
+      // PARTICIPANTES
+      // ------------------------------------------------------
+      const tableHeaderH=7;
+      const rowH=6.55;
+      const colWidths=[5,60,17,47,19,48];
+      const headers=['N°','APELLIDOS Y NOMBRES','N° DNI','PUESTO DE TRABAJO','AREA','FIRMA'];
+
+      cx=x;
+      colWidths.forEach((w,idx)=>{
+        cell(cx,y,w,tableHeaderH,{fill:DARKGRAY});
+        centerLines(headers[idx],cx,y,w,tableHeaderH,5.1,true,WHITE);
+        cx+=w;
+      });
+      y+=tableHeaderH;
+
+      for (let localIdx=0; localIdx<20; localIdx++) {
+        const p=pageParticipants[localIdx] || null;
+        const globalNumber=(pageIndex*20)+localIdx+1;
+        cx=x;
+
+        colWidths.forEach((w,colIdx)=>{
+          cell(cx,y,w,rowH);
+          if (colIdx===0) {
+            text(String(globalNumber),cx+w/2,y+4.3,5.1,false,'center');
+          } else if (p) {
+            if (colIdx===1) fitText(p.nombre || '',cx+1,y+4.25,w-2,4.8,3.5,false);
+            if (colIdx===2) fitText(p.dni || '',cx+w/2,y+4.25,w-2,4.7,3.6,false,'center');
+            if (colIdx===3) fitText(p.puesto || '',cx+1,y+4.25,w-2,4.6,3.3,false);
+            if (colIdx===4) fitText(p.area || '',cx+1,y+4.25,w-2,4.5,3.2,false);
+            if (colIdx===5 && p.firma) drawImageContain(p.firma,cx+2,y+.4,w-4,rowH-.8,'PNG');
+          }
+          cx+=w;
+        });
+        y+=rowH;
+      }
+
+      // ------------------------------------------------------
+      // RESPONSABLE DEL REGISTRO
+      // ------------------------------------------------------
+      const respTitleH=5;
+      cell(x,y,usableW,respTitleH,{fill:LIGHTGRAY});
+      text('RESPONSABLE DEL REGISTRO',x+usableW/2,y+3.5,5.8,true,'center');
+      y+=respTitleH;
+
+      const respRowH=6.2;
+      const leftResp=116;
+      const rightResp=usableW-leftResp;
+
+      cell(x,y,leftResp,respRowH);
+      cell(x+leftResp,y,rightResp,respRowH);
+      text('NOMBRE:',x+1,y+4.1,4.8,true);
+      fitText(responsibleName,x+18,y+4.1,leftResp-20,4.8,3.4,false);
+      text('FIRMA:',x+leftResp+1,y+4.1,4.8,true);
+      y+=respRowH;
+
+      cell(x,y,leftResp,respRowH);
+      cell(x+leftResp,y,rightResp,respRowH);
+      text('CARGO:',x+1,y+4.1,4.8,true);
+      fitText(responsibleCargo,x+18,y+4.1,leftResp-20,4.8,3.4,false);
+      text('FECHA:',x+leftResp+1,y+4.1,4.8,true);
+      fitText(today,x+leftResp+17,y+4.1,rightResp-19,4.8,3.6,false);
+    };
+
+    const pageCount=Math.max(1,Math.ceil(participants.length/20));
+    for (let pageIndex=0; pageIndex<pageCount; pageIndex++) {
+      if (pageIndex>0) doc.addPage();
+      drawPage(participants.slice(pageIndex*20,(pageIndex+1)*20),pageIndex,pageCount);
+    }
+
+    const code=inductionSafeFile(induction.codigo,'INDUCCION');
+    doc.save(`${code}_Registro_Induccion.pdf`);
+  } finally {
+    if (button) {
+      button.disabled=false;
+      button.textContent=original;
+    }
+  }
+}
+
+async function downloadCurrentInductionRegister(button) {
+  try {
+    const inductionId=activeInductionResults?.induction_id || activeInductionResults?.induccion?.id;
+    if (!inductionId) throw new Error('No se pudo identificar la inducción.');
+    const record=await getInductionRegisterData(inductionId);
+    await generateInductionRegisterPdf(record,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el registro de inducción.');
+  }
+}
+
+document.getElementById('downloadInductionRegisterPdf')?.addEventListener('click',e=>{
+  downloadCurrentInductionRegister(e.currentTarget);
+});
 
 function closeInductionResults() {
   document.getElementById('inductionResultsModal')?.classList.add('hidden');

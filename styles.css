@@ -683,3 +683,48 @@ body.modal-open{
   .induction-results-summary{grid-template-columns:1fr}
   .public-induction-document-actions{grid-template-columns:1fr}
 }
+
+
+/* ============================================================
+   ETAPA 14D · REGISTRO DE INDUCCIÓN PDF
+   ============================================================ */
+.induction-register-download-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:14px 16px;
+  margin:0 0 14px;
+  border:1px solid #d7e3d9;
+  border-radius:12px;
+  background:#f4fbf5;
+}
+.induction-register-download-bar>div{
+  min-width:0;
+}
+.induction-register-download-bar strong{
+  display:block;
+  margin-top:3px;
+  color:#17263c;
+  font-size:11px;
+}
+.induction-register-download-bar small{
+  display:block;
+  margin-top:4px;
+  color:#718077;
+  font-size:9px;
+}
+.induction-register-download-bar .primary-btn{
+  flex:0 0 auto;
+  min-width:190px;
+}
+@media(max-width:700px){
+  .induction-register-download-bar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .induction-register-download-bar .primary-btn{
+    width:100%;
+    min-width:0;
+  }
+}

@@ -4277,6 +4277,9 @@ let activeInductionId = null;
 let inductionQuestionsCache = [];
 let inductionWorkersCache = [];
 let inductionQuestionEditId = null;
+let activeInductionResults = null;
+let publicInductionLastAttemptId = null;
+let publicInductionApprovedDetail = null;
 
 let inductionSignatureCanvas = null;
 let inductionSignatureCtx = null;
@@ -4374,6 +4377,7 @@ function renderInductions() {
         </div>
       </div>
       <div class="induction-card-actions">
+        <button class="induction-results-btn" type="button" data-induction-results="${item.id}">Ver resultados</button>
         ${item.tipo==='LIMA' && item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
         ${canManage ? `<button class="secondary-btn" type="button" data-induction-edit="${item.id}">Editar</button>` : ''}
         ${canManage ? `<button class="induction-delete-btn" type="button" data-induction-delete="${item.id}">Eliminar</button>` : ''}
@@ -4384,6 +4388,10 @@ function renderInductions() {
   list.querySelectorAll('[data-induction-edit]').forEach(btn => btn.addEventListener('click', () => {
     const item = inductionRecords.find(x=>x.id===btn.dataset.inductionEdit);
     openInductionWizard(item);
+  }));
+
+  list.querySelectorAll('[data-induction-results]').forEach(btn => btn.addEventListener('click', () => {
+    openInductionResults(btn.dataset.inductionResults);
   }));
 
   list.querySelectorAll('[data-induction-share]').forEach(btn => btn.addEventListener('click', async () => {
@@ -4988,6 +4996,387 @@ document.querySelectorAll('[data-induction-type-filter]').forEach(button=>button
 }));
 
 
+
+// ============================================================
+// ETAPA 14C · RESULTADOS Y DOCUMENTOS DE INDUCCIÓN
+// ============================================================
+
+function inductionDocumentDatePE(value) {
+  if (!value) return '—';
+  const raw=String(value).slice(0,10);
+  const [y,m,d]=raw.split('-');
+  if (!y || !m || !d) return formatDatePE(value);
+  return `${d}/${m}/${y}`;
+}
+
+function inductionPlaceDatePE(place, value) {
+  const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const date=value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return `${place || 'Lima'}, —`;
+  const day=String(date.getDate()).padStart(2,'0');
+  const month=months[date.getMonth()];
+  const year=date.getFullYear();
+  return `${place || 'Lima'}, ${day} de ${month} del ${year}`;
+}
+
+function inductionSafeFile(value,fallback='Documento') {
+  const cleaned=String(value||fallback)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Za-z0-9_-]+/g,'_')
+    .replace(/^_+|_+$/g,'');
+  return cleaned || fallback;
+}
+
+function inductionDownloadBlob(bytes,filename) {
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1800);
+}
+
+async function getInductionResultDetail(attemptId) {
+  const {data,error}=await client.rpc('obtener_detalle_resultado_induccion',{
+    p_intento_id:attemptId
+  });
+  if (error || !data?.ok) {
+    console.error(error,data);
+    throw new Error(data?.error || error?.message || 'No fue posible obtener el detalle del resultado.');
+  }
+  return data.detalle;
+}
+
+async function openInductionResults(inductionId) {
+  const modal=document.getElementById('inductionResultsModal');
+  const body=document.getElementById('inductionResultsBody');
+  const message=document.getElementById('inductionResultsMessage');
+
+  body.innerHTML='<tr><td colspan="8" class="table-empty">Cargando resultados…</td></tr>';
+  message.textContent='';
+  message.className='form-message';
+
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+
+  const {data,error}=await client.rpc('obtener_resultados_induccion',{
+    p_induccion_id:inductionId
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    body.innerHTML='<tr><td colspan="8" class="table-empty">No fue posible cargar los resultados.</td></tr>';
+    message.textContent=data?.error || error?.message || 'No fue posible cargar los resultados.';
+    message.className='form-message visible error';
+    return;
+  }
+
+  activeInductionResults=data;
+  const induction=data.induccion || {};
+  const rows=Array.isArray(data.resultados) ? data.resultados : [];
+
+  document.getElementById('inductionResultsTitle').textContent=induction.tema || 'Resultados';
+  document.getElementById('inductionResultsSubtitle').textContent=
+    `${induction.codigo || ''} · ${induction.sede_nombre || 'Lima'} · Participantes que culminaron la evaluación.`;
+
+  const approved=rows.filter(x=>x.aprobado).length;
+  const failed=rows.length-approved;
+  const avg=rows.length ? rows.reduce((s,x)=>s+Number(x.nota||0),0)/rows.length : 0;
+
+  document.getElementById('inductionResultsTotal').textContent=String(rows.length);
+  document.getElementById('inductionResultsApproved').textContent=String(approved);
+  document.getElementById('inductionResultsFailed').textContent=String(failed);
+  document.getElementById('inductionResultsAverage').textContent=avg.toFixed(1);
+
+  if (!rows.length) {
+    body.innerHTML='<tr><td colspan="8" class="table-empty">Todavía no hay trabajadores que hayan culminado esta inducción y evaluación.</td></tr>';
+    return;
+  }
+
+  body.innerHTML=rows.map(r=>`
+    <tr>
+      <td><strong>${escapeHtml(r.nombre || '—')}</strong></td>
+      <td>${escapeHtml(r.dni || '—')}</td>
+      <td>${escapeHtml(inductionDocumentDatePE(r.fecha_ingreso))}</td>
+      <td><strong>${escapeHtml(r.puesto || '—')}</strong><br><small>${escapeHtml(r.area || '—')}</small></td>
+      <td><strong class="${r.aprobado?'result-pass-text':'result-fail-text'}">${Number(r.nota||0).toFixed(1)}</strong></td>
+      <td><span class="induction-result-status ${r.aprobado?'approved':'failed'}">${r.aprobado?'APROBADO':'DESAPROBADO'}</span></td>
+      <td>${escapeHtml(formatLongDatePE(r.finalizado_at))}</td>
+      <td>
+        <div class="induction-result-actions">
+          ${r.aprobado ? `<button class="certificate-btn" type="button" data-induction-cert="${r.intento_id}">Certificado</button>` : ''}
+          <button class="result-download-btn" type="button" data-induction-exam="${r.intento_id}">Examen</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  body.querySelectorAll('[data-induction-cert]').forEach(btn=>btn.addEventListener('click',async()=>{
+    await downloadInductionCertificateFromAdmin(btn.dataset.inductionCert,btn);
+  }));
+  body.querySelectorAll('[data-induction-exam]').forEach(btn=>btn.addEventListener('click',async()=>{
+    await downloadInductionExamFromAdmin(btn.dataset.inductionExam,btn);
+  }));
+}
+
+function closeInductionResults() {
+  document.getElementById('inductionResultsModal')?.classList.add('hidden');
+  document.getElementById('inductionResultsModal')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function generateInductionLimaCertificatePdf(detail,button=null) {
+  if (!window.PDFLib?.PDFDocument) throw new Error('No se cargó el generador PDF.');
+  const original=button?.textContent || '';
+  if (button) {button.disabled=true;button.textContent='Generando…';}
+
+  try {
+    const response=await fetch('assets/certificado-lima.pdf?v=20261005-1',{cache:'no-store'});
+    if (!response.ok) throw new Error('No se pudo cargar la plantilla Certificado Lima.pdf.');
+
+    const bytes=await response.arrayBuffer();
+    const {PDFDocument,StandardFonts}=window.PDFLib;
+    const pdfDoc=await PDFDocument.load(bytes,{ignoreEncryption:true});
+    const form=pdfDoc.getForm();
+    const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const i=detail.induccion || {};
+    const p=detail.participante || {};
+    const a=detail.intento || {};
+    const place=String(i.sede_nombre || 'Lima').trim() || 'Lima';
+    const completionDate=a.finalizado_at || new Date().toISOString();
+
+    const values={
+      'Text-e3_6BUnAN3': String(i.empresa || 'EXPLO DRILLING PERU S.R.L.'),
+      'Text-Yej_LtwvqB': String(i.contratista || 'N.A.'),
+      'Text-Y1Ix00eq0v': place,
+      'Text-t_TtQzoWDk': String(i.distrito || '—'),
+      'Text-SKZgr8eYOE': String(i.provincia || '—'),
+      'Text-mGu-yDxjy-': String(p.nombre || '—'),
+      'Text-7FhzGWY-PR': inductionDocumentDatePE(p.fecha_ingreso),
+      'Text-_gDMoLQmhJ': String(p.dni || '—'),
+      'Text-BmT6lCfXCl': String(p.puesto || '—'),
+      'Text-opjlkmpxWz': String(p.area || '—'),
+      'Text-KjzwKQiKHP': inductionPlaceDatePE(place,completionDate),
+      'Text-Vj-ytKan6-': String(p.nombre || '—')
+    };
+
+    const maxWidths={
+      'Text-e3_6BUnAN3':150,
+      'Text-Yej_LtwvqB':145,
+      'Text-Y1Ix00eq0v':145,
+      'Text-t_TtQzoWDk':165,
+      'Text-SKZgr8eYOE':158,
+      'Text-mGu-yDxjy-':170,
+      'Text-7FhzGWY-PR':145,
+      'Text-_gDMoLQmhJ':145,
+      'Text-BmT6lCfXCl':165,
+      'Text-opjlkmpxWz':148,
+      'Text-KjzwKQiKHP':230,
+      'Text-Vj-ytKan6-':220
+    };
+
+    Object.entries(values).forEach(([name,value])=>{
+      const field=form.getTextField(name);
+      field.setText(value);
+      let size=name==='Text-KjzwKQiKHP' ? 10 : 9.5;
+      const min=6;
+      while (size>min && font.widthOfTextAtSize(value,size)>maxWidths[name]) size-=0.25;
+      field.setFontSize(size);
+    });
+
+    form.updateFieldAppearances(font);
+    form.flatten();
+
+    const output=await pdfDoc.save();
+    const code=inductionSafeFile(i.codigo,'INDUCCION');
+    const name=inductionSafeFile(p.nombre,'Trabajador').slice(0,55);
+    inductionDownloadBlob(output,`${code}_Registro_Induccion_${name}.pdf`);
+  } finally {
+    if (button) {button.disabled=false;button.textContent=original;}
+  }
+}
+
+function inductionResponseLabels(question) {
+  const response=question.respuesta || {};
+  const options=Array.isArray(question.opciones) ? question.opciones : [];
+
+  if (question.tipo==='RESPUESTA_LIBRE') {
+    return {
+      user:String(response.texto || 'No respondida'),
+      correct:(question.respuestas_aceptadas || []).join(' / ') || 'Respuesta libre'
+    };
+  }
+
+  const selectedIds=Array.isArray(response.seleccionadas) ? response.seleccionadas.map(String) : [];
+  const user=options.filter(o=>selectedIds.includes(String(o.id)))
+    .map((o,idx)=>`${String.fromCharCode(65+options.indexOf(o))}) ${o.texto}`)
+    .join(' / ') || 'No respondida';
+  const correct=options.filter(o=>o.es_correcta)
+    .map(o=>`${String.fromCharCode(65+options.indexOf(o))}) ${o.texto}`)
+    .join(' / ') || '—';
+  return {user,correct};
+}
+
+async function generateInductionExamPdf(detail,button=null) {
+  if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
+  const original=button?.textContent || '';
+  if (button) {button.disabled=true;button.textContent='Generando…';}
+
+  try {
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+    let logoData=null;
+    try {logoData=await imageToDataUrl('assets/logo-explo.jpg');} catch(e) {console.warn(e);}
+
+    const i=detail.induccion || {};
+    const p=detail.participante || {};
+    const a=detail.intento || {};
+    const questions=(detail.preguntas || []).slice().sort((x,y)=>Number(x.orden)-Number(y.orden));
+
+    const BLACK=[20,20,20],GREEN=[0,145,48],RED=[210,35,35],GRAY=[94,101,113],LIGHT=[244,246,248];
+    const text=(value,x,y,size=10,bold=false,align='left',color=BLACK)=>{
+      doc.setTextColor(...color);
+      doc.setFont('helvetica',bold?'bold':'normal');
+      doc.setFontSize(size);
+      doc.text(String(value??''),x,y,{align});
+    };
+    const wrapped=(value,x,y,maxWidth,size=9,bold=false,color=BLACK,lineGap=4)=>{
+      doc.setTextColor(...color);
+      doc.setFont('helvetica',bold?'bold':'normal');
+      doc.setFontSize(size);
+      const lines=doc.splitTextToSize(String(value??''),maxWidth);
+      doc.text(lines,x,y,{lineHeightFactor:1.12});
+      return y+(lines.length*lineGap);
+    };
+    let y=0;
+    const ensure=(need=20)=>{
+      if (y+need>282) {
+        doc.addPage();
+        drawHeader(false);
+        y=42;
+      }
+    };
+    const drawHeader=(first=true)=>{
+      if (logoData) doc.addImage(logoData,'JPEG',12,9,30,18,undefined,'FAST');
+      text('SIG - SSOMAC',105,15,10,true,'center');
+      text('EXAMEN DE INDUCCIÓN PARA PERSONAL NUEVO',105,25,11,true,'center',RED);
+      text('Código: EDP-SIG-SSOMAC-EA-121',151,12.5,6.8);
+      text('N°: 9',151,18,6.8);
+      text('Versión: 1',151,23.5,6.8);
+      text('Fecha Act: Julio 2025',151,29,6.8);
+      doc.setDrawColor(25,25,25);doc.setLineWidth(.4);doc.line(12,33,198,33);
+      if (first) text('RESOLUCIÓN DEL EXAMEN',105,41,12,true,'center');
+    };
+
+    drawHeader(true);
+    y=54;
+    const rows=[
+      ['Participante:',p.nombre || '—'],
+      ['DNI:',p.dni || '—'],
+      ['Curso:',i.tema || 'INDUCCIÓN PARA PERSONAL NUEVO'],
+      ['Fecha:',formatLongDatePE(a.finalizado_at || i.fecha)]
+    ];
+    for (const [label,value] of rows) {
+      text(label,14,y,9,true);
+      y=wrapped(value,44,y,146,9,false,BLACK,4.1)+1.1;
+    }
+    y+=3;
+    text(`Nota Final: ${Number(a.nota||0).toFixed(1)}`,14,y,11,true,'left',a.aprobado?GREEN:RED);
+    y+=6;
+    text(`Estado: ${a.aprobado?'APROBADO':'DESAPROBADO'}`,14,y,11,true,'left',a.aprobado?GREEN:RED);
+    y+=6;
+    text(`Preguntas Correctas: ${a.correctas||0} / ${a.total_preguntas||questions.length}`,14,y,10.5,true);
+    y+=9;
+
+    questions.forEach((q,index)=>{
+      ensure(34);
+      doc.setFillColor(...LIGHT);
+      doc.roundedRect(12,y-4,186,6,1.3,1.3,'F');
+      y=wrapped(`${index+1}. ${q.enunciado || ''}`,14,y,178,9.4,true,BLACK,4.3)+1;
+
+      const labels=inductionResponseLabels(q);
+      y=wrapped(`Tu respuesta: ${labels.user}`,17,y,172,8.2,false,GRAY,3.7)+1;
+
+      if (q.tipo!=='RESPUESTA_LIBRE') {
+        const options=Array.isArray(q.opciones)?q.opciones:[];
+        const selectedIds=Array.isArray(q.respuesta?.seleccionadas)?q.respuesta.seleccionadas.map(String):[];
+
+        options.forEach((o,oi)=>{
+          ensure(8);
+          const selected=selectedIds.includes(String(o.id));
+          let color=BLACK,bold=false;
+          if (o.es_correcta) {color=GREEN;bold=true;}
+          else if (selected) {color=RED;bold=true;}
+          let line=`${String.fromCharCode(65+oi)}) ${o.texto || ''}`;
+          if (selected) line+='  ← tu respuesta';
+          y=wrapped(line,20,y,168,8.2,bold,color,3.8)+.4;
+        });
+      } else {
+        ensure(8);
+        y=wrapped(`Respuesta esperada: ${labels.correct}`,20,y,166,8.2,true,GREEN,3.8)+1;
+      }
+
+      ensure(8);
+      text(`Puntos: ${Number(q.puntos_obtenidos||0).toFixed(1).replace('.0','')} / ${Number(q.peso||0).toFixed(1).replace('.0','')}`,17,y+1,8.3,true,'left',q.es_correcta?GREEN:RED);
+      y+=8;
+
+      if (q.explicacion) {
+        ensure(12);
+        y=wrapped(`Retroalimentación: ${q.explicacion}`,17,y,172,7.7,false,GRAY,3.5)+2;
+      }
+      y+=2;
+    });
+
+    ensure(30);
+    doc.setDrawColor(225,228,233);doc.line(14,y,196,y);y+=8;
+    if (p.firma) {
+      text('Firma digital registrada:',14,y,9,true);
+      try {doc.addImage(p.firma,'PNG',54,y-8,42,16,undefined,'FAST');} catch(e){console.warn(e);}
+      y+=13;
+    }
+    text(`Nombre: ${p.nombre || '—'}`,14,y,8.8);
+    y+=5;
+    text(`Fecha: ${formatLongDatePE(a.finalizado_at || i.fecha)}`,14,y,8.8);
+
+    const code=inductionSafeFile(i.codigo,'INDUCCION');
+    const name=inductionSafeFile(p.nombre,'Trabajador').slice(0,55);
+    doc.save(`${code}_Examen_Desarrollado_${name}.pdf`);
+  } finally {
+    if (button) {button.disabled=false;button.textContent=original;}
+  }
+}
+
+async function downloadInductionCertificateFromAdmin(attemptId,button) {
+  try {
+    const detail=await getInductionResultDetail(attemptId);
+    if (!detail?.intento?.aprobado) throw new Error('El certificado solo está disponible para participantes aprobados.');
+    await generateInductionLimaCertificatePdf(detail,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el certificado.');
+  }
+}
+
+async function downloadInductionExamFromAdmin(attemptId,button) {
+  try {
+    const detail=await getInductionResultDetail(attemptId);
+    await generateInductionExamPdf(detail,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el examen.');
+  }
+}
+
+document.getElementById('closeInductionResultsModal')?.addEventListener('click',closeInductionResults);
+document.getElementById('closeInductionResultsBottom')?.addEventListener('click',closeInductionResults);
+document.getElementById('inductionResultsModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeInductionResults);
+
+
 // ============================================================
 // ETAPA 14B · INDUCCIÓN PÚBLICA PARA TRABAJADORES NUEVOS
 // ============================================================
@@ -5240,7 +5629,52 @@ async function submitPublicInductionExam(event) {
   document.getElementById('publicInductionGrade').innerHTML=`${Number(data.nota).toFixed(1)} <small>/ 20</small>`;
   document.getElementById('publicInductionResultText').textContent=
     `${data.correctas} de ${data.total} respuestas correctas · Nota mínima: ${data.nota_minima}`;
+  publicInductionLastAttemptId=data.intento_id || null;
+  publicInductionApprovedDetail=null;
+  document.getElementById('publicInductionApprovedDocuments')?.classList.toggle('hidden',!data.aprobado);
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+
+async function getPublicInductionApprovedDetail() {
+  if (publicInductionApprovedDetail) return publicInductionApprovedDetail;
+  if (!publicInductionParticipantId || !publicInductionLastAttemptId) {
+    throw new Error('No se pudo identificar el resultado aprobado.');
+  }
+
+  const {data,error}=await client.rpc('obtener_documentos_induccion_publicos',{
+    p_token:publicInductionToken,
+    p_participante_id:publicInductionParticipantId,
+    p_intento_id:publicInductionLastAttemptId
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    throw new Error(data?.error || error?.message || 'No fue posible preparar los documentos.');
+  }
+
+  publicInductionApprovedDetail=data.detalle;
+  return publicInductionApprovedDetail;
+}
+
+async function downloadPublicInductionCertificate(button) {
+  try {
+    const detail=await getPublicInductionApprovedDetail();
+    await generateInductionLimaCertificatePdf(detail,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el certificado / registro.');
+  }
+}
+
+async function downloadPublicInductionExam(button) {
+  try {
+    const detail=await getPublicInductionApprovedDetail();
+    await generateInductionExamPdf(detail,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el examen desarrollado.');
+  }
 }
 
 document.getElementById('publicInductionDni')?.addEventListener('input',e=>{
@@ -5249,6 +5683,9 @@ document.getElementById('publicInductionDni')?.addEventListener('input',e=>{
 document.getElementById('clearPublicInductionSignature')?.addEventListener('click',clearPublicInductionSignature);
 document.getElementById('publicInductionRegisterButton')?.addEventListener('click',registerPublicInductionParticipant);
 document.getElementById('publicInductionExamForm')?.addEventListener('submit',submitPublicInductionExam);
+
+document.getElementById('publicDownloadInductionCertificate')?.addEventListener('click',e=>downloadPublicInductionCertificate(e.currentTarget));
+document.getElementById('publicDownloadInductionExam')?.addEventListener('click',e=>downloadPublicInductionExam(e.currentTarget));
 
 
 // ============================================================

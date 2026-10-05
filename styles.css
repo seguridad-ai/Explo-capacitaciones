@@ -582,3 +582,104 @@ body.modal-open{
   .public-induction-signature-wrap{height:210px}
   .public-induction-exam-summary{grid-template-columns:1fr}
 }
+
+
+/* ============================================================
+   ETAPA 14C · RESULTADOS Y DOCUMENTOS
+   ============================================================ */
+.induction-results-btn{
+  border:0;
+  border-radius:8px;
+  background:#6b3fd4;
+  color:#fff;
+  padding:9px 12px;
+  font-weight:800;
+  cursor:pointer;
+}
+.induction-results-modal-card{
+  width:min(1250px,calc(100vw - 26px))!important;
+  max-width:1250px!important;
+}
+.induction-results-summary{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin:4px 0 16px;
+}
+.induction-results-summary>div{
+  border:1px solid #dfe5ec;
+  border-radius:11px;
+  padding:13px;
+  background:#f9fbfd;
+}
+.induction-results-summary span{display:block;font-size:9px;color:#778394}
+.induction-results-summary strong{display:block;margin-top:4px;font-size:22px;color:#17263c}
+.induction-results-table-wrap{max-height:560px;overflow:auto}
+.induction-results-table td{vertical-align:middle}
+.induction-results-table small{color:#788596}
+.induction-result-status{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:8px;
+  font-weight:850;
+}
+.induction-result-status.approved{background:#def8e8;color:#07843c}
+.induction-result-status.failed{background:#ffe8e8;color:#c32121}
+.result-pass-text{color:#079041}
+.result-fail-text{color:#d32424}
+.induction-result-actions{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:118px;
+}
+.induction-result-actions .certificate-btn,
+.induction-result-actions .result-download-btn{
+  width:100%;
+  min-height:31px;
+  border-radius:7px;
+  font-size:9px;
+}
+.public-induction-documents{
+  max-width:760px;
+  margin:20px auto 0;
+  text-align:left;
+}
+.public-induction-print-message{
+  border:1px solid #f0d8a8;
+  background:#fff8e9;
+  border-radius:12px;
+  padding:15px;
+}
+.public-induction-print-message strong{
+  display:block;
+  color:#8a4f00;
+  font-size:11px;
+}
+.public-induction-print-message p{
+  margin:5px 0 0;
+  color:#855f2b;
+  font-size:10px;
+  line-height:1.55;
+}
+.public-induction-document-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:11px;
+}
+.public-induction-document-actions button{
+  min-height:46px;
+  border-radius:10px;
+  font-weight:850;
+  cursor:pointer;
+}
+@media(max-width:850px){
+  .induction-results-summary{grid-template-columns:1fr 1fr}
+}
+@media(max-width:600px){
+  .induction-results-summary{grid-template-columns:1fr}
+  .public-induction-document-actions{grid-template-columns:1fr}
+}

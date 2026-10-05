@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261005-39" />
+  <link rel="stylesheet" href="styles.css?v=20261005-40" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -210,6 +210,17 @@
             <strong>✓ Registro completado</strong>
             <span>Tus datos, firma y evaluación quedaron registrados correctamente.</span>
           </div>
+
+          <section id="publicInductionApprovedDocuments" class="public-induction-documents hidden">
+            <div class="public-induction-print-message">
+              <strong>Documento para imprimir y firmar</strong>
+              <p>Descarga e imprime el Registro de Inducción y Orientación Básica. Debes firmarlo físicamente en el espacio “Firma del Trabajador” y solicitar la firma/V°B° de tu expositor en el espacio correspondiente antes de presentarlo.</p>
+            </div>
+            <div class="public-induction-document-actions">
+              <button id="publicDownloadInductionCertificate" class="certificate-btn" type="button">Descargar certificado / registro</button>
+              <button id="publicDownloadInductionExam" class="result-download-btn" type="button">Descargar examen desarrollado</button>
+            </div>
+          </section>
         </section>
       </main>
 
@@ -1413,7 +1424,52 @@
           </div>
         </div>
 
-        <div id="inductionQuestionModal" class="modal hidden" aria-hidden="true">
+        
+        <div id="inductionResultsModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card induction-results-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">RESULTADOS DE INDUCCIÓN</span>
+                <h3 id="inductionResultsTitle">Resultados</h3>
+                <p id="inductionResultsSubtitle" class="modal-subtitle">Participantes que culminaron la inducción y evaluación.</p>
+              </div>
+              <button id="closeInductionResultsModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="induction-results-summary">
+              <div><span>Evaluados</span><strong id="inductionResultsTotal">0</strong></div>
+              <div><span>Aprobados</span><strong id="inductionResultsApproved">0</strong></div>
+              <div><span>Desaprobados</span><strong id="inductionResultsFailed">0</strong></div>
+              <div><span>Nota promedio</span><strong id="inductionResultsAverage">0.0</strong></div>
+            </div>
+
+            <div class="table-wrap induction-results-table-wrap">
+              <table class="data-table induction-results-table">
+                <thead>
+                  <tr>
+                    <th>Trabajador</th>
+                    <th>DNI</th>
+                    <th>Fecha de ingreso</th>
+                    <th>Puesto / Área</th>
+                    <th>Nota</th>
+                    <th>Estado</th>
+                    <th>Fecha evaluación</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="inductionResultsBody"></tbody>
+              </table>
+            </div>
+
+            <div id="inductionResultsMessage" class="form-message"></div>
+            <div class="modal-actions">
+              <button id="closeInductionResultsBottom" class="secondary-btn" type="button">Cerrar</button>
+            </div>
+          </div>
+        </div>
+
+<div id="inductionQuestionModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
           <div class="modal-card induction-question-modal">
             <div class="modal-head">
@@ -1677,7 +1733,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261005-39"></script>
-  <script src="app.js?v=20261005-39"></script>
+  <script src="config.js?v=20261005-40"></script>
+  <script src="app.js?v=20261005-40"></script>
 </body>
 </html>

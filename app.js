@@ -4389,11 +4389,16 @@ function renderInductions() {
       <div class="induction-card-actions">
         <button class="induction-results-btn" type="button" data-induction-results="${item.id}">Ver resultados</button>
         ${item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
+        ${canManage ? `<button class="induction-duplicate-btn" type="button" data-induction-duplicate="${item.id}">Duplicar</button>` : ''}
         ${canManage ? `<button class="secondary-btn" type="button" data-induction-edit="${item.id}">Editar</button>` : ''}
         ${canManage ? `<button class="induction-delete-btn" type="button" data-induction-delete="${item.id}">Eliminar</button>` : ''}
       </div>
     </article>`;
   }).join('');
+
+  list.querySelectorAll('[data-induction-duplicate]').forEach(btn => btn.addEventListener('click', () => {
+    duplicateInduction(btn.dataset.inductionDuplicate,btn);
+  }));
 
   list.querySelectorAll('[data-induction-edit]').forEach(btn => btn.addEventListener('click', () => {
     const item = inductionRecords.find(x=>x.id===btn.dataset.inductionEdit);
@@ -4424,6 +4429,76 @@ function renderInductions() {
     await loadInductionModule(true);
     inductionMessage('Inducción eliminada correctamente.','success');
   }));
+}
+
+
+async function duplicateInduction(inductionId,button=null) {
+  const original=inductionRecords.find(x=>x.id===inductionId);
+  if (!original) return;
+
+  const title=original.tema || original.titulo || 'esta inducción';
+  const questionCount=inductionQuestionsCache?.length || 0;
+
+  const confirmed=confirm(
+    `¿Duplicar "${title}"?\n\n` +
+    `Se copiará toda la programación y el examen completo.\n` +
+    `NO se copiarán participantes ni resultados.\n` +
+    `La nueva inducción quedará en BORRADOR para que edites la fecha y el expositor.`
+  );
+
+  if (!confirmed) return;
+
+  const originalText=button?.textContent || '';
+  if (button) {
+    button.disabled=true;
+    button.textContent='Duplicando…';
+  }
+
+  inductionMessage('');
+
+  try {
+    const {data,error}=await client.rpc('duplicar_induccion',{
+      p_induccion_id:inductionId
+    });
+
+    if (error || !data?.ok) {
+      console.error(error,data);
+      throw new Error(
+        data?.error ||
+        error?.message ||
+        'No fue posible duplicar la inducción.'
+      );
+    }
+
+    await loadInductionModule(true);
+
+    const duplicated=inductionRecords.find(x=>x.id===data.id);
+    if (!duplicated) {
+      inductionMessage(
+        `Inducción duplicada como ${data.codigo}. Edítala para actualizar fecha y expositor.`,
+        'success'
+      );
+      return;
+    }
+
+    openInductionWizard(duplicated);
+
+    const msg=document.getElementById('inductionFormMessage');
+    if (msg) {
+      msg.textContent=
+        `Copia creada como ${data.codigo}. Se copiaron ${data.preguntas_copiadas || 0} pregunta(s). ` +
+        `Actualiza la fecha y el expositor. La firma del expositor debe registrarse nuevamente.`;
+      msg.className='form-message visible success';
+    }
+  } catch(err) {
+    console.error(err);
+    inductionMessage(err?.message || 'No fue posible duplicar la inducción.');
+  } finally {
+    if (button) {
+      button.disabled=false;
+      button.textContent=originalText;
+    }
+  }
 }
 
 async function loadInductionModule(force=false) {

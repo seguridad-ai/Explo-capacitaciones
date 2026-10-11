@@ -841,3 +841,24 @@ body.modal-open{
 @media(max-width:480px){
   .project-register-day-actions{grid-template-columns:1fr}
 }
+
+
+/* ============================================================
+   ETAPA 15B · DUPLICAR INDUCCIONES
+   ============================================================ */
+.induction-duplicate-btn{
+  border:1px solid #e6a11a;
+  border-radius:8px;
+  background:#fff7e5;
+  color:#9a5c00;
+  padding:9px 12px;
+  font-weight:850;
+  cursor:pointer;
+}
+.induction-duplicate-btn:hover{
+  background:#ffedc0;
+}
+.induction-duplicate-btn:disabled{
+  opacity:.55;
+  cursor:wait;
+}

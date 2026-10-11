@@ -728,3 +728,116 @@ body.modal-open{
     min-width:0;
   }
 }
+
+
+/* ============================================================
+   ETAPA 15 · INDUCCIÓN POR PROYECTO - 4 DÍAS
+   ============================================================ */
+.project-induction-banner{
+  border:1px solid #d9e2ed;
+  background:#f7f9fc;
+  border-radius:12px;
+  padding:14px 16px;
+  margin-bottom:15px;
+}
+.project-induction-banner h4{margin:4px 0;color:#17263c;font-size:17px}
+.project-induction-banner p{margin:0;color:#748194;font-size:10px;line-height:1.45}
+.project-day-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:16px;
+}
+.project-day-card{
+  border:1px solid #dde3eb;
+  border-radius:12px;
+  padding:14px;
+  background:#fff;
+}
+.project-day-number{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:#c00000;
+  color:#fff;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:9px;
+  font-weight:850;
+  margin-bottom:10px;
+}
+.project-day-card label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:10px;
+}
+.project-day-card label>span{
+  color:#17263c;
+  font-size:9px;
+  font-weight:750;
+}
+.project-day-card textarea,
+.project-day-card input{
+  width:100%;
+  border:1px solid #cfd7e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+.project-day-card input{height:40px}
+.project-day-time{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:9px 11px;
+  border-radius:8px;
+  background:#f5f7fa;
+  color:#667587;
+  font-size:9px;
+}
+.project-day-time strong{color:#17263c;font-size:11px}
+.project-exam-settings{margin-top:15px}
+.project-register-download-panel{
+  border:1px solid #d7e1f5;
+  border-radius:12px;
+  padding:14px 16px;
+  background:#f6f9ff;
+  margin-bottom:14px;
+}
+.project-register-download-head strong{
+  display:block;
+  margin-top:3px;
+  color:#17263c;
+  font-size:11px;
+}
+.project-register-download-head small{
+  display:block;
+  margin-top:4px;
+  color:#718099;
+  font-size:9px;
+}
+.project-register-day-actions{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-top:12px;
+}
+.project-day-download{
+  min-height:40px;
+  border:0;
+  border-radius:8px;
+  background:#c00000;
+  color:#fff;
+  font-weight:850;
+  cursor:pointer;
+}
+.public-project-day{grid-column:span 1}
+.public-project-day strong{line-height:1.35}
+@media(max-width:760px){
+  .project-day-grid{grid-template-columns:1fr}
+  .project-register-day-actions{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .project-register-day-actions{grid-template-columns:1fr}
+}

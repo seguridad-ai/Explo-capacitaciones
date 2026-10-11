@@ -4313,12 +4313,18 @@ function inductionUnitName(item) {
 
 function populateInductionUnitOptions() {
   const site = document.getElementById('inductionSite');
+  const project = document.getElementById('projectInductionProject');
   const filter = document.getElementById('inductionUnitFilter');
 
   if (site) {
     const lima = inductionSites.filter(x => x.activo && String(x.nombre || '').trim().toLowerCase() === 'lima');
     site.innerHTML = '<option value="">Seleccione Lima</option>' +
       lima.map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
+  }
+
+  if (project) {
+    project.innerHTML = '<option value="">Seleccione un proyecto</option>' +
+      inductionProjects.filter(x=>x.activo).map(x => `<option value="${x.id}">${escapeHtml(x.nombre)}</option>`).join('');
   }
 
   if (filter) {
@@ -4371,14 +4377,18 @@ function renderInductions() {
         <div class="induction-card-meta">
           <span>${escapeHtml(item.codigo)}</span>
           <span>${escapeHtml(inductionUnitName(item))}</span>
-          <span>${formatDatePE(item.fecha)}</span>
-          <span>${item.tiempo_horas ? `${Number(item.tiempo_horas)} h` : '—'}</span>
+          <span>${item.tipo==='PROYECTO'
+            ? `${formatDatePE(item.fecha_dia1)} - ${formatDatePE(item.fecha_dia4)}`
+            : formatDatePE(item.fecha)}</span>
+          <span>${item.tipo==='PROYECTO'
+            ? '4 días · 8 h/día'
+            : (item.tiempo_horas ? `${Number(item.tiempo_horas)} h` : '—')}</span>
           <span>Nota mínima: ${Number(item.nota_minima).toFixed(1).replace('.0','')}</span>
         </div>
       </div>
       <div class="induction-card-actions">
         <button class="induction-results-btn" type="button" data-induction-results="${item.id}">Ver resultados</button>
-        ${item.tipo==='LIMA' && item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
+        ${item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
         ${canManage ? `<button class="secondary-btn" type="button" data-induction-edit="${item.id}">Editar</button>` : ''}
         ${canManage ? `<button class="induction-delete-btn" type="button" data-induction-delete="${item.id}">Eliminar</button>` : ''}
       </div>
@@ -4457,7 +4467,9 @@ function setInductionWizardType(type) {
   document.getElementById('inductionChoiceProject')?.classList.toggle('active', type === 'PROYECTO');
   document.getElementById('inductionLimaProgramming')?.classList.toggle('hidden', type !== 'LIMA');
   document.getElementById('inductionProjectProgramming')?.classList.toggle('hidden', type !== 'PROYECTO');
-  document.getElementById('saveInductionProgrammingButton')?.classList.toggle('hidden', type !== 'LIMA');
+  document.getElementById('saveInductionProgrammingButton')?.classList.remove('hidden');
+  document.getElementById('saveInductionProgrammingButton').textContent =
+    type === 'PROYECTO' ? 'Registrar 4 días y continuar al examen' : 'Registrar y continuar al examen';
 }
 
 function initInductionSignatureCanvas() {
@@ -4555,6 +4567,26 @@ async function openInductionWizard(item=null) {
   document.getElementById('inductionMinGrade').value = item?.nota_minima ?? 14;
   document.getElementById('inductionStatus').value = item?.estado === 'CERRADA' ? 'BORRADOR' : (item?.estado || 'BORRADOR');
   document.getElementById('inductionDescription').value = item?.descripcion || '';
+
+  document.getElementById('projectInductionMiningOwner').value = item?.titular_minero || '';
+  document.getElementById('projectInductionProject').value = item?.proyecto_id || '';
+  document.getElementById('projectInductionDistrict').value = item?.distrito || '';
+  document.getElementById('projectInductionProvince').value = item?.provincia || '';
+  document.getElementById('projectInductionSpeaker').value = item?.expositor || '';
+  document.getElementById('projectInductionSpeakerPosition').value = item?.expositor_cargo || '';
+  document.getElementById('projectInductionSpeakerDni').value = item?.expositor_dni || '';
+  document.getElementById('projectInductionArea').value = item?.area || '';
+  document.getElementById('projectInductionTopic1').value = item?.tema_dia1 || '';
+  document.getElementById('projectInductionTopic2').value = item?.tema_dia2 || '';
+  document.getElementById('projectInductionTopic3').value = item?.tema_dia3 || '';
+  document.getElementById('projectInductionTopic4').value = item?.tema_dia4 || '';
+  document.getElementById('projectInductionDate1').value = item?.fecha_dia1 || '';
+  document.getElementById('projectInductionDate2').value = item?.fecha_dia2 || '';
+  document.getElementById('projectInductionDate3').value = item?.fecha_dia3 || '';
+  document.getElementById('projectInductionDate4').value = item?.fecha_dia4 || '';
+  document.getElementById('projectInductionMinGrade').value = item?.nota_minima ?? 14;
+  document.getElementById('projectInductionStatus').value = item?.estado === 'CERRADA' ? 'BORRADOR' : (item?.estado || 'BORRADOR');
+
   document.getElementById('inductionFormMessage').textContent = '';
 
   initInductionSignatureCanvas();
@@ -4580,8 +4612,6 @@ function closeInductionModal() {
 }
 
 async function saveInductionProgramming() {
-  if (inductionWizardType !== 'LIMA') return;
-
   const msg = document.getElementById('inductionFormMessage');
   const show = (text,type='error') => {
     msg.textContent=text;
@@ -4589,38 +4619,6 @@ async function saveInductionProgramming() {
   };
   show('');
 
-  const empresa = 'EXPLO DRILLING PERU S.R.L.';
-  const contratista = document.getElementById('inductionContractor').value.trim() || 'N.A.';
-  const sede_id = document.getElementById('inductionSite').value || null;
-  const distrito = document.getElementById('inductionDistrict').value.trim();
-  const provincia = document.getElementById('inductionProvince').value.trim();
-  const tema = document.getElementById('inductionTopic').value.trim();
-  const expositor = document.getElementById('inductionSpeaker').value.trim();
-  const expositor_cargo = document.getElementById('inductionSpeakerPosition').value.trim();
-  const expositor_dni = document.getElementById('inductionSpeakerDni').value.replace(/\D/g,'').slice(0,8);
-  const fecha = document.getElementById('inductionDate').value;
-  const area = document.getElementById('inductionArea').value.trim();
-  const tiempo_horas = Number(document.getElementById('inductionHours').value);
-  const nota_minima = Number(document.getElementById('inductionMinGrade').value);
-  const estado = document.getElementById('inductionStatus').value;
-  const descripcion = document.getElementById('inductionDescription').value.trim() || null;
-
-  if (!sede_id || !distrito || !provincia || !tema || !expositor || !expositor_cargo || !fecha || !area) {
-    show('Completa todos los campos obligatorios.');
-    return;
-  }
-  if (!/^\d{8}$/.test(expositor_dni)) {
-    show('El DNI del expositor debe tener 8 dígitos.');
-    return;
-  }
-  if (!Number.isFinite(tiempo_horas) || tiempo_horas <= 0) {
-    show('Ingresa el tiempo de la inducción en horas.');
-    return;
-  }
-  if (!Number.isFinite(nota_minima) || nota_minima < 0 || nota_minima > 20) {
-    show('La nota mínima debe estar entre 0 y 20.');
-    return;
-  }
   if (!inductionSignatureHasStroke && !inductionSavedSignature) {
     show('Registra la firma del expositor.');
     return;
@@ -4630,34 +4628,148 @@ async function saveInductionProgramming() {
     ? inductionSignatureCanvas.toDataURL('image/png')
     : inductionSavedSignature;
 
-  const payload = {
-    tipo:'LIMA',
-    titulo:tema,
-    tema,
-    empresa,
-    contratista,
-    sede_id,
-    proyecto_id:null,
-    distrito,
-    provincia,
-    expositor,
-    expositor_cargo,
-    expositor_dni,
-    fecha,
-    area,
-    tiempo_horas,
-    firma_expositor,
-    nota_minima,
-    estado,
-    descripcion
-  };
+  let payload={};
+
+  if (inductionWizardType === 'LIMA') {
+    const empresa='EXPLO DRILLING PERU S.R.L.';
+    const contratista=document.getElementById('inductionContractor').value.trim() || 'N.A.';
+    const sede_id=document.getElementById('inductionSite').value || null;
+    const distrito=document.getElementById('inductionDistrict').value.trim();
+    const provincia=document.getElementById('inductionProvince').value.trim();
+    const tema=document.getElementById('inductionTopic').value.trim();
+    const expositor=document.getElementById('inductionSpeaker').value.trim();
+    const expositor_cargo=document.getElementById('inductionSpeakerPosition').value.trim();
+    const expositor_dni=document.getElementById('inductionSpeakerDni').value.replace(/\D/g,'').slice(0,8);
+    const fecha=document.getElementById('inductionDate').value;
+    const area=document.getElementById('inductionArea').value.trim();
+    const tiempo_horas=Number(document.getElementById('inductionHours').value);
+    const nota_minima=Number(document.getElementById('inductionMinGrade').value);
+    const estado=document.getElementById('inductionStatus').value;
+    const descripcion=document.getElementById('inductionDescription').value.trim() || null;
+
+    if (!sede_id || !distrito || !provincia || !tema || !expositor || !expositor_cargo || !fecha || !area) {
+      show('Completa todos los campos obligatorios.');
+      return;
+    }
+    if (!/^\d{8}$/.test(expositor_dni)) {
+      show('El DNI del expositor debe tener 8 dígitos.');
+      return;
+    }
+    if (!Number.isFinite(tiempo_horas) || tiempo_horas<=0) {
+      show('Ingresa el tiempo de la inducción en horas.');
+      return;
+    }
+    if (!Number.isFinite(nota_minima) || nota_minima<0 || nota_minima>20) {
+      show('La nota mínima debe estar entre 0 y 20.');
+      return;
+    }
+
+    payload={
+      tipo:'LIMA',
+      titulo:tema,
+      tema,
+      empresa,
+      contratista,
+      sede_id,
+      proyecto_id:null,
+      titular_minero:null,
+      unidad_produccion:null,
+      distrito,
+      provincia,
+      expositor,
+      expositor_cargo,
+      expositor_dni,
+      fecha,
+      area,
+      tiempo_horas,
+      firma_expositor,
+      nota_minima,
+      estado,
+      descripcion,
+      tema_dia1:null,tema_dia2:null,tema_dia3:null,tema_dia4:null,
+      fecha_dia1:null,fecha_dia2:null,fecha_dia3:null,fecha_dia4:null
+    };
+  } else {
+    const titular_minero=document.getElementById('projectInductionMiningOwner').value.trim();
+    const proyecto_id=document.getElementById('projectInductionProject').value || null;
+    const project=inductionProjects.find(x=>x.id===proyecto_id);
+    const unidad_produccion=project?.nombre || '';
+    const distrito=document.getElementById('projectInductionDistrict').value.trim();
+    const provincia=document.getElementById('projectInductionProvince').value.trim();
+    const expositor=document.getElementById('projectInductionSpeaker').value.trim();
+    const expositor_cargo=document.getElementById('projectInductionSpeakerPosition').value.trim();
+    const expositor_dni=document.getElementById('projectInductionSpeakerDni').value.replace(/\D/g,'').slice(0,8);
+    const area=document.getElementById('projectInductionArea').value.trim();
+    const tema_dia1=document.getElementById('projectInductionTopic1').value.trim();
+    const tema_dia2=document.getElementById('projectInductionTopic2').value.trim();
+    const tema_dia3=document.getElementById('projectInductionTopic3').value.trim();
+    const tema_dia4=document.getElementById('projectInductionTopic4').value.trim();
+    const fecha_dia1=document.getElementById('projectInductionDate1').value;
+    const fecha_dia2=document.getElementById('projectInductionDate2').value;
+    const fecha_dia3=document.getElementById('projectInductionDate3').value;
+    const fecha_dia4=document.getElementById('projectInductionDate4').value;
+    const nota_minima=Number(document.getElementById('projectInductionMinGrade').value);
+    const estado=document.getElementById('projectInductionStatus').value;
+
+    if (!titular_minero || !proyecto_id || !distrito || !provincia || !expositor || !expositor_cargo ||
+        !area || !tema_dia1 || !tema_dia2 || !tema_dia3 || !tema_dia4 ||
+        !fecha_dia1 || !fecha_dia2 || !fecha_dia3 || !fecha_dia4) {
+      show('Completa todos los campos obligatorios de la inducción de proyecto.');
+      return;
+    }
+    if (!/^\d{8}$/.test(expositor_dni)) {
+      show('El DNI del expositor debe tener 8 dígitos.');
+      return;
+    }
+    if (!Number.isFinite(nota_minima) || nota_minima<0 || nota_minima>20) {
+      show('La nota mínima debe estar entre 0 y 20.');
+      return;
+    }
+
+    const dates=[fecha_dia1,fecha_dia2,fecha_dia3,fecha_dia4].map(x=>new Date(`${x}T00:00:00`));
+    for (let i=1;i<dates.length;i++) {
+      if (!(dates[i]>dates[i-1])) {
+        show(`La Fecha Día ${i+1} debe ser posterior a la Fecha Día ${i}.`);
+        return;
+      }
+    }
+
+    const tema=`Inducción de Proyecto - ${unidad_produccion}`;
+
+    payload={
+      tipo:'PROYECTO',
+      titulo:tema,
+      tema,
+      empresa:'EXPLO DRILLING PERU S.R.L.',
+      contratista:'EXPLO DRILLING PERU S.R.L.',
+      sede_id:null,
+      proyecto_id,
+      titular_minero,
+      unidad_produccion,
+      distrito,
+      provincia,
+      expositor,
+      expositor_cargo,
+      expositor_dni,
+      fecha:fecha_dia1,
+      area,
+      tiempo_horas:32,
+      firma_expositor,
+      nota_minima,
+      estado,
+      descripcion:`Inducción específica de proyecto de 4 días para ${unidad_produccion}.`,
+      tema_dia1,tema_dia2,tema_dia3,tema_dia4,
+      fecha_dia1,fecha_dia2,fecha_dia3,fecha_dia4,
+      tiempo_dia1:8,tiempo_dia2:8,tiempo_dia3:8,tiempo_dia4:8
+    };
+  }
 
   let result;
   if (activeInductionId) {
-    result = await client.from('inducciones').update(payload).eq('id',activeInductionId).select().single();
+    result=await client.from('inducciones').update(payload).eq('id',activeInductionId).select().single();
   } else {
-    payload.created_by = currentProfile?.id || null;
-    result = await client.from('inducciones').insert(payload).select().single();
+    payload.created_by=currentProfile?.id || null;
+    result=await client.from('inducciones').insert(payload).select().single();
   }
 
   if (result.error) {
@@ -4666,9 +4778,9 @@ async function saveInductionProgramming() {
     return;
   }
 
-  activeInductionId = result.data.id;
-  document.getElementById('inductionId').value = activeInductionId;
-  inductionSavedSignature = firma_expositor;
+  activeInductionId=result.data.id;
+  document.getElementById('inductionId').value=activeInductionId;
+  inductionSavedSignature=firma_expositor;
   await loadInductionQuestions(activeInductionId);
   setInductionWizardStep(2);
 }
@@ -4896,6 +5008,15 @@ async function loadInductionShareStep() {
   document.getElementById('inductionPublicLink').value=link;
   document.getElementById('inductionShareCode').textContent=data.codigo || '—';
   document.getElementById('inductionShareQuestions').textContent=String(inductionQuestionsCache.length);
+  const current=inductionRecords.find(x=>x.id===activeInductionId);
+  const title=document.querySelector('#inductionStep3 .induction-public-link-card h4');
+  const paragraph=document.querySelector('#inductionStep3 .induction-public-link-card p');
+  if (title) title.textContent=current?.tipo==='PROYECTO'
+    ? `Inducción de Proyecto - ${current.unidad_produccion || inductionUnitName(current).replace('Proyecto · ','')}`
+    : 'Inducción Sede Lima';
+  if (paragraph) paragraph.textContent=current?.tipo==='PROYECTO'
+    ? 'Al abrir el enlace, el trabajador registrará apellidos y nombres, Registro o DNI, cargo o puesto, fecha de ingreso, área de trabajo y firma; luego desarrollará el examen final correspondiente al Día 4.'
+    : 'Al abrir el enlace, el trabajador registrará DNI, nombre, fecha de ingreso, puesto, área y firma; luego pasará directamente al examen.';
 }
 
 async function saveInductionExamAndContinue() {
@@ -4974,11 +5095,17 @@ document.getElementById('copyInductionPublicLink')?.addEventListener('click',asy
 document.getElementById('whatsappInductionPublicLink')?.addEventListener('click',()=>{
   const link=document.getElementById('inductionPublicLink')?.value || '';
   if (!link) return;
-  const text=`Inducción de ingreso - Explo Drilling Perú\n\nRegistra tus datos, firma y desarrolla tu examen en el siguiente enlace:\n${link}`;
+  const current=inductionRecords.find(x=>x.id===activeInductionId);
+  const text=current?.tipo==='PROYECTO'
+    ? `Inducción de Proyecto - ${current.unidad_produccion || 'Explo Drilling Perú'}\n\nRegistra tus datos, firma y desarrolla la evaluación final en el siguiente enlace:\n${link}`
+    : `Inducción de ingreso - Explo Drilling Perú\n\nRegistra tus datos, firma y desarrolla tu examen en el siguiente enlace:\n${link}`;
   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
 });
 
 document.getElementById('inductionSpeakerDni')?.addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/\D/g,'').slice(0,8);
+});
+document.getElementById('projectInductionSpeakerDni')?.addEventListener('input',e=>{
   e.target.value=e.target.value.replace(/\D/g,'').slice(0,8);
 });
 
@@ -5093,6 +5220,10 @@ async function openInductionResults(inductionId) {
   document.getElementById('inductionResultsFailed').textContent=String(failed);
   document.getElementById('inductionResultsAverage').textContent=avg.toFixed(1);
 
+  const isProject=induction.tipo==='PROYECTO';
+  document.getElementById('inductionLimaRegisterBar')?.classList.toggle('hidden',isProject);
+  document.getElementById('inductionProjectRegisterBar')?.classList.toggle('hidden',!isProject);
+
   if (!rows.length) {
     body.innerHTML='<tr><td colspan="8" class="table-empty">Todavía no hay trabajadores que hayan culminado esta inducción y evaluación.</td></tr>';
     return;
@@ -5109,7 +5240,7 @@ async function openInductionResults(inductionId) {
       <td>${escapeHtml(formatLongDatePE(r.finalizado_at))}</td>
       <td>
         <div class="induction-result-actions">
-          ${r.aprobado ? `<button class="certificate-btn" type="button" data-induction-cert="${r.intento_id}">Certificado</button>` : ''}
+          ${r.aprobado ? `<button class="certificate-btn" type="button" data-induction-cert="${r.intento_id}">${isProject?'Anexo 5':'Certificado'}</button>` : ''}
           <button class="result-download-btn" type="button" data-induction-exam="${r.intento_id}">Examen</button>
         </div>
       </td>
@@ -5136,7 +5267,7 @@ async function getInductionRegisterData(inductionId) {
   return data;
 }
 
-async function generateInductionRegisterPdf(record,button=null) {
+async function generateInductionRegisterPdf(record,button=null,options={}) {
   if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
 
   const original=button?.textContent || '';
@@ -5154,7 +5285,13 @@ async function generateInductionRegisterPdf(record,button=null) {
       compress:true
     });
 
-    const induction=record?.induccion || {};
+    const baseInduction=record?.induccion || {};
+    const induction={
+      ...baseInduction,
+      tema:options.tema ?? baseInduction.tema,
+      fecha:options.fecha ?? baseInduction.fecha,
+      tiempo_horas:options.tiempo_horas ?? baseInduction.tiempo_horas
+    };
     const participants=Array.isArray(record?.participantes) ? record.participantes : [];
 
     let logoData=null;
@@ -5463,7 +5600,8 @@ async function generateInductionRegisterPdf(record,button=null) {
     }
 
     const code=inductionSafeFile(induction.codigo,'INDUCCION');
-    doc.save(`${code}_Registro_Induccion.pdf`);
+    const suffix=options.filenameSuffix ? `_${inductionSafeFile(options.filenameSuffix,'Registro')}` : '';
+    doc.save(`${code}_Registro_Induccion${suffix}.pdf`);
   } finally {
     if (button) {
       button.disabled=false;
@@ -5486,6 +5624,134 @@ async function downloadCurrentInductionRegister(button) {
 
 document.getElementById('downloadInductionRegisterPdf')?.addEventListener('click',e=>{
   downloadCurrentInductionRegister(e.currentTarget);
+});
+
+
+async function downloadProjectDailyRegister(day,button) {
+  try {
+    const inductionId=activeInductionResults?.induction_id || activeInductionResults?.induccion?.id;
+    if (!inductionId) throw new Error('No se pudo identificar la inducción.');
+    const record=await getInductionRegisterData(inductionId);
+    const i=record.induccion || {};
+    if (i.tipo!=='PROYECTO') throw new Error('Este registro corresponde únicamente a inducciones de proyecto.');
+
+    const tema=i[`tema_dia${day}`];
+    const fecha=i[`fecha_dia${day}`];
+    if (!tema || !fecha) throw new Error(`No se encontraron los datos del Día ${day}.`);
+
+    await generateInductionRegisterPdf(record,button,{
+      tema,
+      fecha,
+      tiempo_horas:8,
+      filenameSuffix:`Dia_${day}`
+    });
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || `No fue posible generar el Registro Día ${day}.`);
+  }
+}
+
+async function inductionDataUrlBytes(dataUrl) {
+  if (!dataUrl || !dataUrl.includes(',')) return null;
+  const base64=dataUrl.split(',')[1];
+  const binary=atob(base64);
+  const bytes=new Uint8Array(binary.length);
+  for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return bytes;
+}
+
+async function generateProjectAnexo5Pdf(detail,button=null) {
+  if (!window.PDFLib?.PDFDocument) throw new Error('No se cargó el generador PDF.');
+  const original=button?.textContent || '';
+  if (button) {button.disabled=true;button.textContent='Generando…';}
+
+  try {
+    const response=await fetch('assets/anexo5-proyecto.pdf?v=20261011-1',{cache:'no-store'});
+    if (!response.ok) throw new Error('No se pudo cargar la plantilla del Anexo N° 5.');
+
+    const input=await response.arrayBuffer();
+    const {PDFDocument,StandardFonts,rgb}=window.PDFLib;
+    const pdfDoc=await PDFDocument.load(input,{ignoreEncryption:true});
+    const form=pdfDoc.getForm();
+    const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const page=pdfDoc.getPages()[0];
+
+    const i=detail.induccion || {};
+    const p=detail.participante || {};
+
+    const values={
+      'Text-4kipHSXJk-':String(i.titular_minero || '—'),
+      'Text-blq9yDLOib':'EXPLO DRILLING PERU S.R.L.',
+      'Text-Gf3YtZRZb2':String(i.unidad_produccion || i.proyecto_nombre || '—'),
+      'Text-loJlbNkCWO':String(i.distrito || '—'),
+      'Text-bv9xsFb7v8':String(i.provincia || '—'),
+      'Text-4iB_eSMh3m':String(p.nombre || '—'),
+      'Text-nk_1CkVM8Y':String(p.dni || '—'),
+      'Text-d9WIr0uRBE':String(p.puesto || '—'),
+      'Text-vZ90jn3Efe':inductionDocumentDatePE(p.fecha_ingreso),
+      'Text-GR6FNIhaQk':String(p.area || '—'),
+      'Paragraph-nDrY_4SFmc':inductionDocumentDatePE(i.fecha_dia4 || i.fecha)
+    };
+
+    for (const [name,value] of Object.entries(values)) {
+      try {
+        const field=form.getTextField(name);
+        field.setText(value);
+        let size=10;
+        while (size>6 && font.widthOfTextAtSize(value,size)>235) size-=0.25;
+        field.setFontSize(size);
+      } catch(e) {
+        console.warn('Campo PDF no encontrado',name,e);
+      }
+    }
+
+    form.updateFieldAppearances(font);
+
+    // Supervisor / expositor.
+    const supervisor=String(i.expositor || '');
+    let supervisorSize=9;
+    while (supervisorSize>6 && font.widthOfTextAtSize(supervisor,supervisorSize)>190) supervisorSize-=0.25;
+    page.drawText(supervisor,{
+      x:55,y:56,size:supervisorSize,font,color:rgb(0,0,0)
+    });
+
+    // Firma del expositor en el recuadro del Ingeniero Supervisor.
+    if (i.firma_expositor) {
+      try {
+        const bytes=await inductionDataUrlBytes(i.firma_expositor);
+        if (bytes) {
+          const img=await pdfDoc.embedPng(bytes);
+          page.drawImage(img,{x:278,y:43,width:76,height:35});
+        }
+      } catch(e) {console.warn('Firma expositor no insertada',e);}
+    }
+
+    // Firma del trabajador en el recuadro derecho.
+    if (p.firma) {
+      try {
+        const bytes=await inductionDataUrlBytes(p.firma);
+        if (bytes) {
+          const img=await pdfDoc.embedPng(bytes);
+          page.drawImage(img,{x:470,y:42,width:110,height:46});
+        }
+      } catch(e) {console.warn('Firma trabajador no insertada',e);}
+    }
+
+    form.flatten();
+
+    const output=await pdfDoc.save();
+    const code=inductionSafeFile(i.codigo,'INDUCCION');
+    const name=inductionSafeFile(p.nombre,'Trabajador').slice(0,55);
+    inductionDownloadBlob(output,`${code}_Anexo_5_${name}.pdf`);
+  } finally {
+    if (button) {button.disabled=false;button.textContent=original;}
+  }
+}
+
+document.querySelectorAll('[data-project-register-day]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    downloadProjectDailyRegister(Number(button.dataset.projectRegisterDay),button);
+  });
 });
 
 function closeInductionResults() {
@@ -5751,11 +6017,15 @@ async function generateInductionExamPdf(detail,button=null) {
 async function downloadInductionCertificateFromAdmin(attemptId,button) {
   try {
     const detail=await getInductionResultDetail(attemptId);
-    if (!detail?.intento?.aprobado) throw new Error('El certificado solo está disponible para participantes aprobados.');
-    await generateInductionLimaCertificatePdf(detail,button);
+    if (!detail?.intento?.aprobado) throw new Error('El documento final solo está disponible para participantes aprobados.');
+    if (detail?.induccion?.tipo==='PROYECTO') {
+      await generateProjectAnexo5Pdf(detail,button);
+    } else {
+      await generateInductionLimaCertificatePdf(detail,button);
+    }
   } catch(err) {
     console.error(err);
-    alert(err?.message || 'No fue posible generar el certificado.');
+    alert(err?.message || 'No fue posible generar el documento final.');
   }
 }
 
@@ -5810,17 +6080,57 @@ async function initializePublicInductionMode(token) {
 
   publicInductionData=data;
   const i=data.induccion || {};
-  document.getElementById('publicInductionTitle').textContent=i.tema || 'Inducción Sede Lima';
+  const isProject=i.tipo==='PROYECTO';
+
+  document.getElementById('publicInductionTitle').textContent=isProject
+    ? `Inducción de Proyecto - ${i.unidad_produccion || i.proyecto_nombre || ''}`
+    : (i.tema || 'Inducción Sede Lima');
   document.getElementById('publicInductionCode').textContent=i.codigo || 'Inducción';
-  document.getElementById('publicInductionMeta').innerHTML=`
-    <div><span>Empresa</span><strong>${escapeHtml(i.empresa || 'EXPLO DRILLING PERU S.R.L.')}</strong></div>
-    <div><span>Tema</span><strong>${escapeHtml(i.tema || '—')}</strong></div>
-    <div><span>Fecha</span><strong>${escapeHtml(formatDatePE(i.fecha))}</strong></div>
-    <div><span>Tiempo</span><strong>${i.tiempo_horas ? `${Number(i.tiempo_horas)} h` : '—'}</strong></div>
-  `;
+
+  if (isProject) {
+    document.getElementById('publicInductionMeta').innerHTML=`
+      <div><span>Titular minero</span><strong>${escapeHtml(i.titular_minero || '—')}</strong></div>
+      <div><span>Unidad de producción</span><strong>${escapeHtml(i.unidad_produccion || i.proyecto_nombre || '—')}</strong></div>
+      ${[1,2,3,4].map(day=>`
+        <div class="public-project-day">
+          <span>Día ${day} · ${escapeHtml(formatDatePE(i[`fecha_dia${day}`]))} · 8 h</span>
+          <strong>${escapeHtml(i[`tema_dia${day}`] || '—')}</strong>
+        </div>
+      `).join('')}
+    `;
+
+    document.getElementById('publicInductionNameLabel').textContent='Trabajador (apellidos y nombres) *';
+    document.getElementById('publicInductionDniLabel').textContent='Registro o DNI *';
+    document.getElementById('publicInductionPositionLabel').textContent='Cargo o Puesto *';
+    document.getElementById('publicInductionEntryDateLabel').textContent='Fecha de ingreso *';
+    document.getElementById('publicInductionAreaLabel').textContent='Área de trabajo *';
+
+    document.getElementById('publicInductionNameField').style.order='1';
+    document.getElementById('publicInductionDniField').style.order='2';
+    document.getElementById('publicInductionPositionField').style.order='3';
+    document.getElementById('publicInductionEntryDateField').style.order='4';
+    document.getElementById('publicInductionAreaField').style.order='5';
+  } else {
+    document.getElementById('publicInductionMeta').innerHTML=`
+      <div><span>Empresa</span><strong>${escapeHtml(i.empresa || 'EXPLO DRILLING PERU S.R.L.')}</strong></div>
+      <div><span>Tema</span><strong>${escapeHtml(i.tema || '—')}</strong></div>
+      <div><span>Fecha</span><strong>${escapeHtml(formatDatePE(i.fecha))}</strong></div>
+      <div><span>Tiempo</span><strong>${i.tiempo_horas ? `${Number(i.tiempo_horas)} h` : '—'}</strong></div>
+    `;
+
+    document.getElementById('publicInductionDniLabel').textContent='DNI *';
+    document.getElementById('publicInductionNameLabel').textContent='Nombre *';
+    document.getElementById('publicInductionPositionLabel').textContent='Puesto de trabajo u ocupación *';
+
+    document.getElementById('publicInductionDniField').style.order='1';
+    document.getElementById('publicInductionNameField').style.order='2';
+    document.getElementById('publicInductionEntryDateField').style.order='3';
+    document.getElementById('publicInductionPositionField').style.order='4';
+    document.getElementById('publicInductionAreaField').style.order='5';
+  }
+
   initPublicInductionSignature();
 }
-
 function initPublicInductionSignature() {
   publicInductionSignatureCanvas=document.getElementById('publicInductionSignatureCanvas');
   if (!publicInductionSignatureCanvas) return;
@@ -5923,7 +6233,10 @@ function startPublicInductionExam(nombre) {
   document.getElementById('publicInductionExamStep')?.classList.remove('hidden');
 
   document.getElementById('publicInductionExamParticipant').textContent=nombre || 'Participante';
-  document.getElementById('publicInductionExamTopic').textContent=i.tema || '—';
+  document.getElementById('publicInductionExamTopic').textContent=
+    i.tipo==='PROYECTO'
+      ? `Evaluación final - ${i.unidad_produccion || i.proyecto_nombre || 'Proyecto'}`
+      : (i.tema || '—');
   document.getElementById('publicInductionPassGrade').textContent=String(i.nota_minima ?? '—');
   document.getElementById('publicInductionQuestionCount').textContent=String(questions.length);
 
@@ -6029,6 +6342,19 @@ async function submitPublicInductionExam(event) {
   publicInductionLastAttemptId=data.intento_id || null;
   publicInductionApprovedDetail=null;
   document.getElementById('publicInductionApprovedDocuments')?.classList.toggle('hidden',!data.aprobado);
+
+  const publicType=publicInductionData?.induccion?.tipo;
+  const certButton=document.getElementById('publicDownloadInductionCertificate');
+  const printStrong=document.querySelector('#publicInductionApprovedDocuments .public-induction-print-message strong');
+  const printText=document.querySelector('#publicInductionApprovedDocuments .public-induction-print-message p');
+  if (publicType==='PROYECTO') {
+    if (certButton) certButton.textContent='Descargar Anexo N° 5';
+    if (printStrong) printStrong.textContent='Documentos finales de la inducción de proyecto';
+    if (printText) printText.textContent='Descarga el Anexo N° 5 y el examen desarrollado. El Anexo N° 5 incluye tus datos y la firma digital registrada; verifica el documento antes de presentarlo según el control documental del proyecto.';
+  } else {
+    if (certButton) certButton.textContent='Descargar certificado / registro';
+  }
+
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -6057,10 +6383,14 @@ async function getPublicInductionApprovedDetail() {
 async function downloadPublicInductionCertificate(button) {
   try {
     const detail=await getPublicInductionApprovedDetail();
-    await generateInductionLimaCertificatePdf(detail,button);
+    if (detail?.induccion?.tipo==='PROYECTO') {
+      await generateProjectAnexo5Pdf(detail,button);
+    } else {
+      await generateInductionLimaCertificatePdf(detail,button);
+    }
   } catch(err) {
     console.error(err);
-    alert(err?.message || 'No fue posible generar el certificado / registro.');
+    alert(err?.message || 'No fue posible generar el documento.');
   }
 }
 

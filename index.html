@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261005-41" />
+  <link rel="stylesheet" href="styles.css?v=20261011-15" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -162,11 +162,11 @@
           <div id="publicInductionMeta" class="public-induction-meta"></div>
 
           <div class="public-induction-form-grid">
-            <label><span>DNI *</span><input id="publicInductionDni" type="text" inputmode="numeric" maxlength="8" placeholder="8 dígitos" autocomplete="off" /></label>
-            <label><span>Nombre *</span><input id="publicInductionName" maxlength="220" placeholder="Apellidos y nombres" autocomplete="name" /></label>
-            <label><span>Fecha de ingreso *</span><input id="publicInductionEntryDate" type="date" /></label>
-            <label><span>Puesto de trabajo u ocupación *</span><input id="publicInductionPosition" maxlength="180" placeholder="Ej. Ayudante de perforación" /></label>
-            <label class="public-induction-full"><span>Área de trabajo *</span><input id="publicInductionArea" maxlength="180" placeholder="Ej. Operaciones" /></label>
+            <label id="publicInductionDniField"><span id="publicInductionDniLabel">DNI *</span><input id="publicInductionDni" type="text" inputmode="numeric" maxlength="8" placeholder="8 dígitos" autocomplete="off" /></label>
+            <label id="publicInductionNameField"><span id="publicInductionNameLabel">Nombre *</span><input id="publicInductionName" maxlength="220" placeholder="Apellidos y nombres" autocomplete="name" /></label>
+            <label id="publicInductionEntryDateField"><span id="publicInductionEntryDateLabel">Fecha de ingreso *</span><input id="publicInductionEntryDate" type="date" /></label>
+            <label id="publicInductionPositionField"><span id="publicInductionPositionLabel">Puesto de trabajo u ocupación *</span><input id="publicInductionPosition" maxlength="180" placeholder="Ej. Ayudante de perforación" /></label>
+            <label id="publicInductionAreaField" class="public-induction-full"><span id="publicInductionAreaLabel">Área de trabajo *</span><input id="publicInductionArea" maxlength="180" placeholder="Ej. Operaciones" /></label>
           </div>
 
           <section class="public-induction-signature">
@@ -1341,24 +1341,124 @@
                   </label>
                 </div>
 
-                <div class="induction-speaker-signature">
-                  <div>
-                    <span class="eyebrow">FIRMA DEL EXPOSITOR *</span>
-                    <h4>Registra la firma del expositor</h4>
-                  </div>
-                  <div class="induction-signature-wrap">
-                    <canvas id="inductionSpeakerSignatureCanvas" width="900" height="260"></canvas>
-                  </div>
-                  <div class="induction-signature-actions">
-                    <button id="clearInductionSpeakerSignature" class="secondary-btn" type="button">Limpiar firma</button>
-                  </div>
+
+              </div>
+
+              <div id="inductionProjectProgramming" class="hidden">
+                <div class="project-induction-banner">
+                  <span class="eyebrow">INDUCCIÓN DE PROYECTO · 4 DÍAS</span>
+                  <h4>Programación de la inducción específica</h4>
+                  <p>Los cuatro días tienen una duración fija de 8 horas cada uno. El examen se aplica al finalizar el Día 4.</p>
+                </div>
+
+                <div class="form-grid induction-program-grid">
+                  <label>
+                    <span>Titular minero *</span>
+                    <input id="projectInductionMiningOwner" maxlength="220" placeholder="Razón social del titular minero" />
+                  </label>
+
+                  <label>
+                    <span>E.C.M. / Conexas *</span>
+                    <input id="projectInductionEcm" value="EXPLO DRILLING PERU S.R.L." readonly />
+                  </label>
+
+                  <label class="form-span-2">
+                    <span>Unidad de producción / Proyecto *</span>
+                    <select id="projectInductionProject"><option value="">Seleccione un proyecto</option></select>
+                  </label>
+
+                  <label>
+                    <span>Distrito *</span>
+                    <input id="projectInductionDistrict" maxlength="120" placeholder="Distrito" />
+                  </label>
+
+                  <label>
+                    <span>Provincia *</span>
+                    <input id="projectInductionProvince" maxlength="120" placeholder="Provincia" />
+                  </label>
+
+                  <label>
+                    <span>Expositor *</span>
+                    <input id="projectInductionSpeaker" maxlength="180" placeholder="Apellidos y nombres" />
+                  </label>
+
+                  <label>
+                    <span>Cargo *</span>
+                    <input id="projectInductionSpeakerPosition" maxlength="160" placeholder="Cargo del expositor" />
+                  </label>
+
+                  <label>
+                    <span>DNI *</span>
+                    <input id="projectInductionSpeakerDni" maxlength="8" inputmode="numeric" placeholder="8 dígitos" />
+                  </label>
+
+                  <label>
+                    <span>Empresa *</span>
+                    <input id="projectInductionCompany" value="EXPLO DRILLING PERU S.R.L." readonly />
+                  </label>
+
+                  <label class="form-span-2">
+                    <span>Área *</span>
+                    <input id="projectInductionArea" maxlength="160" placeholder="Área de trabajo / especialidad" />
+                  </label>
+                </div>
+
+                <div class="project-day-grid">
+                  <article class="project-day-card">
+                    <div class="project-day-number">DÍA 1</div>
+                    <label><span>Tema Día 1 *</span><textarea id="projectInductionTopic1" rows="3" maxlength="500"></textarea></label>
+                    <label><span>Fecha Día 1 *</span><input id="projectInductionDate1" type="date" /></label>
+                    <div class="project-day-time"><span>Tiempo</span><strong>8 horas</strong></div>
+                  </article>
+
+                  <article class="project-day-card">
+                    <div class="project-day-number">DÍA 2</div>
+                    <label><span>Tema Día 2 *</span><textarea id="projectInductionTopic2" rows="3" maxlength="500"></textarea></label>
+                    <label><span>Fecha Día 2 *</span><input id="projectInductionDate2" type="date" /></label>
+                    <div class="project-day-time"><span>Tiempo</span><strong>8 horas</strong></div>
+                  </article>
+
+                  <article class="project-day-card">
+                    <div class="project-day-number">DÍA 3</div>
+                    <label><span>Tema Día 3 *</span><textarea id="projectInductionTopic3" rows="3" maxlength="500"></textarea></label>
+                    <label><span>Fecha Día 3 *</span><input id="projectInductionDate3" type="date" /></label>
+                    <div class="project-day-time"><span>Tiempo</span><strong>8 horas</strong></div>
+                  </article>
+
+                  <article class="project-day-card">
+                    <div class="project-day-number">DÍA 4</div>
+                    <label><span>Tema Día 4 *</span><textarea id="projectInductionTopic4" rows="3" maxlength="500"></textarea></label>
+                    <label><span>Fecha Día 4 *</span><input id="projectInductionDate4" type="date" /></label>
+                    <div class="project-day-time"><span>Tiempo</span><strong>8 horas</strong></div>
+                  </article>
+                </div>
+
+                <div class="form-grid induction-program-grid project-exam-settings">
+                  <label>
+                    <span>Nota mínima *</span>
+                    <input id="projectInductionMinGrade" type="number" min="0" max="20" step="0.1" value="14" />
+                  </label>
+                  <label>
+                    <span>Estado *</span>
+                    <select id="projectInductionStatus">
+                      <option value="BORRADOR">BORRADOR</option>
+                      <option value="ACTIVA">ACTIVA</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 
-              <div id="inductionProjectProgramming" class="induction-project-placeholder hidden">
-                <span class="eyebrow">INDUCCIÓN DE PROYECTO</span>
-                <h4>Flujo de Proyecto</h4>
-                <p>La estructura específica para proyectos se desarrollará sobre esta misma base en la siguiente etapa.</p>
+              <div class="induction-speaker-signature">
+                <div>
+                  <span class="eyebrow">FIRMA DEL EXPOSITOR *</span>
+                  <h4>Registra la firma del expositor</h4>
+                </div>
+                <div class="induction-signature-wrap">
+                  <canvas id="inductionSpeakerSignatureCanvas" width="900" height="260"></canvas>
+                </div>
+                <div class="induction-signature-actions">
+                  <button id="clearInductionSpeakerSignature" class="secondary-btn" type="button">Limpiar firma</button>
+                </div>
               </div>
 
               <div id="inductionFormMessage" class="form-message"></div>
@@ -1444,13 +1544,29 @@
               <div><span>Nota promedio</span><strong id="inductionResultsAverage">0.0</strong></div>
             </div>
 
-            <div class="induction-register-download-bar">
+            <div id="inductionLimaRegisterBar" class="induction-register-download-bar">
               <div>
                 <span class="eyebrow">REGISTRO CORPORATIVO</span>
                 <strong>Registro de inducción, capacitación, entrenamiento y simulacro de emergencia</strong>
                 <small>Se completa con los datos y firmas registrados en esta inducción.</small>
               </div>
               <button id="downloadInductionRegisterPdf" class="primary-btn" type="button">Descargar registro PDF</button>
+            </div>
+
+            <div id="inductionProjectRegisterBar" class="project-register-download-panel hidden">
+              <div class="project-register-download-head">
+                <div>
+                  <span class="eyebrow">REGISTROS DE INDUCCIÓN POR PROYECTO</span>
+                  <strong>Un registro por cada día de inducción</strong>
+                  <small>Cada PDF usa el tema y la fecha programados para ese día, con 8 horas de duración y los participantes registrados.</small>
+                </div>
+              </div>
+              <div class="project-register-day-actions">
+                <button type="button" class="project-day-download" data-project-register-day="1">Registro Día 1</button>
+                <button type="button" class="project-day-download" data-project-register-day="2">Registro Día 2</button>
+                <button type="button" class="project-day-download" data-project-register-day="3">Registro Día 3</button>
+                <button type="button" class="project-day-download" data-project-register-day="4">Registro Día 4</button>
+              </div>
             </div>
 
             <div class="table-wrap induction-results-table-wrap">
@@ -1742,7 +1858,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script src="config.js?v=20261005-41"></script>
-  <script src="app.js?v=20261005-41"></script>
+  <script src="config.js?v=20261011-15"></script>
+  <script src="app.js?v=20261011-15"></script>
 </body>
 </html>

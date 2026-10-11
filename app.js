@@ -5707,35 +5707,14 @@ async function generateProjectAnexo5Pdf(detail,button=null) {
 
     form.updateFieldAppearances(font);
 
-    // Supervisor / expositor.
-    const supervisor=String(i.expositor || '');
-    let supervisorSize=9;
-    while (supervisorSize>6 && font.widthOfTextAtSize(supervisor,supervisorSize)>190) supervisorSize-=0.25;
-    page.drawText(supervisor,{
-      x:55,y:56,size:supervisorSize,font,color:rgb(0,0,0)
-    });
-
-    // Firma del expositor en el recuadro del Ingeniero Supervisor.
-    if (i.firma_expositor) {
-      try {
-        const bytes=await inductionDataUrlBytes(i.firma_expositor);
-        if (bytes) {
-          const img=await pdfDoc.embedPng(bytes);
-          page.drawImage(img,{x:278,y:43,width:76,height:35});
-        }
-      } catch(e) {console.warn('Firma expositor no insertada',e);}
-    }
-
-    // Firma del trabajador en el recuadro derecho.
-    if (p.firma) {
-      try {
-        const bytes=await inductionDataUrlBytes(p.firma);
-        if (bytes) {
-          const img=await pdfDoc.embedPng(bytes);
-          page.drawImage(img,{x:470,y:42,width:110,height:46});
-        }
-      } catch(e) {console.warn('Firma trabajador no insertada',e);}
-    }
+    // IMPORTANTE:
+    // En el Anexo N° 5 los campos inferiores se dejan en blanco
+    // para que el documento sea impreso y firmado físicamente.
+    // Por ello NO se inserta:
+    // - nombre del expositor / ingeniero supervisor;
+    // - firma del expositor;
+    // - firma del trabajador.
+    // La fecha se mantiene porque forma parte de los datos del registro.
 
     form.flatten();
 
@@ -6350,7 +6329,7 @@ async function submitPublicInductionExam(event) {
   if (publicType==='PROYECTO') {
     if (certButton) certButton.textContent='Descargar Anexo N° 5';
     if (printStrong) printStrong.textContent='Documentos finales de la inducción de proyecto';
-    if (printText) printText.textContent='Descarga el Anexo N° 5 y el examen desarrollado. El Anexo N° 5 incluye tus datos y la firma digital registrada; verifica el documento antes de presentarlo según el control documental del proyecto.';
+    if (printText) printText.textContent='Descarga e imprime el Anexo N° 5. Los espacios de NOMBRE Y APELLIDOS, FIRMA DEL INGENIERO SUPERVISOR y FIRMA DEL TRABAJADOR se dejan en blanco intencionalmente para que sean completados y firmados físicamente después de imprimir.';
   } else {
     if (certButton) certButton.textContent='Descargar certificado / registro';
   }

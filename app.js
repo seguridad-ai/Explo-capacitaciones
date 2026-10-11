@@ -73,6 +73,7 @@ function showSection(sectionId) {
   if (sectionId === 'trabajadores') loadWorkersModule();
   if (sectionId === 'nueva-capacitacion') loadTrainingModule();
   if (sectionId === 'practicar') { switchPracticeMode(practiceEvaluationMode || 'quiz'); }
+  if (sectionId === 'comite') loadCommitteeModule();
   if (sectionId === 'usuarios') loadUsersModule();
 }
 
@@ -302,6 +303,743 @@ menuItems.forEach(item => item.addEventListener('click', () => {
 document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showSection(button.dataset.go)));
 mobileMenu?.addEventListener('click', () => sidebar?.classList.toggle('open'));
 
+
+
+
+// ============================================================
+// ETAPA 16A · COMITÉ SST / SUBCOMITÉ SST
+// CONFORMACIÓN E INTEGRANTES
+// ============================================================
+
+let committeeRecords = [];
+let committeeMembers = [];
+let committeeSites = [];
+let committeeProjects = [];
+let committeeModuleLoaded = false;
+let committeeActiveId = null;
+let committeeCurrentType = 'COMITE';
+let committeeSelectedWorker = null;
+
+function committeeMessage(message='',type='error') {
+  const el=document.getElementById('committeeModuleMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`module-message ${message?'visible':''} ${type}`;
+}
+
+function committeeFormMessage(message='',type='error') {
+  const el=document.getElementById('committeeFormMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeMemberMessage(message='',type='error') {
+  const el=document.getElementById('committeeMemberMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeDetailMessage(message='',type='error') {
+  const el=document.getElementById('committeeDetailMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeUnitName(record) {
+  if (!record) return '—';
+  if (record.tipo==='COMITE') {
+    return committeeSites.find(x=>x.id===record.sede_id)?.nombre || 'Sede';
+  }
+  return committeeProjects.find(x=>x.id===record.proyecto_id)?.nombre || 'Proyecto';
+}
+
+function committeeTypeLabel(type) {
+  return type==='SUBCOMITE' ? 'Subcomité SST' : 'Comité SST';
+}
+
+function committeeStatusClass(status) {
+  return String(status || '').toLowerCase();
+}
+
+function committeeStatusLabel(status) {
+  return {
+    ACTIVO:'ACTIVO',
+    BORRADOR:'BORRADOR',
+    CERRADO:'CERRADO'
+  }[status] || status || '—';
+}
+
+function committeeCanCreate() {
+  return ['ADMIN','PROYECTO'].includes(currentProfile?.rol_codigo);
+}
+
+function committeeCanManage(record) {
+  if (!record) return false;
+  if (currentProfile?.rol_codigo==='ADMIN') return true;
+  if (currentProfile?.rol_codigo!=='PROYECTO') return false;
+  return record.tipo==='SUBCOMITE' &&
+    committeeProjects.some(p=>p.id===record.proyecto_id);
+}
+
+function committeeRecordMembers(comiteId) {
+  return committeeMembers.filter(x=>x.comite_id===comiteId);
+}
+
+function committeeActiveMembers(comiteId) {
+  return committeeRecordMembers(comiteId).filter(x=>x.activo);
+}
+
+function committeeWorkerName(worker) {
+  if (!worker) return '—';
+  return [worker.apellidos,worker.nombres].filter(Boolean).join(' ').trim() || '—';
+}
+
+function committeeGeneratedName() {
+  const type=document.getElementById('committeeType')?.value || 'COMITE';
+  if (type==='COMITE') {
+    const id=document.getElementById('committeeSite')?.value;
+    const unit=committeeSites.find(x=>x.id===id)?.nombre || '';
+    return unit ? `Comité SST - ${unit}` : 'Comité SST';
+  }
+  const id=document.getElementById('committeeProject')?.value;
+  const unit=committeeProjects.find(x=>x.id===id)?.nombre || '';
+  return unit ? `Subcomité SST - ${unit}` : 'Subcomité SST';
+}
+
+function updateCommitteeGeneratedName() {
+  const input=document.getElementById('committeeGeneratedName');
+  if (input) input.value=committeeGeneratedName();
+}
+
+function setCommitteeType(type) {
+  committeeCurrentType=type==='SUBCOMITE' ? 'SUBCOMITE' : 'COMITE';
+  const hidden=document.getElementById('committeeType');
+  if (hidden) hidden.value=committeeCurrentType;
+
+  document.getElementById('committeeTypeSiteButton')?.classList.toggle('active',committeeCurrentType==='COMITE');
+  document.getElementById('committeeTypeProjectButton')?.classList.toggle('active',committeeCurrentType==='SUBCOMITE');
+  document.getElementById('committeeSiteField')?.classList.toggle('hidden',committeeCurrentType!=='COMITE');
+  document.getElementById('committeeProjectField')?.classList.toggle('hidden',committeeCurrentType!=='SUBCOMITE');
+
+  updateCommitteeGeneratedName();
+}
+
+function populateCommitteeUnits() {
+  const site=document.getElementById('committeeSite');
+  const project=document.getElementById('committeeProject');
+
+  if (site) {
+    site.innerHTML='<option value="">Seleccione una sede</option>' +
+      committeeSites.filter(x=>x.activo!==false)
+        .map(x=>`<option value="${x.id}">${escapeHtml(x.nombre || 'Sede')}</option>`)
+        .join('');
+  }
+
+  if (project) {
+    project.innerHTML='<option value="">Seleccione un proyecto</option>' +
+      committeeProjects.filter(x=>x.activo!==false)
+        .map(x=>`<option value="${x.id}">${escapeHtml(x.nombre || 'Proyecto')}</option>`)
+        .join('');
+  }
+}
+
+function updateCommitteeStats() {
+  const total=committeeRecords.length;
+  const site=committeeRecords.filter(x=>x.tipo==='COMITE').length;
+  const project=committeeRecords.filter(x=>x.tipo==='SUBCOMITE').length;
+  const memberCount=committeeMembers.filter(x=>x.activo).length;
+
+  const values={
+    committeeTotalCount:total,
+    committeeSiteCount:site,
+    committeeProjectCount:project,
+    committeeMemberCount:memberCount
+  };
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderCommitteeList() {
+  const list=document.getElementById('committeeList');
+  if (!list) return;
+
+  const q=(document.getElementById('committeeSearch')?.value || '').trim().toLowerCase();
+  const type=document.getElementById('committeeTypeFilter')?.value || '';
+  const status=document.getElementById('committeeStatusFilter')?.value || '';
+
+  const rows=committeeRecords.filter(record=>{
+    if (type && record.tipo!==type) return false;
+    if (status && record.estado!==status) return false;
+
+    const hay=[
+      record.codigo,
+      record.nombre,
+      committeeUnitName(record),
+      record.numero_acta
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  if (!rows.length) {
+    list.innerHTML='<div class="training-library-empty">No se encontraron conformaciones del Comité SST.</div>';
+    return;
+  }
+
+  list.innerHTML=rows.map(record=>{
+    const members=committeeRecordMembers(record.id);
+    const active=members.filter(x=>x.activo).length;
+    const titular=members.filter(x=>x.activo && x.condicion==='TITULAR').length;
+    const suplente=members.filter(x=>x.activo && x.condicion==='SUPLENTE').length;
+    const canManage=committeeCanManage(record);
+    const unit=committeeUnitName(record);
+
+    return `
+      <article class="committee-card">
+        <div class="committee-card-icon ${record.tipo==='SUBCOMITE'?'project':'site'}">${record.tipo==='SUBCOMITE'?'◆':'◎'}</div>
+        <div class="committee-card-main">
+          <div class="committee-card-title-row">
+            <div>
+              <span class="eyebrow">${record.tipo==='SUBCOMITE'?'SUBCOMITÉ SST · PROYECTO':'COMITÉ SST · SEDE'}</span>
+              <h4>${escapeHtml(record.nombre || committeeTypeLabel(record.tipo))}</h4>
+            </div>
+            <span class="committee-status ${committeeStatusClass(record.estado)}">${escapeHtml(committeeStatusLabel(record.estado))}</span>
+          </div>
+
+          <div class="committee-card-meta">
+            <span><b>${escapeHtml(record.codigo || '—')}</b></span>
+            <span>${escapeHtml(unit)}</span>
+            <span>${escapeHtml(formatDatePE(record.vigencia_desde))} - ${escapeHtml(formatDatePE(record.vigencia_hasta))}</span>
+            ${record.numero_acta ? `<span>Acta: ${escapeHtml(record.numero_acta)}</span>` : ''}
+          </div>
+
+          <div class="committee-card-stats">
+            <span><b>${active}</b> activos</span>
+            <span><b>${titular}</b> titulares</span>
+            <span><b>${suplente}</b> suplentes</span>
+          </div>
+        </div>
+
+        <div class="committee-card-actions">
+          <button class="committee-manage-btn" type="button" data-committee-detail="${record.id}">Integrantes</button>
+          ${canManage ? `<button class="secondary-btn" type="button" data-committee-edit="${record.id}">Editar</button>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-committee-detail]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeDetail(button.dataset.committeeDetail));
+  });
+
+  list.querySelectorAll('[data-committee-edit]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const record=committeeRecords.find(x=>x.id===button.dataset.committeeEdit);
+      openCommitteeForm(record);
+    });
+  });
+}
+
+async function loadCommitteeModule(force=false) {
+  if (!client) return;
+  if (committeeModuleLoaded && !force) {
+    updateCommitteeStats();
+    renderCommitteeList();
+    return;
+  }
+
+  committeeMessage('');
+  const button=document.getElementById('newCommitteeButton');
+  if (button) {
+    button.classList.toggle('hidden',!committeeCanCreate());
+  }
+
+  const [committees,members,sites,projects]=await Promise.all([
+    client.from('comites_sst')
+      .select('id,codigo,tipo,nombre,sede_id,proyecto_id,fecha_constitucion,vigencia_desde,vigencia_hasta,numero_acta,estado,observaciones,created_by,created_at,updated_at')
+      .order('vigencia_desde',{ascending:false}),
+    client.from('comite_sst_integrantes')
+      .select('id,comite_id,trabajador_id,representacion,condicion,cargo_comite,fecha_inicio,fecha_fin,activo,created_at,updated_at,trabajadores(id,dni,nombres,apellidos,cargo,area,sede_id,proyecto_id,activo)')
+      .order('created_at',{ascending:true}),
+    client.from('sedes').select('id,codigo,nombre,ubicacion,activo').order('nombre'),
+    client.from('proyectos').select('id,codigo,nombre,cliente,ubicacion,activo').order('nombre')
+  ]);
+
+  const errors=[committees.error,members.error,sites.error,projects.error].filter(Boolean);
+  if (errors.length) {
+    console.error(errors);
+    committeeMessage(errors[0].message || 'No fue posible cargar el módulo Comité SST.');
+    return;
+  }
+
+  committeeRecords=committees.data || [];
+  committeeMembers=members.data || [];
+  committeeSites=sites.data || [];
+  committeeProjects=projects.data || [];
+  committeeModuleLoaded=true;
+
+  populateCommitteeUnits();
+  updateCommitteeStats();
+  renderCommitteeList();
+}
+
+function openCommitteeForm(record=null) {
+  const modal=document.getElementById('committeeFormModal');
+  if (!modal) return;
+
+  committeeFormMessage('');
+  document.getElementById('committeeEditId').value=record?.id || '';
+  document.getElementById('committeeFormTitle').textContent=record ? 'Editar conformación' : 'Nueva conformación';
+
+  let type=record?.tipo || (currentProfile?.rol_codigo==='PROYECTO' ? 'SUBCOMITE' : 'COMITE');
+  setCommitteeType(type);
+
+  const siteButton=document.getElementById('committeeTypeSiteButton');
+  if (siteButton) {
+    const disabled=currentProfile?.rol_codigo==='PROYECTO';
+    siteButton.disabled=disabled;
+    siteButton.classList.toggle('disabled',disabled);
+  }
+
+  document.getElementById('committeeSite').value=record?.sede_id || '';
+  document.getElementById('committeeProject').value=record?.proyecto_id || '';
+
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('committeeConstitutionDate').value=record?.fecha_constitucion || today;
+  document.getElementById('committeeValidFrom').value=record?.vigencia_desde || today;
+  document.getElementById('committeeValidTo').value=record?.vigencia_hasta || '';
+  document.getElementById('committeeActNumber').value=record?.numero_acta || '';
+  document.getElementById('committeeStatus').value=record?.estado || 'ACTIVO';
+  document.getElementById('committeeNotes').value=record?.observaciones || '';
+
+  updateCommitteeGeneratedName();
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeForm() {
+  const modal=document.getElementById('committeeFormModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  if (document.getElementById('committeeDetailModal')?.classList.contains('hidden')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function saveCommitteeForm(event) {
+  event.preventDefault();
+  committeeFormMessage('');
+
+  const id=document.getElementById('committeeEditId').value || null;
+  const type=document.getElementById('committeeType').value;
+  const sede_id=type==='COMITE' ? (document.getElementById('committeeSite').value || null) : null;
+  const proyecto_id=type==='SUBCOMITE' ? (document.getElementById('committeeProject').value || null) : null;
+  const fecha_constitucion=document.getElementById('committeeConstitutionDate').value;
+  const vigencia_desde=document.getElementById('committeeValidFrom').value;
+  const vigencia_hasta=document.getElementById('committeeValidTo').value;
+  const numero_acta=document.getElementById('committeeActNumber').value.trim() || null;
+  const estado=document.getElementById('committeeStatus').value;
+  const observaciones=document.getElementById('committeeNotes').value.trim() || null;
+  const nombre=committeeGeneratedName();
+
+  if (type==='COMITE' && !sede_id) {
+    committeeFormMessage('Selecciona la sede del Comité SST.');
+    return;
+  }
+  if (type==='SUBCOMITE' && !proyecto_id) {
+    committeeFormMessage('Selecciona el proyecto del Subcomité SST.');
+    return;
+  }
+  if (!fecha_constitucion || !vigencia_desde || !vigencia_hasta) {
+    committeeFormMessage('Completa la fecha de constitución y el periodo de vigencia.');
+    return;
+  }
+  if (new Date(`${vigencia_hasta}T00:00:00`) < new Date(`${vigencia_desde}T00:00:00`)) {
+    committeeFormMessage('La vigencia hasta no puede ser anterior a la vigencia desde.');
+    return;
+  }
+
+  const payload={
+    tipo:type,
+    nombre,
+    sede_id,
+    proyecto_id,
+    fecha_constitucion,
+    vigencia_desde,
+    vigencia_hasta,
+    numero_acta,
+    estado,
+    observaciones
+  };
+
+  if (!id) payload.created_by=currentProfile?.id || null;
+
+  const button=document.getElementById('saveCommitteeButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const result=id
+    ? await client.from('comites_sst').update(payload).eq('id',id).select().single()
+    : await client.from('comites_sst').insert(payload).select().single();
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (result.error) {
+    console.error(result.error);
+    committeeFormMessage(result.error.message || 'No fue posible guardar la conformación.');
+    return;
+  }
+
+  closeCommitteeForm();
+  committeeModuleLoaded=false;
+  await loadCommitteeModule(true);
+
+  committeeMessage(id ? 'Conformación actualizada correctamente.' : 'Conformación creada correctamente.','success');
+  await openCommitteeDetail(result.data.id);
+}
+
+function openCommitteeMemberEditor(member=null) {
+  const editor=document.getElementById('committeeMemberEditor');
+  if (!editor || !committeeActiveId) return;
+
+  committeeMemberMessage('');
+  committeeSelectedWorker=null;
+
+  document.getElementById('committeeMemberEditId').value=member?.id || '';
+  document.getElementById('committeeMemberWorkerId').value=member?.trabajador_id || '';
+  document.getElementById('committeeMemberEditorTitle').textContent=member ? 'Editar integrante' : 'Agregar integrante';
+  document.getElementById('committeeMemberDni').disabled=!!member;
+  document.getElementById('searchCommitteeWorkerButton').disabled=!!member;
+
+  const worker=member?.trabajadores || null;
+  document.getElementById('committeeMemberDni').value=worker?.dni || '';
+  document.getElementById('committeeMemberRepresentation').value=member?.representacion || 'EMPLEADOR';
+  document.getElementById('committeeMemberCondition').value=member?.condicion || 'TITULAR';
+  document.getElementById('committeeMemberCommitteeRole').value=member?.cargo_comite || 'MIEMBRO';
+
+  const committee=committeeRecords.find(x=>x.id===committeeActiveId);
+  document.getElementById('committeeMemberStartDate').value=member?.fecha_inicio || committee?.vigencia_desde || '';
+  document.getElementById('committeeMemberEndDate').value=member?.fecha_fin || '';
+  document.getElementById('committeeMemberActive').checked=member ? member.activo!==false : true;
+
+  if (worker) {
+    committeeSelectedWorker=worker;
+    renderCommitteeFoundWorker(worker);
+  } else {
+    document.getElementById('committeeWorkerFound')?.classList.add('hidden');
+  }
+
+  editor.classList.remove('hidden');
+  setTimeout(()=>document.getElementById('committeeMemberDni')?.focus(),50);
+}
+
+function closeCommitteeMemberEditor() {
+  document.getElementById('committeeMemberEditor')?.classList.add('hidden');
+  committeeMemberMessage('');
+  committeeSelectedWorker=null;
+}
+
+function renderCommitteeFoundWorker(worker) {
+  committeeSelectedWorker=worker;
+  document.getElementById('committeeMemberWorkerId').value=worker?.id || '';
+  document.getElementById('committeeWorkerFoundName').textContent=committeeWorkerName(worker);
+  document.getElementById('committeeWorkerFoundPosition').textContent=worker?.cargo || '—';
+  document.getElementById('committeeWorkerFoundArea').textContent=worker?.area || '—';
+  document.getElementById('committeeWorkerFound')?.classList.remove('hidden');
+}
+
+async function searchCommitteeWorker() {
+  committeeMemberMessage('');
+  if (!committeeActiveId) return;
+
+  const dni=document.getElementById('committeeMemberDni').value.replace(/\D/g,'').slice(0,8);
+  document.getElementById('committeeMemberDni').value=dni;
+
+  if (!/^\d{8}$/.test(dni)) {
+    committeeMemberMessage('Ingresa un DNI válido de 8 dígitos.');
+    return;
+  }
+
+  const button=document.getElementById('searchCommitteeWorkerButton');
+  button.disabled=true;
+  button.textContent='Buscando…';
+
+  const {data,error}=await client.rpc('buscar_trabajador_comite',{
+    p_comite_id:committeeActiveId,
+    p_dni:dni
+  });
+
+  button.disabled=false;
+  button.textContent='Buscar';
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    committeeSelectedWorker=null;
+    document.getElementById('committeeMemberWorkerId').value='';
+    document.getElementById('committeeWorkerFound')?.classList.add('hidden');
+    committeeMemberMessage(data?.error || error?.message || 'No se encontró el trabajador.');
+    return;
+  }
+
+  renderCommitteeFoundWorker(data.trabajador);
+  committeeMemberMessage('Trabajador encontrado correctamente.','success');
+}
+
+async function saveCommitteeMember() {
+  committeeMemberMessage('');
+  if (!committeeActiveId) return;
+
+  const integranteId=document.getElementById('committeeMemberEditId').value || null;
+  const trabajadorId=document.getElementById('committeeMemberWorkerId').value || null;
+  const representacion=document.getElementById('committeeMemberRepresentation').value;
+  const condicion=document.getElementById('committeeMemberCondition').value;
+  const cargoComite=document.getElementById('committeeMemberCommitteeRole').value;
+  const fechaInicio=document.getElementById('committeeMemberStartDate').value;
+  const fechaFin=document.getElementById('committeeMemberEndDate').value || null;
+  const activo=document.getElementById('committeeMemberActive').checked;
+
+  if (!trabajadorId) {
+    committeeMemberMessage('Busca y selecciona primero al trabajador por DNI.');
+    return;
+  }
+  if (!fechaInicio) {
+    committeeMemberMessage('Registra la fecha de inicio del integrante.');
+    return;
+  }
+
+  const button=document.getElementById('saveCommitteeMemberButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const {data,error}=await client.rpc('guardar_integrante_comite',{
+    p_integrante_id:integranteId,
+    p_comite_id:committeeActiveId,
+    p_trabajador_id:trabajadorId,
+    p_representacion:representacion,
+    p_condicion:condicion,
+    p_cargo_comite:cargoComite,
+    p_fecha_inicio:fechaInicio,
+    p_fecha_fin:fechaFin,
+    p_activo:activo
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    committeeMemberMessage(data?.error || error?.message || 'No fue posible guardar al integrante.');
+    return;
+  }
+
+  closeCommitteeMemberEditor();
+  committeeModuleLoaded=false;
+  await loadCommitteeModule(true);
+  await openCommitteeDetail(committeeActiveId,true);
+  committeeDetailMessage(data.message || 'Integrante guardado correctamente.','success');
+}
+
+function renderCommitteeMembersTable(record) {
+  const body=document.getElementById('committeeMembersBody');
+  if (!body) return;
+
+  const rows=committeeRecordMembers(record.id);
+  const canManage=committeeCanManage(record);
+
+  if (!rows.length) {
+    body.innerHTML='<tr><td colspan="9" class="table-empty">Todavía no se han registrado integrantes.</td></tr>';
+    return;
+  }
+
+  const roleOrder={PRESIDENTE:1,SECRETARIO:2,VOCAL:3,MIEMBRO:4};
+  const sorted=[...rows].sort((a,b)=>{
+    if (a.activo!==b.activo) return a.activo ? -1 : 1;
+    const ar=roleOrder[a.cargo_comite] || 99;
+    const br=roleOrder[b.cargo_comite] || 99;
+    if (ar!==br) return ar-br;
+    return committeeWorkerName(a.trabajadores).localeCompare(committeeWorkerName(b.trabajadores),'es');
+  });
+
+  body.innerHTML=sorted.map(member=>{
+    const worker=member.trabajadores || {};
+    const validity=member.fecha_fin
+      ? `${formatDatePE(member.fecha_inicio)} - ${formatDatePE(member.fecha_fin)}`
+      : `Desde ${formatDatePE(member.fecha_inicio)}`;
+
+    return `
+      <tr>
+        <td>${escapeHtml(worker.dni || '—')}</td>
+        <td><strong>${escapeHtml(committeeWorkerName(worker))}</strong></td>
+        <td><strong>${escapeHtml(worker.cargo || '—')}</strong><br><small>${escapeHtml(worker.area || '—')}</small></td>
+        <td><span class="committee-representation ${String(member.representacion||'').toLowerCase()}">${member.representacion==='EMPLEADOR'?'Empleador':'Trabajadores'}</span></td>
+        <td>${member.condicion==='TITULAR'?'Titular':'Suplente'}</td>
+        <td><strong>${escapeHtml(member.cargo_comite || '—')}</strong></td>
+        <td>${escapeHtml(validity)}</td>
+        <td><span class="committee-member-status ${member.activo?'active':'inactive'}">${member.activo?'Activo':'Inactivo'}</span></td>
+        <td>
+          <div class="committee-member-actions">
+            ${canManage ? `<button type="button" data-committee-member-edit="${member.id}">Editar</button>` : ''}
+            ${canManage ? `<button type="button" class="${member.activo?'danger':'success'}" data-committee-member-toggle="${member.id}" data-next="${member.activo?'false':'true'}">${member.activo?'Desactivar':'Activar'}</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  body.querySelectorAll('[data-committee-member-edit]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const member=committeeMembers.find(x=>x.id===button.dataset.committeeMemberEdit);
+      openCommitteeMemberEditor(member);
+    });
+  });
+
+  body.querySelectorAll('[data-committee-member-toggle]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      toggleCommitteeMember(
+        button.dataset.committeeMemberToggle,
+        button.dataset.next==='true'
+      );
+    });
+  });
+}
+
+async function openCommitteeDetail(id,preserveMessage=false) {
+  const record=committeeRecords.find(x=>x.id===id);
+  if (!record) return;
+
+  committeeActiveId=id;
+  const modal=document.getElementById('committeeDetailModal');
+  const unit=committeeUnitName(record);
+  const active=committeeActiveMembers(id).length;
+  const canManage=committeeCanManage(record);
+
+  document.getElementById('committeeDetailTypeLabel').textContent=record.tipo==='SUBCOMITE'?'SUBCOMITÉ SST · PROYECTO':'COMITÉ SST · SEDE';
+  document.getElementById('committeeDetailTitle').textContent=record.nombre || committeeTypeLabel(record.tipo);
+  document.getElementById('committeeDetailSubtitle').textContent=`${unit}${record.numero_acta ? ` · ${record.numero_acta}` : ''}`;
+  document.getElementById('committeeDetailCode').textContent=record.codigo || '—';
+  document.getElementById('committeeDetailValidity').textContent=`${formatDatePE(record.vigencia_desde)} - ${formatDatePE(record.vigencia_hasta)}`;
+  document.getElementById('committeeDetailStatus').textContent=committeeStatusLabel(record.estado);
+  document.getElementById('committeeDetailMemberCount').textContent=String(active);
+
+  document.getElementById('addCommitteeMemberButton')?.classList.toggle('hidden',!canManage);
+  document.getElementById('editCommitteeFromDetailButton')?.classList.toggle('hidden',!canManage);
+
+  if (!preserveMessage) committeeDetailMessage('');
+  closeCommitteeMemberEditor();
+  renderCommitteeMembersTable(record);
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeDetail() {
+  const modal=document.getElementById('committeeDetailModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  closeCommitteeMemberEditor();
+  committeeActiveId=null;
+  document.body.classList.remove('modal-open');
+}
+
+async function toggleCommitteeMember(memberId,next) {
+  const member=committeeMembers.find(x=>x.id===memberId);
+  if (!member) return;
+
+  const workerName=committeeWorkerName(member.trabajadores);
+  if (!confirm(`¿Deseas ${next?'activar':'desactivar'} a ${workerName} como integrante?`)) return;
+
+  const {data,error}=await client.rpc('cambiar_estado_integrante_comite',{
+    p_integrante_id:memberId,
+    p_activo:next
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    committeeDetailMessage(data?.error || error?.message || 'No fue posible actualizar al integrante.');
+    return;
+  }
+
+  const activeId=committeeActiveId;
+  committeeModuleLoaded=false;
+  await loadCommitteeModule(true);
+  await openCommitteeDetail(activeId,true);
+  committeeDetailMessage(data.message || 'Estado actualizado correctamente.','success');
+}
+
+// ------------------------------------------------------------
+// Eventos
+// ------------------------------------------------------------
+document.getElementById('newCommitteeButton')?.addEventListener('click',async()=>{
+  if (!committeeModuleLoaded) await loadCommitteeModule(true);
+  openCommitteeForm();
+});
+
+document.getElementById('committeeTypeSiteButton')?.addEventListener('click',()=>{
+  if (currentProfile?.rol_codigo==='PROYECTO') return;
+  setCommitteeType('COMITE');
+});
+
+document.getElementById('committeeTypeProjectButton')?.addEventListener('click',()=>{
+  setCommitteeType('SUBCOMITE');
+});
+
+document.getElementById('committeeSite')?.addEventListener('change',updateCommitteeGeneratedName);
+document.getElementById('committeeProject')?.addEventListener('change',updateCommitteeGeneratedName);
+
+document.getElementById('committeeForm')?.addEventListener('submit',saveCommitteeForm);
+document.getElementById('closeCommitteeFormModal')?.addEventListener('click',closeCommitteeForm);
+document.getElementById('cancelCommitteeFormModal')?.addEventListener('click',closeCommitteeForm);
+document.getElementById('committeeFormModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeForm);
+
+document.getElementById('closeCommitteeDetailModal')?.addEventListener('click',closeCommitteeDetail);
+document.getElementById('closeCommitteeDetailBottom')?.addEventListener('click',closeCommitteeDetail);
+document.getElementById('committeeDetailModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeDetail);
+
+document.getElementById('editCommitteeFromDetailButton')?.addEventListener('click',()=>{
+  const record=committeeRecords.find(x=>x.id===committeeActiveId);
+  if (!record) return;
+  closeCommitteeDetail();
+  openCommitteeForm(record);
+});
+
+document.getElementById('addCommitteeMemberButton')?.addEventListener('click',()=>openCommitteeMemberEditor());
+document.getElementById('closeCommitteeMemberEditor')?.addEventListener('click',closeCommitteeMemberEditor);
+document.getElementById('cancelCommitteeMemberButton')?.addEventListener('click',closeCommitteeMemberEditor);
+document.getElementById('searchCommitteeWorkerButton')?.addEventListener('click',searchCommitteeWorker);
+document.getElementById('saveCommitteeMemberButton')?.addEventListener('click',saveCommitteeMember);
+
+document.getElementById('committeeMemberDni')?.addEventListener('input',event=>{
+  event.target.value=event.target.value.replace(/\D/g,'').slice(0,8);
+  committeeSelectedWorker=null;
+  document.getElementById('committeeMemberWorkerId').value='';
+  document.getElementById('committeeWorkerFound')?.classList.add('hidden');
+});
+
+document.getElementById('committeeMemberDni')?.addEventListener('keydown',event=>{
+  if (event.key==='Enter') {
+    event.preventDefault();
+    searchCommitteeWorker();
+  }
+});
+
+document.getElementById('committeeSearch')?.addEventListener('input',renderCommitteeList);
+document.getElementById('committeeTypeFilter')?.addEventListener('change',renderCommitteeList);
+document.getElementById('committeeStatusFilter')?.addEventListener('change',renderCommitteeList);
+document.getElementById('refreshCommitteeButton')?.addEventListener('click',()=>{
+  committeeModuleLoaded=false;
+  loadCommitteeModule(true);
+});
 
 
 // ============================================================

@@ -862,3 +862,529 @@ body.modal-open{
   opacity:.55;
   cursor:wait;
 }
+
+
+/* ============================================================
+   ETAPA 16A · COMITÉ SST / SUBCOMITÉ SST
+   ============================================================ */
+
+.committee-section-head{
+  align-items:flex-end;
+}
+
+.committee-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin:18px 0;
+}
+
+.committee-stats article{
+  border:1px solid #dce3ec;
+  border-radius:14px;
+  background:#fff;
+  padding:16px 18px;
+  box-shadow:0 5px 18px rgba(28,45,68,.04);
+}
+
+.committee-stats span,
+.committee-stats small{
+  display:block;
+  color:#758399;
+  font-size:9px;
+}
+
+.committee-stats strong{
+  display:block;
+  margin:5px 0 2px;
+  color:#102640;
+  font-size:26px;
+}
+
+.committee-filter{
+  grid-template-columns:minmax(260px,1fr) 180px 170px auto;
+}
+
+.committee-list{
+  display:grid;
+  gap:12px;
+  padding:15px;
+}
+
+.committee-card{
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr) auto;
+  gap:15px;
+  align-items:center;
+  border:1px solid #dde4ec;
+  border-radius:14px;
+  padding:16px;
+  background:#fff;
+}
+
+.committee-card-icon{
+  width:58px;
+  height:58px;
+  border-radius:13px;
+  display:grid;
+  place-items:center;
+  font-size:25px;
+}
+
+.committee-card-icon.site{
+  background:#eef5ff;
+  color:#165ed8;
+}
+
+.committee-card-icon.project{
+  background:#f2edff;
+  color:#6a3dd2;
+}
+
+.committee-card-title-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.committee-card-title-row h4{
+  margin:3px 0 0;
+  color:#102640;
+  font-size:16px;
+}
+
+.committee-status{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:5px 10px;
+  font-size:8px;
+  font-weight:850;
+  white-space:nowrap;
+}
+
+.committee-status.activo{
+  background:#def8e8;
+  color:#087f3b;
+}
+
+.committee-status.borrador{
+  background:#fff1cf;
+  color:#946000;
+}
+
+.committee-status.cerrado{
+  background:#eef0f3;
+  color:#657181;
+}
+
+.committee-card-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px 16px;
+  margin-top:9px;
+  color:#65758a;
+  font-size:9px;
+}
+
+.committee-card-stats{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+}
+
+.committee-card-stats span{
+  border-radius:7px;
+  background:#f5f7fa;
+  padding:5px 8px;
+  color:#5f6f84;
+  font-size:8px;
+}
+
+.committee-card-stats b{
+  color:#17263c;
+}
+
+.committee-card-actions{
+  display:flex;
+  gap:8px;
+}
+
+.committee-manage-btn{
+  border:0;
+  border-radius:9px;
+  background:#6b3fd4;
+  color:#fff;
+  min-height:40px;
+  padding:0 15px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.committee-form-modal-card{
+  width:min(860px,calc(100vw - 28px))!important;
+  max-width:860px!important;
+}
+
+.committee-type-choice{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-bottom:17px;
+}
+
+.committee-type-card{
+  display:grid;
+  grid-template-columns:44px 1fr;
+  grid-template-rows:auto auto;
+  column-gap:10px;
+  align-items:center;
+  text-align:left;
+  border:1px solid #d8e0e9;
+  border-radius:12px;
+  background:#fff;
+  padding:12px;
+  cursor:pointer;
+}
+
+.committee-type-card.active{
+  border-color:#c00000;
+  box-shadow:0 0 0 1px #c00000 inset;
+  background:#fff8f8;
+}
+
+.committee-type-card.disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.committee-type-icon{
+  grid-row:1/3;
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  border-radius:10px;
+  background:#f2f5f9;
+  color:#c00000;
+  font-size:19px;
+}
+
+.committee-type-card strong{
+  color:#17263c;
+  font-size:11px;
+}
+
+.committee-type-card small{
+  color:#768398;
+  font-size:8px;
+}
+
+.committee-form-grid textarea{
+  width:100%;
+  border:1px solid #cfd8e4;
+  border-radius:9px;
+  padding:10px;
+  resize:vertical;
+  font:inherit;
+}
+
+.committee-detail-modal-card{
+  width:min(1380px,calc(100vw - 28px))!important;
+  max-width:1380px!important;
+}
+
+.committee-detail-summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:17px;
+}
+
+.committee-detail-summary article{
+  border:1px solid #dde4ec;
+  border-radius:11px;
+  padding:12px 14px;
+  background:#f8fafc;
+}
+
+.committee-detail-summary span{
+  display:block;
+  color:#7a8798;
+  font-size:8px;
+}
+
+.committee-detail-summary strong{
+  display:block;
+  margin-top:4px;
+  color:#17263c;
+  font-size:12px;
+}
+
+.committee-detail-toolbar{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:15px;
+  padding:4px 0 12px;
+}
+
+.committee-detail-toolbar h4{
+  margin:3px 0 0;
+  color:#17263c;
+  font-size:15px;
+}
+
+.committee-detail-toolbar p{
+  margin:3px 0 0;
+  color:#7a8798;
+  font-size:9px;
+}
+
+.committee-member-editor{
+  border:1px solid #d8e0ea;
+  border-radius:13px;
+  padding:15px;
+  margin-bottom:14px;
+  background:#f8fafc;
+}
+
+.committee-member-editor-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:12px;
+}
+
+.committee-member-editor-head h4{
+  margin:3px 0 0;
+  color:#17263c;
+  font-size:14px;
+}
+
+.mini-close{
+  border:0;
+  background:#e9edf2;
+  color:#526175;
+  border-radius:8px;
+  width:31px;
+  height:31px;
+  font-size:18px;
+  cursor:pointer;
+}
+
+.committee-worker-search-row{
+  display:grid;
+  grid-template-columns:minmax(220px,360px) auto;
+  gap:9px;
+  align-items:end;
+}
+
+.committee-worker-search-row label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.committee-worker-search-row label span{
+  color:#17263c;
+  font-size:9px;
+  font-weight:750;
+}
+
+.committee-worker-search-row input{
+  height:42px;
+  border:1px solid #cfd8e4;
+  border-radius:9px;
+  padding:0 11px;
+  font:inherit;
+}
+
+.committee-worker-found{
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr;
+  gap:8px;
+  margin:12px 0;
+  border:1px solid #ccead8;
+  border-radius:10px;
+  background:#f1fbf5;
+  padding:11px;
+}
+
+.committee-worker-found span{
+  display:block;
+  color:#718279;
+  font-size:8px;
+}
+
+.committee-worker-found strong{
+  display:block;
+  margin-top:3px;
+  color:#17442a;
+  font-size:10px;
+}
+
+.committee-member-grid{
+  margin-top:10px;
+}
+
+.committee-member-active-field{
+  align-self:end;
+  min-height:42px;
+}
+
+.committee-member-editor-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:12px;
+}
+
+.committee-members-table-wrap{
+  max-height:500px;
+  overflow:auto;
+  border:1px solid #e0e5ec;
+  border-radius:10px;
+}
+
+.committee-members-table{
+  min-width:1150px;
+}
+
+.committee-members-table td{
+  vertical-align:middle;
+}
+
+.committee-members-table small{
+  color:#778496;
+}
+
+.committee-representation{
+  display:inline-flex;
+  border-radius:999px;
+  padding:5px 8px;
+  font-size:8px;
+  font-weight:800;
+}
+
+.committee-representation.empleador{
+  background:#edf4ff;
+  color:#185bb9;
+}
+
+.committee-representation.trabajadores{
+  background:#f1ebff;
+  color:#6840b5;
+}
+
+.committee-member-status{
+  display:inline-flex;
+  border-radius:999px;
+  padding:5px 8px;
+  font-size:8px;
+  font-weight:850;
+}
+
+.committee-member-status.active{
+  color:#087f3b;
+  background:#def8e8;
+}
+
+.committee-member-status.inactive{
+  color:#8a5660;
+  background:#f4e9eb;
+}
+
+.committee-member-actions{
+  display:flex;
+  gap:5px;
+}
+
+.committee-member-actions button{
+  border:1px solid #ccd6e2;
+  border-radius:7px;
+  background:#fff;
+  color:#26364c;
+  padding:6px 8px;
+  font-size:8px;
+  font-weight:750;
+  cursor:pointer;
+}
+
+.committee-member-actions button.danger{
+  border-color:#f0c8c8;
+  color:#c52020;
+}
+
+.committee-member-actions button.success{
+  border-color:#bfe7ce;
+  color:#087f3b;
+}
+
+@media(max-width:980px){
+  .committee-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-filter{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-filter input{
+    grid-column:1/-1;
+  }
+
+  .committee-card{
+    grid-template-columns:52px 1fr;
+  }
+
+  .committee-card-actions{
+    grid-column:1/-1;
+    justify-content:flex-end;
+  }
+
+  .committee-detail-summary{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media(max-width:650px){
+  .committee-stats{
+    grid-template-columns:1fr;
+  }
+
+  .committee-filter{
+    grid-template-columns:1fr;
+  }
+
+  .committee-filter input{
+    grid-column:auto;
+  }
+
+  .committee-type-choice{
+    grid-template-columns:1fr;
+  }
+
+  .committee-detail-summary{
+    grid-template-columns:1fr;
+  }
+
+  .committee-detail-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .committee-detail-toolbar .primary-btn{
+    width:100%;
+  }
+
+  .committee-worker-search-row{
+    grid-template-columns:1fr;
+  }
+
+  .committee-worker-found{
+    grid-template-columns:1fr;
+  }
+}

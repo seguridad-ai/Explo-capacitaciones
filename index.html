@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261011-15b" />
+  <link rel="stylesheet" href="styles.css?v=20261011-16a" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1776,7 +1776,303 @@
           </div>
         </div>
       </section>
-      <section id="comite" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Comité SST</h2><p>Capacitación y seguimiento de los integrantes.</p></div><div class="coming-card"><span>◎</span><h3>Próximamente</h3><p>Videos, documentos, exámenes y avance de los integrantes.</p></div></section>
+      <section id="comite" class="page-section">
+        <div class="section-title section-title-row committee-section-head">
+          <div>
+            <span class="eyebrow">GESTIÓN SST</span>
+            <h2>Comité SST</h2>
+            <p>Conformación y administración del Comité SST de sede y Subcomités SST de proyectos.</p>
+          </div>
+          <button id="newCommitteeButton" class="primary-btn" type="button">+ Nueva conformación</button>
+        </div>
+
+        <div id="committeeModuleMessage" class="module-message"></div>
+
+        <div class="committee-stats">
+          <article>
+            <span>Conformaciones visibles</span>
+            <strong id="committeeTotalCount">0</strong>
+            <small>Histórico y vigentes</small>
+          </article>
+          <article>
+            <span>Comité SST</span>
+            <strong id="committeeSiteCount">0</strong>
+            <small>Sede central</small>
+          </article>
+          <article>
+            <span>Subcomités SST</span>
+            <strong id="committeeProjectCount">0</strong>
+            <small>Proyectos</small>
+          </article>
+          <article>
+            <span>Integrantes activos</span>
+            <strong id="committeeMemberCount">0</strong>
+            <small>Según conformaciones visibles</small>
+          </article>
+        </div>
+
+        <article class="catalog-panel committee-panel">
+          <div class="catalog-panel-head catalog-panel-head-wrap">
+            <div>
+              <span class="eyebrow">CONFORMACIONES</span>
+              <h3>Comités y Subcomités registrados</h3>
+            </div>
+            <div class="catalog-filter committee-filter">
+              <input id="committeeSearch" type="search" placeholder="Buscar por código, nombre, sede o proyecto..." />
+              <select id="committeeTypeFilter">
+                <option value="">Todos los tipos</option>
+                <option value="COMITE">Comité SST</option>
+                <option value="SUBCOMITE">Subcomité SST</option>
+              </select>
+              <select id="committeeStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="ACTIVO">Activos</option>
+                <option value="BORRADOR">Borradores</option>
+                <option value="CERRADO">Cerrados</option>
+              </select>
+              <button id="refreshCommitteeButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+          </div>
+          <div id="committeeList" class="committee-list">
+            <div class="training-library-empty">Cargando conformaciones…</div>
+          </div>
+        </article>
+
+        <div id="committeeFormModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-form-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">CONFORMACIÓN</span>
+                <h3 id="committeeFormTitle">Nueva conformación</h3>
+                <p class="modal-subtitle">Registra el Comité SST de sede o un Subcomité SST de proyecto.</p>
+              </div>
+              <button id="closeCommitteeFormModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="committeeForm" novalidate>
+              <input id="committeeEditId" type="hidden" />
+
+              <div class="committee-type-choice">
+                <button id="committeeTypeSiteButton" class="committee-type-card active" type="button" data-committee-type="COMITE">
+                  <span class="committee-type-icon">⌂</span>
+                  <strong>Comité SST</strong>
+                  <small>Sede central</small>
+                </button>
+                <button id="committeeTypeProjectButton" class="committee-type-card" type="button" data-committee-type="SUBCOMITE">
+                  <span class="committee-type-icon">◆</span>
+                  <strong>Subcomité SST</strong>
+                  <small>Proyecto</small>
+                </button>
+              </div>
+
+              <input id="committeeType" type="hidden" value="COMITE" />
+
+              <div class="form-grid committee-form-grid">
+                <label id="committeeSiteField">
+                  <span>Sede *</span>
+                  <select id="committeeSite"><option value="">Seleccione una sede</option></select>
+                </label>
+
+                <label id="committeeProjectField" class="hidden">
+                  <span>Proyecto *</span>
+                  <select id="committeeProject"><option value="">Seleccione un proyecto</option></select>
+                </label>
+
+                <label>
+                  <span>Fecha de constitución *</span>
+                  <input id="committeeConstitutionDate" type="date" required />
+                </label>
+
+                <label>
+                  <span>Vigencia desde *</span>
+                  <input id="committeeValidFrom" type="date" required />
+                </label>
+
+                <label>
+                  <span>Vigencia hasta *</span>
+                  <input id="committeeValidTo" type="date" required />
+                </label>
+
+                <label>
+                  <span>N.° / Código de acta de constitución</span>
+                  <input id="committeeActNumber" maxlength="120" placeholder="Ej. ACTA 01-2026" />
+                </label>
+
+                <label>
+                  <span>Estado *</span>
+                  <select id="committeeStatus">
+                    <option value="ACTIVO">ACTIVO</option>
+                    <option value="BORRADOR">BORRADOR</option>
+                    <option value="CERRADO">CERRADO</option>
+                  </select>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Nombre generado</span>
+                  <input id="committeeGeneratedName" readonly />
+                </label>
+
+                <label class="form-span-2">
+                  <span>Observaciones</span>
+                  <textarea id="committeeNotes" rows="3" maxlength="1200" placeholder="Información adicional de la conformación"></textarea>
+                </label>
+              </div>
+
+              <div id="committeeFormMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="cancelCommitteeFormModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveCommitteeButton" class="primary-btn" type="submit">Guardar conformación</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="committeeDetailModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-detail-modal-card">
+            <div class="modal-head">
+              <div>
+                <span id="committeeDetailTypeLabel" class="eyebrow">COMITÉ SST</span>
+                <h3 id="committeeDetailTitle">Comité SST</h3>
+                <p id="committeeDetailSubtitle" class="modal-subtitle">—</p>
+              </div>
+              <button id="closeCommitteeDetailModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="committee-detail-summary">
+              <article><span>Código</span><strong id="committeeDetailCode">—</strong></article>
+              <article><span>Vigencia</span><strong id="committeeDetailValidity">—</strong></article>
+              <article><span>Estado</span><strong id="committeeDetailStatus">—</strong></article>
+              <article><span>Integrantes activos</span><strong id="committeeDetailMemberCount">0</strong></article>
+            </div>
+
+            <div class="committee-detail-toolbar">
+              <div>
+                <span class="eyebrow">INTEGRANTES</span>
+                <h4>Miembros de la conformación</h4>
+                <p>Los integrantes se vinculan a la Base de Trabajadores por DNI.</p>
+              </div>
+              <button id="addCommitteeMemberButton" class="primary-btn" type="button">+ Agregar integrante</button>
+            </div>
+
+            <section id="committeeMemberEditor" class="committee-member-editor hidden">
+              <div class="committee-member-editor-head">
+                <div>
+                  <span class="eyebrow">INTEGRANTE</span>
+                  <h4 id="committeeMemberEditorTitle">Agregar integrante</h4>
+                </div>
+                <button id="closeCommitteeMemberEditor" class="mini-close" type="button">×</button>
+              </div>
+
+              <input id="committeeMemberEditId" type="hidden" />
+              <input id="committeeMemberWorkerId" type="hidden" />
+
+              <div class="committee-worker-search-row">
+                <label>
+                  <span>DNI del trabajador *</span>
+                  <input id="committeeMemberDni" inputmode="numeric" maxlength="8" placeholder="8 dígitos" />
+                </label>
+                <button id="searchCommitteeWorkerButton" class="secondary-btn" type="button">Buscar</button>
+              </div>
+
+              <div id="committeeWorkerFound" class="committee-worker-found hidden">
+                <div>
+                  <span>Trabajador</span>
+                  <strong id="committeeWorkerFoundName">—</strong>
+                </div>
+                <div>
+                  <span>Puesto</span>
+                  <strong id="committeeWorkerFoundPosition">—</strong>
+                </div>
+                <div>
+                  <span>Área</span>
+                  <strong id="committeeWorkerFoundArea">—</strong>
+                </div>
+              </div>
+
+              <div class="form-grid committee-member-grid">
+                <label>
+                  <span>Representación *</span>
+                  <select id="committeeMemberRepresentation">
+                    <option value="EMPLEADOR">Representante del empleador</option>
+                    <option value="TRABAJADORES">Representante de los trabajadores</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Condición *</span>
+                  <select id="committeeMemberCondition">
+                    <option value="TITULAR">Titular</option>
+                    <option value="SUPLENTE">Suplente</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Cargo dentro del Comité *</span>
+                  <select id="committeeMemberCommitteeRole">
+                    <option value="PRESIDENTE">Presidente</option>
+                    <option value="SECRETARIO">Secretario</option>
+                    <option value="VOCAL">Vocal</option>
+                    <option value="MIEMBRO">Miembro</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Fecha de inicio *</span>
+                  <input id="committeeMemberStartDate" type="date" />
+                </label>
+
+                <label>
+                  <span>Fecha de fin</span>
+                  <input id="committeeMemberEndDate" type="date" />
+                </label>
+
+                <label class="check-field committee-member-active-field">
+                  <input id="committeeMemberActive" type="checkbox" checked />
+                  <span>Integrante activo</span>
+                </label>
+              </div>
+
+              <div id="committeeMemberMessage" class="form-message"></div>
+
+              <div class="committee-member-editor-actions">
+                <button id="cancelCommitteeMemberButton" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveCommitteeMemberButton" class="primary-btn" type="button">Guardar integrante</button>
+              </div>
+            </section>
+
+            <div class="table-wrap committee-members-table-wrap">
+              <table class="data-table committee-members-table">
+                <thead>
+                  <tr>
+                    <th>DNI</th>
+                    <th>Apellidos y nombres</th>
+                    <th>Puesto / Área</th>
+                    <th>Representación</th>
+                    <th>Condición</th>
+                    <th>Cargo en Comité</th>
+                    <th>Vigencia</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="committeeMembersBody">
+                  <tr><td colspan="9" class="table-empty">Selecciona una conformación.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div id="committeeDetailMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="editCommitteeFromDetailButton" class="secondary-btn" type="button">Editar conformación</button>
+              <button id="closeCommitteeDetailBottom" class="primary-btn" type="button">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      </section>
       <section id="brigadas" class="page-section"><div class="section-title"><span class="eyebrow">PLATAFORMA</span><h2>Brigadas</h2><p>Formación de brigadas de emergencia.</p></div><div class="coming-card"><span>⚑</span><h3>Próximamente</h3><p>Contenido por especialidad, evaluación y seguimiento.</p></div></section>
       <section id="reportes" class="page-section"><div class="section-title"><span class="eyebrow">MÓDULO</span><h2>Reportes</h2><p>Indicadores, historial y exportaciones.</p></div><div class="coming-card"><span>▥</span><h3>Próximamente</h3><p>Dashboard, PDF, Excel e historial de capacitación por trabajador.</p></div></section>
       <section id="usuarios" class="page-section">
@@ -1859,6 +2155,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261011-15b"></script>
+  <script src="app.js?v=20261011-16a"></script>
 </body>
 </html>

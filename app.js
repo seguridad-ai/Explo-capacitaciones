@@ -357,7 +357,7 @@ function committeeUnitName(record) {
 }
 
 function committeeTypeLabel(type) {
-  return type==='SUBCOMITE' ? 'Subcomité SST' : 'Comité SST';
+  return type==='SUBCOMITE' ? 'Subcomité SST' : 'Comité SST Corporativo';
 }
 
 function committeeStatusClass(status) {
@@ -402,7 +402,7 @@ function committeeGeneratedName() {
   if (type==='COMITE') {
     const id=document.getElementById('committeeSite')?.value;
     const unit=committeeSites.find(x=>x.id===id)?.nombre || '';
-    return unit ? `Comité SST - ${unit}` : 'Comité SST';
+    return unit ? `Comité SST Corporativo - ${unit}` : 'Comité SST Corporativo';
   }
   const id=document.getElementById('committeeProject')?.value;
   const unit=committeeProjects.find(x=>x.id===id)?.nombre || '';
@@ -923,7 +923,7 @@ async function openCommitteeDetail(id,preserveMessage=false) {
   const active=committeeActiveMembers(id).length;
   const canManage=committeeCanManage(record);
 
-  document.getElementById('committeeDetailTypeLabel').textContent=record.tipo==='SUBCOMITE'?'SUBCOMITÉ SST · PROYECTO':'COMITÉ SST · SEDE';
+  document.getElementById('committeeDetailTypeLabel').textContent=record.tipo==='SUBCOMITE'?'SUBCOMITÉ SST · PROYECTO':'COMITÉ SST · CORPORATIVO';
   document.getElementById('committeeDetailTitle').textContent=record.nombre || committeeTypeLabel(record.tipo);
   document.getElementById('committeeDetailSubtitle').textContent=`${unit}${record.numero_acta ? ` · ${record.numero_acta}` : ''}`;
   document.getElementById('committeeDetailCode').textContent=record.codigo || '—';

@@ -344,6 +344,12 @@ let committeeAgreementEvidences = [];
 let committeeAgreementHistory = [];
 let committeeAgreementsLoaded = false;
 let activeCommitteeAgreementId = null;
+let committeeTrainingRecords = [];
+let committeeTrainingVideos = [];
+let committeeTrainingsLoaded = false;
+let activeCommitteeTrainingId = null;
+let activeCommitteeTrainingVideoId = null;
+
 
 
 
@@ -1023,6 +1029,8 @@ document.getElementById('newCommitteeButton')?.addEventListener('click',async()=
   if (!committeeModuleLoaded) await loadCommitteeModule(true);
   if (committeeModuleMode==='MEETINGS') {
     openCommitteeMeetingProgramModal();
+  } else if (committeeModuleMode==='TRAININGS') {
+    openCommitteeTrainingModal();
   } else if (committeeModuleMode==='CONFORMATIONS') {
     openCommitteeForm();
   }
@@ -1091,27 +1099,34 @@ document.getElementById('refreshCommitteeButton')?.addEventListener('click',()=>
 // ============================================================
 
 function setCommitteeModuleMode(mode) {
-  committeeModuleMode=['MEETINGS','AGREEMENTS'].includes(mode) ? mode : 'CONFORMATIONS';
+  committeeModuleMode=['MEETINGS','AGREEMENTS','TRAININGS'].includes(mode) ? mode : 'CONFORMATIONS';
 
   document.getElementById('committeeConformationsTab')?.classList.toggle('active',committeeModuleMode==='CONFORMATIONS');
   document.getElementById('committeeMeetingsTab')?.classList.toggle('active',committeeModuleMode==='MEETINGS');
   document.getElementById('committeeAgreementsTab')?.classList.toggle('active',committeeModuleMode==='AGREEMENTS');
+  document.getElementById('committeeTrainingsTab')?.classList.toggle('active',committeeModuleMode==='TRAININGS');
 
   document.getElementById('committeeConformationsStats')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
   document.getElementById('committeeConformationsPanel')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
   document.getElementById('committeeMeetingsView')?.classList.toggle('hidden',committeeModuleMode!=='MEETINGS');
   document.getElementById('committeeAgreementsView')?.classList.toggle('hidden',committeeModuleMode!=='AGREEMENTS');
+  document.getElementById('committeeTrainingsView')?.classList.toggle('hidden',committeeModuleMode!=='TRAININGS');
 
   const button=document.getElementById('newCommitteeButton');
   if (button) {
     button.classList.toggle('hidden',committeeModuleMode==='AGREEMENTS');
-    button.textContent=committeeModuleMode==='MEETINGS' ? '+ Programar reunión' : '+ Nueva conformación';
+    button.textContent=
+      committeeModuleMode==='MEETINGS' ? '+ Programar reunión'
+      : committeeModuleMode==='TRAININGS' ? '+ Nueva capacitación'
+      : '+ Nueva conformación';
   }
 
   if (committeeModuleMode==='MEETINGS') {
     loadCommitteeMeetingsModule();
   } else if (committeeModuleMode==='AGREEMENTS') {
     loadCommitteeAgreementsModule();
+  } else if (committeeModuleMode==='TRAININGS') {
+    loadCommitteeTrainingsModule();
   }
 }
 
@@ -2988,6 +3003,919 @@ async function exportCommitteeAgreementsOfficialExcel() {
 }
 
 
+
+// ============================================================
+// ETAPA 16D.1 · CAPACITACIONES + VIDEOS DEL COMITÉ SST
+// ============================================================
+
+function committeeTrainingMessage(message='',type='error') {
+  const el=document.getElementById('committeeTrainingMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeTrainingVideoMessage(message='',type='error') {
+  const el=document.getElementById('committeeTrainingVideoMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeTrainingCommittee(record) {
+  if (!record) return null;
+  return record.comites_sst
+    || committeeRecords.find(x=>x.id===record.comite_id)
+    || null;
+}
+
+function committeeTrainingCanManage(record) {
+  return committeeCanManage(committeeTrainingCommittee(record));
+}
+
+function committeeTrainingStatusLabel(status) {
+  return {
+    BORRADOR:'BORRADOR',
+    LISTA:'LISTA',
+    INACTIVA:'INACTIVA'
+  }[status] || status || '—';
+}
+
+function committeeTrainingStatusClass(status) {
+  return String(status || '').toLowerCase();
+}
+
+function committeeTrainingVideosFor(trainingId) {
+  return committeeTrainingVideos
+    .filter(x=>x.capacitacion_id===trainingId)
+    .sort((a,b)=>(Number(a.orden)||0)-(Number(b.orden)||0));
+}
+
+function committeeTrainingTotalMinutes(trainingId) {
+  return committeeTrainingVideosFor(trainingId)
+    .reduce((sum,row)=>sum+Number(row.duracion_minutos || 0),0);
+}
+
+function committeeTrainingSourceLabel(type) {
+  return {
+    YOUTUBE:'YouTube',
+    MP4_UPLOAD:'MP4',
+    ENLACE:'Enlace'
+  }[type] || type || '—';
+}
+
+function populateCommitteeTrainingSelectors() {
+  const selectors=[
+    document.getElementById('committeeTrainingCommittee'),
+    document.getElementById('committeeTrainingCommitteeFilter')
+  ];
+
+  selectors.forEach((select,index)=>{
+    if (!select) return;
+    const current=select.value;
+    const first=index===0
+      ? '<option value="">Seleccione una conformación</option>'
+      : '<option value="">Todos los Comités/Subcomités</option>';
+
+    const options=committeeRecords
+      .filter(record=>index!==0 || record.estado==='ACTIVO')
+      .map(record=>{
+        const type=record.tipo==='SUBCOMITE'?'Subcomité':'Comité';
+        return `<option value="${record.id}">${escapeHtml(type)} · ${escapeHtml(committeeUnitName(record))} · ${escapeHtml(record.codigo || '')}</option>`;
+      })
+      .join('');
+
+    select.innerHTML=first+options;
+    if ([...select.options].some(option=>option.value===current)) {
+      select.value=current;
+    }
+  });
+}
+
+function updateCommitteeTrainingStats() {
+  const total=committeeTrainingRecords.length;
+  const draft=committeeTrainingRecords.filter(x=>x.estado==='BORRADOR').length;
+  const ready=committeeTrainingRecords.filter(x=>x.estado==='LISTA').length;
+  const videos=committeeTrainingVideos.length;
+
+  const values={
+    committeeTrainingTotalCount:total,
+    committeeTrainingDraftCount:draft,
+    committeeTrainingReadyCount:ready,
+    committeeTrainingVideoCount:videos
+  };
+
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderCommitteeTrainingList() {
+  const container=document.getElementById('committeeTrainingList');
+  if (!container) return;
+
+  const q=(document.getElementById('committeeTrainingSearch')?.value || '').trim().toLowerCase();
+  const committeeId=document.getElementById('committeeTrainingCommitteeFilter')?.value || '';
+  const status=document.getElementById('committeeTrainingStatusFilter')?.value || '';
+
+  const rows=committeeTrainingRecords.filter(record=>{
+    if (committeeId && record.comite_id!==committeeId) return false;
+    if (status && record.estado!==status) return false;
+
+    const committee=committeeTrainingCommittee(record);
+    const hay=[
+      record.codigo,
+      record.titulo,
+      record.expositor,
+      record.cargo_expositor,
+      committee?.nombre,
+      committeeUnitName(committee)
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No se encontraron capacitaciones.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(record=>{
+    const committee=committeeTrainingCommittee(record);
+    const videos=committeeTrainingVideosFor(record.id);
+    const totalMinutes=committeeTrainingTotalMinutes(record.id);
+    const canManage=committeeTrainingCanManage(record);
+    const sources=[...new Set(videos.map(x=>committeeTrainingSourceLabel(x.tipo_fuente)))];
+
+    return `
+      <article class="committee-training-card">
+        <div class="committee-training-card-icon">▶</div>
+
+        <div class="committee-training-card-main">
+          <div class="committee-training-card-top">
+            <div>
+              <span class="eyebrow">${committee?.tipo==='SUBCOMITE'?'CAPACITACIÓN · SUBCOMITÉ SST':'CAPACITACIÓN · COMITÉ SST'}</span>
+              <h4>${escapeHtml(record.titulo || 'Capacitación')}</h4>
+              <p>${escapeHtml(record.codigo || '—')} · ${escapeHtml(committeeUnitName(committee))}</p>
+            </div>
+            <span class="committee-training-status ${committeeTrainingStatusClass(record.estado)}">${escapeHtml(committeeTrainingStatusLabel(record.estado))}</span>
+          </div>
+
+          <div class="committee-training-card-meta">
+            <span>▣ ${escapeHtml(formatDatePE(record.fecha))}</span>
+            <span>Expositor: ${escapeHtml(record.expositor || '—')}</span>
+            <span>${Number(record.duracion_horas || 0)} h</span>
+            <span>${videos.length} video(s)</span>
+            ${totalMinutes ? `<span>${Math.round(totalMinutes)} min de video</span>` : ''}
+            ${sources.length ? `<span>${escapeHtml(sources.join(' · '))}</span>` : ''}
+            <span>Nota mín.: ${Number(record.nota_minima || 0)}</span>
+            <span>${Number(record.max_intentos || 1)} intento(s)</span>
+          </div>
+        </div>
+
+        <div class="committee-training-card-actions">
+          <button class="committee-manage-btn" type="button" data-open-committee-training="${record.id}">
+            ${canManage?'Administrar':'Ver contenido'}
+          </button>
+          ${canManage ? `<button class="induction-delete-btn" type="button" data-delete-committee-training="${record.id}">Eliminar</button>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-open-committee-training]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeTrainingModal(
+      committeeTrainingRecords.find(x=>x.id===button.dataset.openCommitteeTraining)
+    ));
+  });
+
+  container.querySelectorAll('[data-delete-committee-training]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeTraining(button.dataset.deleteCommitteeTraining));
+  });
+}
+
+async function loadCommitteeTrainingsModule(force=false) {
+  if (!client) return;
+  if (!committeeModuleLoaded) await loadCommitteeModule(true);
+
+  if (committeeTrainingsLoaded && !force) {
+    populateCommitteeTrainingSelectors();
+    updateCommitteeTrainingStats();
+    renderCommitteeTrainingList();
+    return;
+  }
+
+  const [trainings,videos]=await Promise.all([
+    client.from('comite_sst_capacitaciones')
+      .select('*,comites_sst(id,codigo,tipo,nombre,sede_id,proyecto_id,estado)')
+      .order('fecha',{ascending:false})
+      .order('created_at',{ascending:false}),
+    client.from('comite_sst_capacitacion_videos')
+      .select('*')
+      .order('capacitacion_id',{ascending:true})
+      .order('orden',{ascending:true})
+  ]);
+
+  if (trainings.error || videos.error) {
+    console.error(trainings.error,videos.error);
+    committeeMessage(
+      trainings.error?.message || videos.error?.message ||
+      'No fue posible cargar las capacitaciones del Comité SST.'
+    );
+    return;
+  }
+
+  committeeTrainingRecords=trainings.data || [];
+  committeeTrainingVideos=videos.data || [];
+  committeeTrainingsLoaded=true;
+
+  populateCommitteeTrainingSelectors();
+  updateCommitteeTrainingStats();
+  renderCommitteeTrainingList();
+}
+
+function openCommitteeTrainingModal(record=null) {
+  committeeTrainingMessage('');
+  activeCommitteeTrainingId=record?.id || null;
+
+  populateCommitteeTrainingSelectors();
+
+  document.getElementById('committeeTrainingId').value=record?.id || '';
+  document.getElementById('committeeTrainingModalTitle').textContent=
+    record ? 'Administrar capacitación' : 'Nueva capacitación';
+  document.getElementById('committeeTrainingModalSubtitle').textContent=
+    record
+      ? `${record.codigo || ''} · Administra los datos y la secuencia de videos.`
+      : 'Primero registra los datos generales. Luego podrás agregar los videos.';
+
+  const committeeSelect=document.getElementById('committeeTrainingCommittee');
+  committeeSelect.value=record?.comite_id || '';
+  committeeSelect.disabled=!!record;
+
+  document.getElementById('committeeTrainingTitle').value=record?.titulo || '';
+  document.getElementById('committeeTrainingPresenter').value=record?.expositor || '';
+  document.getElementById('committeeTrainingPresenterRole').value=record?.cargo_expositor || '';
+  document.getElementById('committeeTrainingDate').value=record?.fecha || new Date().toISOString().slice(0,10);
+  document.getElementById('committeeTrainingHours').value=record?.duracion_horas ?? 1;
+  document.getElementById('committeeTrainingMinGrade').value=record?.nota_minima ?? 16;
+  document.getElementById('committeeTrainingAttempts').value=String(record?.max_intentos ?? 2);
+  document.getElementById('committeeTrainingObjective').value=record?.objetivo || '';
+  document.getElementById('committeeTrainingDescription').value=record?.descripcion || '';
+  document.getElementById('committeeTrainingStatus').value=record?.estado || 'BORRADOR';
+
+  const canManage=record ? committeeTrainingCanManage(record) : true;
+  document.querySelectorAll('#committeeTrainingForm input,#committeeTrainingForm textarea,#committeeTrainingForm select')
+    .forEach(el=>{
+      if (el.id!=='committeeTrainingId' && el.id!=='committeeTrainingCommittee') {
+        el.disabled=!canManage;
+      }
+    });
+  committeeSelect.disabled=!!record || !canManage;
+  document.getElementById('saveCommitteeTrainingButton')?.classList.toggle('hidden',!canManage);
+
+  const videoSection=document.getElementById('committeeTrainingVideoSection');
+  videoSection.classList.toggle('hidden',!record);
+  document.getElementById('addCommitteeTrainingVideoButton')?.classList.toggle('hidden',!record || !canManage);
+
+  if (record) renderCommitteeTrainingVideoList(record.id);
+
+  const modal=document.getElementById('committeeTrainingModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeTrainingModal() {
+  const modal=document.getElementById('committeeTrainingModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  activeCommitteeTrainingId=null;
+  document.body.classList.remove('modal-open');
+}
+
+async function saveCommitteeTraining(event) {
+  event.preventDefault();
+  committeeTrainingMessage('');
+
+  const id=document.getElementById('committeeTrainingId').value || null;
+  const comite_id=document.getElementById('committeeTrainingCommittee').value || null;
+  const titulo=document.getElementById('committeeTrainingTitle').value.trim();
+  const expositor=document.getElementById('committeeTrainingPresenter').value.trim();
+  const cargo_expositor=document.getElementById('committeeTrainingPresenterRole').value.trim() || null;
+  const fecha=document.getElementById('committeeTrainingDate').value;
+  const duracion_horas=Number(document.getElementById('committeeTrainingHours').value || 0);
+  const nota_minima=Number(document.getElementById('committeeTrainingMinGrade').value || 0);
+  const max_intentos=Number(document.getElementById('committeeTrainingAttempts').value || 1);
+  const objetivo=document.getElementById('committeeTrainingObjective').value.trim() || null;
+  const descripcion=document.getElementById('committeeTrainingDescription').value.trim() || null;
+  const estado=document.getElementById('committeeTrainingStatus').value;
+
+  if (!comite_id || !titulo || !expositor || !fecha || !duracion_horas) {
+    committeeTrainingMessage('Completa Comité/Subcomité, tema, expositor, fecha y duración.');
+    return;
+  }
+
+  if (nota_minima<0 || nota_minima>20) {
+    committeeTrainingMessage('La nota mínima debe estar entre 0 y 20.');
+    return;
+  }
+
+  const committee=committeeRecords.find(x=>x.id===comite_id);
+  if (!committee || !committeeCanManage(committee)) {
+    committeeTrainingMessage('No tienes permiso para gestionar esta capacitación.');
+    return;
+  }
+
+  const existingVideos=id ? committeeTrainingVideosFor(id) : [];
+  if (estado==='LISTA' && existingVideos.length===0) {
+    committeeTrainingMessage(
+      id
+        ? 'Para marcar la capacitación como LISTA agrega al menos un video.'
+        : 'Primero guárdala como BORRADOR, agrega los videos y después cambia el estado a LISTA.'
+    );
+    return;
+  }
+
+  const payload={
+    comite_id,
+    titulo,
+    expositor,
+    cargo_expositor,
+    fecha,
+    duracion_horas,
+    nota_minima,
+    max_intentos,
+    objetivo,
+    descripcion,
+    estado
+  };
+  if (!id) payload.created_by=currentProfile?.id || null;
+
+  const button=document.getElementById('saveCommitteeTrainingButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const result=id
+    ? await client.from('comite_sst_capacitaciones').update(payload).eq('id',id).select().single()
+    : await client.from('comite_sst_capacitaciones').insert(payload).select().single();
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (result.error) {
+    console.error(result.error);
+    committeeTrainingMessage(result.error.message || 'No fue posible guardar la capacitación.');
+    return;
+  }
+
+  const savedId=result.data.id;
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+
+  const savedRecord=committeeTrainingRecords.find(x=>x.id===savedId);
+  openCommitteeTrainingModal(savedRecord);
+  committeeTrainingMessage(
+    id ? 'Capacitación actualizada correctamente.' : 'Capacitación creada. Ahora agrega los videos.',
+    'success'
+  );
+}
+
+function renderCommitteeTrainingVideoList(trainingId) {
+  const container=document.getElementById('committeeTrainingVideoList');
+  if (!container) return;
+
+  const videos=committeeTrainingVideosFor(trainingId);
+  const training=committeeTrainingRecords.find(x=>x.id===trainingId);
+  const canManage=committeeTrainingCanManage(training);
+
+  if (!videos.length) {
+    container.innerHTML=`
+      <div class="committee-video-empty">
+        <span>▶</span>
+        <strong>Aún no hay videos</strong>
+        <p>Agrega el primer contenido audiovisual de esta capacitación.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML=videos.map((video,index)=>`
+    <article class="committee-video-card">
+      <div class="committee-video-order">${video.orden}</div>
+
+      <div class="committee-video-card-main">
+        <div class="committee-video-title-row">
+          <div>
+            <strong>${escapeHtml(video.titulo)}</strong>
+            <div class="committee-video-badges">
+              <span class="video-source-badge ${String(video.tipo_fuente||'').toLowerCase()}">${escapeHtml(committeeTrainingSourceLabel(video.tipo_fuente))}</span>
+              ${video.obligatorio ? '<span class="video-required-badge">OBLIGATORIO</span>' : '<span class="video-optional-badge">OPCIONAL</span>'}
+              ${video.duracion_minutos ? `<span class="video-duration-badge">${Number(video.duracion_minutos)} min</span>` : ''}
+            </div>
+          </div>
+        </div>
+        ${video.descripcion ? `<p>${escapeHtml(video.descripcion)}</p>` : ''}
+      </div>
+
+      <div class="committee-video-card-actions">
+        <button class="secondary-btn small-btn" type="button" data-preview-training-video="${video.id}">Vista previa</button>
+        ${canManage ? `
+          <button class="video-order-btn" type="button" data-move-training-video="${video.id}" data-direction="up" ${index===0?'disabled':''}>↑</button>
+          <button class="video-order-btn" type="button" data-move-training-video="${video.id}" data-direction="down" ${index===videos.length-1?'disabled':''}>↓</button>
+          <button class="secondary-btn small-btn" type="button" data-edit-training-video="${video.id}">Editar</button>
+          <button class="induction-delete-btn small-btn" type="button" data-delete-training-video="${video.id}">Eliminar</button>
+        ` : ''}
+      </div>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('[data-preview-training-video]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeTrainingVideoPreview(button.dataset.previewTrainingVideo));
+  });
+
+  container.querySelectorAll('[data-edit-training-video]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const video=committeeTrainingVideos.find(x=>x.id===button.dataset.editTrainingVideo);
+      openCommitteeTrainingVideoModal(video);
+    });
+  });
+
+  container.querySelectorAll('[data-delete-training-video]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeTrainingVideo(button.dataset.deleteTrainingVideo));
+  });
+
+  container.querySelectorAll('[data-move-training-video]').forEach(button=>{
+    button.addEventListener('click',()=>moveCommitteeTrainingVideo(
+      button.dataset.moveTrainingVideo,
+      button.dataset.direction
+    ));
+  });
+}
+
+function normalizeYoutubeUrl(value) {
+  const raw=String(value || '').trim();
+  if (!raw) return null;
+
+  try {
+    const url=new URL(raw);
+    let id='';
+
+    if (url.hostname.includes('youtu.be')) {
+      id=url.pathname.split('/').filter(Boolean)[0] || '';
+    } else if (url.hostname.includes('youtube.com')) {
+      if (url.pathname==='/watch') id=url.searchParams.get('v') || '';
+      else {
+        const parts=url.pathname.split('/').filter(Boolean);
+        if (['embed','shorts','live'].includes(parts[0])) id=parts[1] || '';
+      }
+    }
+
+    id=id.replace(/[^A-Za-z0-9_-]/g,'').slice(0,20);
+    if (!id) return null;
+
+    return {
+      id,
+      watch:`https://www.youtube.com/watch?v=${id}`,
+      embed:`https://www.youtube.com/embed/${id}`
+    };
+  } catch {
+    return null;
+  }
+}
+
+function validHttpUrl(value) {
+  try {
+    const url=new URL(String(value || '').trim());
+    return ['http:','https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function updateCommitteeTrainingVideoSourceFields() {
+  const type=document.getElementById('committeeTrainingVideoSourceType')?.value || 'YOUTUBE';
+  const urlField=document.getElementById('committeeTrainingVideoUrlField');
+  const fileField=document.getElementById('committeeTrainingVideoFileField');
+  const label=document.getElementById('committeeTrainingVideoUrlLabel');
+  const input=document.getElementById('committeeTrainingVideoUrl');
+
+  const isUpload=type==='MP4_UPLOAD';
+  urlField?.classList.toggle('hidden',isUpload);
+  fileField?.classList.toggle('hidden',!isUpload);
+
+  if (!isUpload && label && input) {
+    if (type==='YOUTUBE') {
+      label.textContent='Enlace de YouTube *';
+      input.placeholder='https://www.youtube.com/watch?v=...';
+    } else {
+      label.textContent='Enlace externo *';
+      input.placeholder='https://...';
+    }
+  }
+}
+
+function openCommitteeTrainingVideoModal(video=null) {
+  if (!activeCommitteeTrainingId) return;
+
+  activeCommitteeTrainingVideoId=video?.id || null;
+  committeeTrainingVideoMessage('');
+
+  document.getElementById('committeeTrainingVideoModalTitle').textContent=
+    video ? 'Editar video' : 'Agregar video';
+
+  document.getElementById('committeeTrainingVideoId').value=video?.id || '';
+  document.getElementById('committeeTrainingVideoTitle').value=video?.titulo || '';
+  document.getElementById('committeeTrainingVideoSourceType').value=video?.tipo_fuente || 'YOUTUBE';
+  document.getElementById('committeeTrainingVideoMinutes').value=video?.duracion_minutos ?? '';
+  document.getElementById('committeeTrainingVideoUrl').value=video?.url || '';
+  document.getElementById('committeeTrainingVideoDescription').value=video?.descripcion || '';
+  document.getElementById('committeeTrainingVideoRequired').checked=video?.obligatorio ?? true;
+  document.getElementById('committeeTrainingVideoFile').value='';
+
+  updateCommitteeTrainingVideoSourceFields();
+
+  const modal=document.getElementById('committeeTrainingVideoModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeTrainingVideoModal() {
+  const modal=document.getElementById('committeeTrainingVideoModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  activeCommitteeTrainingVideoId=null;
+
+  // El modal principal sigue abierto.
+  if (!document.getElementById('committeeTrainingModal')?.classList.contains('hidden')) {
+    document.body.classList.add('modal-open');
+  } else {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function saveCommitteeTrainingVideo(event) {
+  event.preventDefault();
+  committeeTrainingVideoMessage('');
+
+  if (!activeCommitteeTrainingId) {
+    committeeTrainingVideoMessage('Primero guarda la capacitación.');
+    return;
+  }
+
+  const training=committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  if (!training || !committeeTrainingCanManage(training)) {
+    committeeTrainingVideoMessage('No tienes permiso para modificar este contenido.');
+    return;
+  }
+
+  const id=document.getElementById('committeeTrainingVideoId').value || null;
+  const title=document.getElementById('committeeTrainingVideoTitle').value.trim();
+  const type=document.getElementById('committeeTrainingVideoSourceType').value;
+  const description=document.getElementById('committeeTrainingVideoDescription').value.trim() || null;
+  const minutesRaw=document.getElementById('committeeTrainingVideoMinutes').value;
+  const duracion_minutos=minutesRaw ? Number(minutesRaw) : null;
+  const obligatorio=document.getElementById('committeeTrainingVideoRequired').checked;
+  const rawUrl=document.getElementById('committeeTrainingVideoUrl').value.trim();
+  const file=document.getElementById('committeeTrainingVideoFile').files?.[0] || null;
+  const existing=id ? committeeTrainingVideos.find(x=>x.id===id) : null;
+
+  if (!title) {
+    committeeTrainingVideoMessage('Ingresa el título del video.');
+    return;
+  }
+
+  if (duracion_minutos!==null && (!Number.isFinite(duracion_minutos) || duracion_minutos<=0)) {
+    committeeTrainingVideoMessage('La duración debe ser mayor a 0.');
+    return;
+  }
+
+  let url=null;
+  let storage_path=existing?.storage_path || null;
+  let uploadedNewPath=null;
+
+  if (type==='YOUTUBE') {
+    const youtube=normalizeYoutubeUrl(rawUrl);
+    if (!youtube) {
+      committeeTrainingVideoMessage('Ingresa un enlace válido de YouTube.');
+      return;
+    }
+    url=youtube.watch;
+    storage_path=null;
+  } else if (type==='ENLACE') {
+    url=validHttpUrl(rawUrl);
+    if (!url) {
+      committeeTrainingVideoMessage('Ingresa un enlace externo válido que empiece con http:// o https://.');
+      return;
+    }
+    storage_path=null;
+  } else if (type==='MP4_UPLOAD') {
+    if (!file && !(existing?.tipo_fuente==='MP4_UPLOAD' && existing?.storage_path)) {
+      committeeTrainingVideoMessage('Selecciona el archivo MP4.');
+      return;
+    }
+
+    if (file) {
+      const isMp4=file.type==='video/mp4' || file.name.toLowerCase().endsWith('.mp4');
+      if (!isMp4) {
+        committeeTrainingVideoMessage('El archivo debe ser MP4.');
+        return;
+      }
+
+      if (file.size>50*1024*1024) {
+        committeeTrainingVideoMessage(
+          'El MP4 supera 50 MB. Para videos pesados utiliza YouTube no listado o un enlace externo.'
+        );
+        return;
+      }
+    }
+    url=null;
+  }
+
+  const button=document.getElementById('saveCommitteeTrainingVideoButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent=type==='MP4_UPLOAD' && file ? 'Subiendo video…' : 'Guardando…';
+
+  try {
+    if (type==='MP4_UPLOAD' && file) {
+      const path=`${activeCommitteeTrainingId}/${crypto.randomUUID()}.mp4`;
+
+      const {error:uploadError}=await client.storage
+        .from('comite-sst-capacitaciones')
+        .upload(path,file,{
+          contentType:'video/mp4',
+          cacheControl:'3600',
+          upsert:false
+        });
+
+      if (uploadError) throw uploadError;
+
+      storage_path=path;
+      uploadedNewPath=path;
+    }
+
+    const videos=committeeTrainingVideosFor(activeCommitteeTrainingId);
+    const order=existing?.orden || ((videos.at(-1)?.orden || 0)+1);
+
+    const payload={
+      capacitacion_id:activeCommitteeTrainingId,
+      orden:order,
+      titulo:title,
+      descripcion:description,
+      tipo_fuente:type,
+      url,
+      storage_path,
+      duracion_minutos,
+      obligatorio
+    };
+
+    const result=id
+      ? await client.from('comite_sst_capacitacion_videos').update(payload).eq('id',id)
+      : await client.from('comite_sst_capacitacion_videos').insert(payload);
+
+    if (result.error) throw result.error;
+
+    // Si se reemplazó un MP4 anterior, elimina el archivo anterior después de guardar correctamente.
+    if (
+      existing?.storage_path &&
+      existing.storage_path!==storage_path &&
+      existing.tipo_fuente==='MP4_UPLOAD'
+    ) {
+      const remove=await client.storage
+        .from('comite-sst-capacitaciones')
+        .remove([existing.storage_path]);
+      if (remove.error) console.warn(remove.error);
+    }
+
+    closeCommitteeTrainingVideoModal();
+    committeeTrainingsLoaded=false;
+    await loadCommitteeTrainingsModule(true);
+
+    const refreshed=committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+    if (refreshed) {
+      openCommitteeTrainingModal(refreshed);
+      committeeTrainingMessage(
+        id ? 'Video actualizado correctamente.' : 'Video agregado correctamente.',
+        'success'
+      );
+    }
+  } catch(err) {
+    console.error(err);
+
+    if (uploadedNewPath) {
+      const cleanup=await client.storage
+        .from('comite-sst-capacitaciones')
+        .remove([uploadedNewPath]);
+      if (cleanup.error) console.warn(cleanup.error);
+    }
+
+    committeeTrainingVideoMessage(err?.message || 'No fue posible guardar el video.');
+  } finally {
+    button.disabled=false;
+    button.textContent=old;
+  }
+}
+
+async function moveCommitteeTrainingVideo(id,direction) {
+  const video=committeeTrainingVideos.find(x=>x.id===id);
+  if (!video) return;
+
+  const training=committeeTrainingRecords.find(x=>x.id===video.capacitacion_id);
+  if (!training || !committeeTrainingCanManage(training)) return;
+
+  const videos=committeeTrainingVideosFor(video.capacitacion_id);
+  const index=videos.findIndex(x=>x.id===id);
+  const otherIndex=direction==='up' ? index-1 : index+1;
+
+  if (index<0 || otherIndex<0 || otherIndex>=videos.length) return;
+
+  const other=videos[otherIndex];
+  const currentOrder=video.orden;
+  const otherOrder=other.orden;
+
+  const [a,b]=await Promise.all([
+    client.from('comite_sst_capacitacion_videos').update({orden:otherOrder}).eq('id',video.id),
+    client.from('comite_sst_capacitacion_videos').update({orden:currentOrder}).eq('id',other.id)
+  ]);
+
+  if (a.error || b.error) {
+    committeeTrainingMessage(a.error?.message || b.error?.message || 'No fue posible reordenar los videos.');
+    return;
+  }
+
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+  const refreshed=committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  if (refreshed) openCommitteeTrainingModal(refreshed);
+}
+
+async function deleteCommitteeTrainingVideo(id) {
+  const video=committeeTrainingVideos.find(x=>x.id===id);
+  if (!video) return;
+
+  const training=committeeTrainingRecords.find(x=>x.id===video.capacitacion_id);
+  if (!training || !committeeTrainingCanManage(training)) return;
+
+  if (!confirm(`¿Eliminar el video "${video.titulo}"?`)) return;
+
+  const {error}=await client.from('comite_sst_capacitacion_videos').delete().eq('id',id);
+  if (error) {
+    committeeTrainingMessage(error.message || 'No fue posible eliminar el video.');
+    return;
+  }
+
+  if (video.tipo_fuente==='MP4_UPLOAD' && video.storage_path) {
+    const remove=await client.storage
+      .from('comite-sst-capacitaciones')
+      .remove([video.storage_path]);
+    if (remove.error) console.warn(remove.error);
+  }
+
+  // Reordena los videos restantes.
+  const remaining=committeeTrainingVideosFor(video.capacitacion_id)
+    .filter(x=>x.id!==id);
+
+  for (let i=0;i<remaining.length;i++) {
+    if (remaining[i].orden!==i+1) {
+      const update=await client.from('comite_sst_capacitacion_videos')
+        .update({orden:i+1})
+        .eq('id',remaining[i].id);
+      if (update.error) console.warn(update.error);
+    }
+  }
+
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+  const refreshed=committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  if (refreshed) {
+    openCommitteeTrainingModal(refreshed);
+    committeeTrainingMessage('Video eliminado.','success');
+  }
+}
+
+async function deleteCommitteeTraining(id) {
+  const training=committeeTrainingRecords.find(x=>x.id===id);
+  if (!training || !committeeTrainingCanManage(training)) return;
+
+  const videos=committeeTrainingVideosFor(id);
+  if (!confirm(
+    `¿Eliminar definitivamente la capacitación "${training.titulo}"?\n\n`+
+    `También se eliminarán ${videos.length} video(s) asociados.`
+  )) return;
+
+  const paths=videos
+    .filter(x=>x.tipo_fuente==='MP4_UPLOAD' && x.storage_path)
+    .map(x=>x.storage_path);
+
+  const {error}=await client.from('comite_sst_capacitaciones').delete().eq('id',id);
+  if (error) {
+    committeeMessage(error.message || 'No fue posible eliminar la capacitación.');
+    return;
+  }
+
+  if (paths.length) {
+    const remove=await client.storage.from('comite-sst-capacitaciones').remove(paths);
+    if (remove.error) console.warn(remove.error);
+  }
+
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+  committeeMessage('Capacitación eliminada correctamente.','success');
+}
+
+async function openCommitteeTrainingVideoPreview(id) {
+  const video=committeeTrainingVideos.find(x=>x.id===id);
+  if (!video) return;
+
+  const title=document.getElementById('committeeTrainingVideoPreviewTitle');
+  const body=document.getElementById('committeeTrainingVideoPreviewBody');
+  if (!title || !body) return;
+
+  title.textContent=video.titulo || 'Video';
+  body.innerHTML='<div class="training-library-empty">Cargando vista previa…</div>';
+
+  const modal=document.getElementById('committeeTrainingVideoPreviewModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+
+  try {
+    if (video.tipo_fuente==='YOUTUBE') {
+      const youtube=normalizeYoutubeUrl(video.url);
+      if (!youtube) throw new Error('El enlace de YouTube no es válido.');
+
+      body.innerHTML=`
+        <div class="committee-video-preview-frame">
+          <iframe
+            src="${escapeHtml(youtube.embed)}"
+            title="${escapeHtml(video.titulo)}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </div>
+      `;
+      return;
+    }
+
+    if (video.tipo_fuente==='MP4_UPLOAD') {
+      const {data,error}=await client.storage
+        .from('comite-sst-capacitaciones')
+        .createSignedUrl(video.storage_path,3600);
+
+      if (error || !data?.signedUrl) {
+        throw error || new Error('No fue posible generar el enlace temporal del video.');
+      }
+
+      body.innerHTML=`
+        <video class="committee-video-preview-player" src="${escapeHtml(data.signedUrl)}" controls playsinline></video>
+      `;
+      return;
+    }
+
+    const url=validHttpUrl(video.url);
+    if (!url) throw new Error('El enlace externo no es válido.');
+
+    if (/\.mp4(?:$|\?)/i.test(url)) {
+      body.innerHTML=`
+        <video class="committee-video-preview-player" src="${escapeHtml(url)}" controls playsinline></video>
+      `;
+    } else {
+      body.innerHTML=`
+        <div class="committee-external-video-card">
+          <span>↗</span>
+          <strong>Contenido alojado externamente</strong>
+          <p>Este enlace se abrirá en una nueva pestaña.</p>
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="primary-btn">Abrir video</a>
+        </div>
+      `;
+    }
+  } catch(err) {
+    console.error(err);
+    body.innerHTML=`<div class="form-message visible error">${escapeHtml(err?.message || 'No fue posible mostrar el video.')}</div>`;
+  }
+}
+
+function closeCommitteeTrainingVideoPreview() {
+  const modal=document.getElementById('committeeTrainingVideoPreviewModal');
+  const body=document.getElementById('committeeTrainingVideoPreviewBody');
+  if (body) body.innerHTML='';
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+
+  if (
+    !document.getElementById('committeeTrainingModal')?.classList.contains('hidden')
+    || !document.getElementById('committeeTrainingVideoModal')?.classList.contains('hidden')
+  ) {
+    document.body.classList.add('modal-open');
+  } else {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+
 // ------------------------------------------------------------
 // FIRMA ELECTRÓNICA DE CONFORMIDAD - ADMINISTRACIÓN
 // ------------------------------------------------------------
@@ -3787,6 +4715,7 @@ async function closeCurrentCommitteeMeeting() {
 document.getElementById('committeeConformationsTab')?.addEventListener('click',()=>setCommitteeModuleMode('CONFORMATIONS'));
 document.getElementById('committeeMeetingsTab')?.addEventListener('click',()=>setCommitteeModuleMode('MEETINGS'));
 document.getElementById('committeeAgreementsTab')?.addEventListener('click',()=>setCommitteeModuleMode('AGREEMENTS'));
+document.getElementById('committeeTrainingsTab')?.addEventListener('click',()=>setCommitteeModuleMode('TRAININGS'));
 
 document.getElementById('committeeMeetingProgramForm')?.addEventListener('submit',saveCommitteeMeetingProgram);
 document.getElementById('closeCommitteeMeetingProgramModal')?.addEventListener('click',closeCommitteeMeetingProgramModal);
@@ -3862,6 +4791,29 @@ document.getElementById('refreshCommitteeAgreementsButton')?.addEventListener('c
   committeeAgreementsLoaded=false;
   loadCommitteeAgreementsModule(true);
 });
+
+document.getElementById('committeeTrainingSearch')?.addEventListener('input',renderCommitteeTrainingList);
+document.getElementById('committeeTrainingCommitteeFilter')?.addEventListener('change',renderCommitteeTrainingList);
+document.getElementById('committeeTrainingStatusFilter')?.addEventListener('change',renderCommitteeTrainingList);
+document.getElementById('refreshCommitteeTrainingsButton')?.addEventListener('click',()=>{
+  committeeTrainingsLoaded=false;
+  loadCommitteeTrainingsModule(true);
+});
+
+document.getElementById('committeeTrainingForm')?.addEventListener('submit',saveCommitteeTraining);
+document.getElementById('closeCommitteeTrainingModal')?.addEventListener('click',closeCommitteeTrainingModal);
+document.getElementById('cancelCommitteeTrainingModal')?.addEventListener('click',closeCommitteeTrainingModal);
+document.getElementById('committeeTrainingModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingModal);
+
+document.getElementById('addCommitteeTrainingVideoButton')?.addEventListener('click',()=>openCommitteeTrainingVideoModal());
+document.getElementById('committeeTrainingVideoSourceType')?.addEventListener('change',updateCommitteeTrainingVideoSourceFields);
+document.getElementById('committeeTrainingVideoForm')?.addEventListener('submit',saveCommitteeTrainingVideo);
+document.getElementById('closeCommitteeTrainingVideoModal')?.addEventListener('click',closeCommitteeTrainingVideoModal);
+document.getElementById('cancelCommitteeTrainingVideoModal')?.addEventListener('click',closeCommitteeTrainingVideoModal);
+document.getElementById('committeeTrainingVideoModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingVideoModal);
+
+document.getElementById('closeCommitteeTrainingVideoPreviewModal')?.addEventListener('click',closeCommitteeTrainingVideoPreview);
+document.getElementById('committeeTrainingVideoPreviewModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingVideoPreview);
 
 document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsOfficialExcel);
 

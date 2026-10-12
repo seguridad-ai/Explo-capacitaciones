@@ -2882,3 +2882,536 @@ body.modal-open{
     width:100%;
   }
 }
+
+
+/* ============================================================
+   ETAPA 16D.1 · CAPACITACIONES Y VIDEOS DEL COMITÉ SST
+   ============================================================ */
+
+.committee-trainings-view{
+  display:block;
+}
+
+.committee-training-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin:18px 0;
+}
+
+.committee-training-stats article{
+  border:1px solid #dce3ec;
+  border-radius:14px;
+  background:#fff;
+  padding:16px 18px;
+  box-shadow:0 5px 18px rgba(28,45,68,.04);
+}
+
+.committee-training-stats span,
+.committee-training-stats small{
+  display:block;
+  color:#758399;
+  font-size:9px;
+}
+
+.committee-training-stats strong{
+  display:block;
+  margin:5px 0 2px;
+  color:#102640;
+  font-size:26px;
+}
+
+.committee-training-filter{
+  display:grid;
+  grid-template-columns:minmax(280px,1fr) 260px 160px auto;
+  gap:8px;
+  padding:13px 15px;
+  border-top:1px solid #e2e7ed;
+}
+
+.committee-training-list{
+  display:grid;
+  gap:12px;
+  padding:15px;
+}
+
+.committee-training-card{
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr) auto;
+  gap:15px;
+  align-items:center;
+  border:1px solid #dde4ec;
+  border-radius:14px;
+  padding:16px;
+  background:#fff;
+}
+
+.committee-training-card-icon{
+  width:58px;
+  height:58px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:#fff0f0;
+  color:#c00000;
+  font-size:24px;
+  font-weight:900;
+}
+
+.committee-training-card-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.committee-training-card-top h4{
+  margin:3px 0 0;
+  color:#102640;
+  font-size:16px;
+}
+
+.committee-training-card-top p{
+  margin:4px 0 0;
+  color:#68778b;
+  font-size:9px;
+}
+
+.committee-training-card-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 14px;
+  margin-top:10px;
+  color:#637289;
+  font-size:9px;
+}
+
+.committee-training-status{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:8px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.committee-training-status.borrador{
+  background:#fff0cf;
+  color:#8a5800;
+}
+
+.committee-training-status.lista{
+  background:#e4f7ea;
+  color:#0d7c34;
+}
+
+.committee-training-status.inactiva{
+  background:#edf0f4;
+  color:#687587;
+}
+
+.committee-training-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:7px;
+}
+
+.committee-training-modal-card{
+  width:min(1180px,calc(100vw - 24px))!important;
+  max-width:1180px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.committee-training-form-grid label,
+.committee-training-video-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.committee-training-form-grid label>span,
+.committee-training-video-form-grid label>span{
+  color:#526179;
+  font-size:8px;
+  font-weight:800;
+}
+
+.committee-training-form-grid input,
+.committee-training-form-grid select,
+.committee-training-form-grid textarea,
+.committee-training-video-form-grid input,
+.committee-training-video-form-grid select,
+.committee-training-video-form-grid textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.committee-training-save-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:12px;
+  padding-bottom:14px;
+  border-bottom:1px solid #e2e7ed;
+}
+
+.committee-training-video-section{
+  margin-top:16px;
+  border:1px solid #dce3eb;
+  border-radius:13px;
+  padding:15px;
+  background:#fff;
+}
+
+.committee-video-guidance{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+  border:1px solid #e0e6ed;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:10px 12px;
+  margin-bottom:12px;
+  color:#506076;
+  font-size:8.5px;
+}
+
+.committee-video-guidance strong{
+  color:#26364c;
+}
+
+.committee-video-guidance>span{
+  display:inline-flex;
+  border-radius:999px;
+  background:#fff;
+  border:1px solid #dce3eb;
+  padding:4px 8px;
+  font-weight:750;
+}
+
+.committee-video-guidance small{
+  flex-basis:100%;
+  color:#7c899a;
+  font-size:8px;
+}
+
+.committee-training-video-list{
+  display:grid;
+  gap:9px;
+}
+
+.committee-video-empty{
+  min-height:150px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border:1px dashed #cbd5e0;
+  border-radius:11px;
+  color:#7a8799;
+  text-align:center;
+  background:#fafbfd;
+}
+
+.committee-video-empty>span{
+  display:grid;
+  place-items:center;
+  width:46px;
+  height:46px;
+  border-radius:50%;
+  background:#fff0f0;
+  color:#c00000;
+  font-size:18px;
+}
+
+.committee-video-empty strong{
+  margin-top:8px;
+  color:#35455a;
+}
+
+.committee-video-empty p{
+  margin:4px 0 0;
+  font-size:9px;
+}
+
+.committee-video-card{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  gap:11px;
+  align-items:center;
+  border:1px solid #dfe5ec;
+  border-radius:11px;
+  background:#fafbfd;
+  padding:11px;
+}
+
+.committee-video-order{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:10px;
+  background:#fff;
+  border:1px solid #dce3eb;
+  color:#c00000;
+  font-size:14px;
+  font-weight:900;
+}
+
+.committee-video-card-main strong{
+  color:#1d2d43;
+  font-size:11px;
+}
+
+.committee-video-card-main p{
+  margin:7px 0 0;
+  color:#6c7a8e;
+  font-size:8.5px;
+  line-height:1.45;
+}
+
+.committee-video-title-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.committee-video-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:6px;
+}
+
+.video-source-badge,
+.video-required-badge,
+.video-optional-badge,
+.video-duration-badge{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:7px;
+  font-weight:850;
+}
+
+.video-source-badge.youtube{
+  background:#ffe8e8;
+  color:#b60000;
+}
+
+.video-source-badge.mp4_upload{
+  background:#e7f0ff;
+  color:#2259b6;
+}
+
+.video-source-badge.enlace{
+  background:#eee9ff;
+  color:#6136bd;
+}
+
+.video-required-badge{
+  background:#e6f7eb;
+  color:#0d7b35;
+}
+
+.video-optional-badge{
+  background:#eef1f5;
+  color:#637085;
+}
+
+.video-duration-badge{
+  background:#fff4dd;
+  color:#8a6000;
+}
+
+.committee-video-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:5px;
+}
+
+.video-order-btn{
+  width:34px;
+  height:34px;
+  border:1px solid #cdd6e2;
+  border-radius:8px;
+  background:#fff;
+  color:#27374d;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.video-order-btn:disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
+
+.committee-training-video-modal-card{
+  width:min(760px,calc(100vw - 24px))!important;
+  max-width:760px!important;
+}
+
+.committee-video-required{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:8px!important;
+  border:1px solid #dce6de;
+  border-radius:9px;
+  background:#f4fbf6;
+  padding:10px 12px;
+}
+
+.committee-video-required input{
+  width:18px!important;
+  height:18px;
+  flex:0 0 auto;
+  accent-color:#148a43;
+}
+
+.committee-video-required span{
+  color:#365a42!important;
+  font-size:9px!important;
+}
+
+.committee-video-preview-modal-card{
+  width:min(980px,calc(100vw - 24px))!important;
+  max-width:980px!important;
+}
+
+.committee-video-preview-body{
+  min-height:300px;
+}
+
+.committee-video-preview-frame{
+  position:relative;
+  width:100%;
+  padding-top:56.25%;
+  border-radius:12px;
+  overflow:hidden;
+  background:#0b0b0b;
+}
+
+.committee-video-preview-frame iframe{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  border:0;
+}
+
+.committee-video-preview-player{
+  display:block;
+  width:100%;
+  max-height:70vh;
+  border-radius:12px;
+  background:#000;
+}
+
+.committee-external-video-card{
+  min-height:300px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border:1px dashed #cbd5e0;
+  border-radius:12px;
+  background:#fafbfd;
+  text-align:center;
+}
+
+.committee-external-video-card>span{
+  font-size:38px;
+  color:#c00000;
+}
+
+.committee-external-video-card strong{
+  margin-top:8px;
+  color:#233349;
+}
+
+.committee-external-video-card p{
+  color:#738196;
+  font-size:9px;
+}
+
+.committee-external-video-card a{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-decoration:none;
+  margin-top:8px;
+}
+
+@media(max-width:1100px){
+  .committee-training-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-training-filter{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-training-filter input{
+    grid-column:1/-1;
+  }
+
+  .committee-training-card{
+    grid-template-columns:52px 1fr;
+  }
+
+  .committee-training-card-actions{
+    grid-column:1/-1;
+    justify-content:flex-start;
+  }
+}
+
+@media(max-width:760px){
+  .committee-training-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-training-filter{
+    grid-template-columns:1fr;
+  }
+
+  .committee-training-filter input{
+    grid-column:auto;
+  }
+
+  .committee-training-card{
+    grid-template-columns:1fr;
+  }
+
+  .committee-training-card-icon{
+    width:48px;
+    height:48px;
+  }
+
+  .committee-training-card-top{
+    flex-direction:column;
+  }
+
+  .committee-video-card{
+    grid-template-columns:42px 1fr;
+  }
+
+  .committee-video-card-actions{
+    grid-column:1/-1;
+    justify-content:flex-start;
+  }
+
+  .committee-training-save-row .primary-btn{
+    width:100%;
+  }
+}

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16c1" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16d1" />
 </head>
 <body>
   <section id="publicMeetingSignatureScreen" class="public-meeting-signature-screen hidden" aria-label="Firma de acta del Comité SST">
@@ -1883,6 +1883,7 @@
           <button id="committeeConformationsTab" class="active" type="button">Conformaciones e integrantes</button>
           <button id="committeeMeetingsTab" type="button">Reuniones y actas</button>
           <button id="committeeAgreementsTab" type="button">Seguimiento de acuerdos</button>
+          <button id="committeeTrainingsTab" type="button">Capacitaciones</button>
         </div>
 
         <div id="committeeConformationsStats" class="committee-stats">
@@ -2059,6 +2060,260 @@
             </div>
           </article>
         </section>
+
+        <section id="committeeTrainingsView" class="committee-trainings-view hidden">
+          <div class="committee-training-stats">
+            <article>
+              <span>Capacitaciones</span>
+              <strong id="committeeTrainingTotalCount">0</strong>
+              <small>Registradas</small>
+            </article>
+            <article>
+              <span>Borradores</span>
+              <strong id="committeeTrainingDraftCount">0</strong>
+              <small>En preparación</small>
+            </article>
+            <article>
+              <span>Listas</span>
+              <strong id="committeeTrainingReadyCount">0</strong>
+              <small>Con contenido preparado</small>
+            </article>
+            <article>
+              <span>Videos</span>
+              <strong id="committeeTrainingVideoCount">0</strong>
+              <small>Contenido audiovisual</small>
+            </article>
+          </div>
+
+          <article class="catalog-panel committee-trainings-panel">
+            <div class="catalog-panel-head catalog-panel-head-wrap">
+              <div>
+                <span class="eyebrow">CAPACITACIONES DEL COMITÉ SST</span>
+                <h3>Biblioteca de capacitaciones y videos</h3>
+                <p class="committee-meeting-help">Crea la capacitación, organiza uno o varios videos y deja el contenido listo para el flujo público de la siguiente etapa.</p>
+              </div>
+            </div>
+
+            <div class="catalog-filter committee-training-filter">
+              <input id="committeeTrainingSearch" type="search" placeholder="Buscar capacitación, código, expositor o proyecto..." />
+              <select id="committeeTrainingCommitteeFilter">
+                <option value="">Todos los Comités/Subcomités</option>
+              </select>
+              <select id="committeeTrainingStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="BORRADOR">Borradores</option>
+                <option value="LISTA">Listas</option>
+                <option value="INACTIVA">Inactivas</option>
+              </select>
+              <button id="refreshCommitteeTrainingsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+
+            <div id="committeeTrainingList" class="committee-training-list">
+              <div class="training-library-empty">Cargando capacitaciones…</div>
+            </div>
+          </article>
+        </section>
+
+        <div id="committeeTrainingModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-training-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">ETAPA 16D.1 · CAPACITACIÓN</span>
+                <h3 id="committeeTrainingModalTitle">Nueva capacitación</h3>
+                <p id="committeeTrainingModalSubtitle" class="modal-subtitle">Programa la capacitación y administra su contenido audiovisual.</p>
+              </div>
+              <button id="closeCommitteeTrainingModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="committeeTrainingForm" novalidate>
+              <input id="committeeTrainingId" type="hidden" />
+
+              <div class="form-grid committee-training-form-grid">
+                <label class="form-span-2">
+                  <span>Comité / Subcomité *</span>
+                  <select id="committeeTrainingCommittee">
+                    <option value="">Seleccione una conformación</option>
+                  </select>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Tema / título de la capacitación *</span>
+                  <input id="committeeTrainingTitle" maxlength="220" placeholder="Ej. Funciones y responsabilidades del Comité SST" />
+                </label>
+
+                <label>
+                  <span>Expositor / responsable *</span>
+                  <input id="committeeTrainingPresenter" maxlength="180" placeholder="Apellidos y nombres" />
+                </label>
+
+                <label>
+                  <span>Cargo del expositor</span>
+                  <input id="committeeTrainingPresenterRole" maxlength="180" placeholder="Ej. Responsable SIG" />
+                </label>
+
+                <label>
+                  <span>Fecha *</span>
+                  <input id="committeeTrainingDate" type="date" />
+                </label>
+
+                <label>
+                  <span>Duración total estimada (horas) *</span>
+                  <input id="committeeTrainingHours" type="number" min="0.25" max="100" step="0.25" value="1" />
+                </label>
+
+                <label>
+                  <span>Nota mínima aprobatoria *</span>
+                  <input id="committeeTrainingMinGrade" type="number" min="0" max="20" step="0.1" value="16" />
+                </label>
+
+                <label>
+                  <span>Máximo de intentos *</span>
+                  <select id="committeeTrainingAttempts">
+                    <option value="1">1 intento</option>
+                    <option value="2" selected>2 intentos</option>
+                    <option value="3">3 intentos</option>
+                    <option value="4">4 intentos</option>
+                    <option value="5">5 intentos</option>
+                  </select>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Objetivo</span>
+                  <textarea id="committeeTrainingObjective" rows="3" maxlength="1500" placeholder="Objetivo de aprendizaje de la capacitación"></textarea>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Descripción / instrucciones</span>
+                  <textarea id="committeeTrainingDescription" rows="3" maxlength="2000" placeholder="Descripción del contenido, alcance o indicaciones para los integrantes"></textarea>
+                </label>
+
+                <label>
+                  <span>Estado *</span>
+                  <select id="committeeTrainingStatus">
+                    <option value="BORRADOR">BORRADOR</option>
+                    <option value="LISTA">LISTA</option>
+                    <option value="INACTIVA">INACTIVA</option>
+                  </select>
+                </label>
+              </div>
+
+              <div id="committeeTrainingMessage" class="form-message"></div>
+
+              <div class="committee-training-save-row">
+                <button id="saveCommitteeTrainingButton" class="primary-btn" type="submit">Guardar capacitación</button>
+              </div>
+            </form>
+
+            <section id="committeeTrainingVideoSection" class="committee-training-video-section hidden">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">▶</span>
+                  <div>
+                    <h4>Videos de la capacitación</h4>
+                    <p>Agrega uno o varios videos y ordénalos en la secuencia en que deberán ser visualizados.</p>
+                  </div>
+                </div>
+                <button id="addCommitteeTrainingVideoButton" class="primary-btn" type="button">+ Agregar video</button>
+              </div>
+
+              <div class="committee-video-guidance">
+                <strong>Fuentes disponibles:</strong>
+                <span>YouTube</span>
+                <span>MP4 subido al sistema</span>
+                <span>Enlace externo</span>
+                <small>Para videos pesados se recomienda YouTube no listado o un enlace externo. El MP4 directo está limitado a 50 MB.</small>
+              </div>
+
+              <div id="committeeTrainingVideoList" class="committee-training-video-list"></div>
+            </section>
+
+            <div class="modal-actions">
+              <button id="cancelCommitteeTrainingModal" class="secondary-btn" type="button">Cerrar</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="committeeTrainingVideoModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-training-video-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">CONTENIDO AUDIOVISUAL</span>
+                <h3 id="committeeTrainingVideoModalTitle">Agregar video</h3>
+                <p class="modal-subtitle">Configura el contenido y su fuente.</p>
+              </div>
+              <button id="closeCommitteeTrainingVideoModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="committeeTrainingVideoForm" novalidate>
+              <input id="committeeTrainingVideoId" type="hidden" />
+
+              <div class="form-grid committee-training-video-form-grid">
+                <label class="form-span-2">
+                  <span>Título del video *</span>
+                  <input id="committeeTrainingVideoTitle" maxlength="220" placeholder="Ej. Funciones del Comité SST" />
+                </label>
+
+                <label>
+                  <span>Fuente *</span>
+                  <select id="committeeTrainingVideoSourceType">
+                    <option value="YOUTUBE">YouTube</option>
+                    <option value="MP4_UPLOAD">Subir MP4</option>
+                    <option value="ENLACE">Enlace externo</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Duración aproximada (minutos)</span>
+                  <input id="committeeTrainingVideoMinutes" type="number" min="0.1" step="0.1" placeholder="Ej. 12" />
+                </label>
+
+                <label id="committeeTrainingVideoUrlField" class="form-span-2">
+                  <span id="committeeTrainingVideoUrlLabel">Enlace de YouTube *</span>
+                  <input id="committeeTrainingVideoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+                </label>
+
+                <label id="committeeTrainingVideoFileField" class="form-span-2 hidden">
+                  <span>Archivo MP4 *</span>
+                  <input id="committeeTrainingVideoFile" type="file" accept="video/mp4" />
+                  <small class="field-help">Máximo 50 MB. Para archivos mayores utiliza YouTube no listado o enlace externo.</small>
+                </label>
+
+                <label class="form-span-2">
+                  <span>Descripción / indicaciones</span>
+                  <textarea id="committeeTrainingVideoDescription" rows="3" maxlength="1500" placeholder="Resumen del video o indicaciones para los integrantes"></textarea>
+                </label>
+
+                <label class="committee-video-required">
+                  <input id="committeeTrainingVideoRequired" type="checkbox" checked />
+                  <span>Video obligatorio para completar la capacitación</span>
+                </label>
+              </div>
+
+              <div id="committeeTrainingVideoMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="cancelCommitteeTrainingVideoModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveCommitteeTrainingVideoButton" class="primary-btn" type="submit">Guardar video</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="committeeTrainingVideoPreviewModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-video-preview-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">VISTA PREVIA</span>
+                <h3 id="committeeTrainingVideoPreviewTitle">Video</h3>
+              </div>
+              <button id="closeCommitteeTrainingVideoPreviewModal" class="modal-close" type="button">×</button>
+            </div>
+            <div id="committeeTrainingVideoPreviewBody" class="committee-video-preview-body"></div>
+          </div>
+        </div>
 
         <div id="committeeAgreementModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
@@ -2749,6 +3004,6 @@
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16c1"></script>
+  <script src="app.js?v=20261012-16d1"></script>
 </body>
 </html>

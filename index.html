@@ -9,9 +9,100 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16b" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16b1" />
 </head>
 <body>
+  <section id="publicMeetingSignatureScreen" class="public-meeting-signature-screen hidden" aria-label="Firma de acta del Comité SST">
+    <div class="public-meeting-signature-shell">
+      <header class="public-meeting-signature-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div>
+          <span class="eyebrow">COMITÉ SST · CONFORMIDAD ELECTRÓNICA</span>
+          <h1>Firma de Acta de Reunión</h1>
+          <p id="publicMeetingSignatureAct">Acta N° —</p>
+        </div>
+      </header>
+
+      <main class="public-meeting-signature-card">
+        <section id="publicMeetingSignatureIdentity">
+          <div class="public-meeting-signature-title">
+            <span class="public-meeting-signature-icon">✓</span>
+            <div>
+              <h2>Identificación del integrante</h2>
+              <p>Ingresa tu DNI para verificar que formas parte del Comité/Subcomité convocado.</p>
+            </div>
+          </div>
+
+          <label class="public-exam-dni-label">
+            <span>DNI</span>
+            <div class="public-exam-dni-row">
+              <input id="publicMeetingSignatureDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+              <button id="publicMeetingSignatureLookupButton" class="primary-btn" type="button">Continuar</button>
+            </div>
+          </label>
+
+          <div id="publicMeetingSignatureMessage" class="form-message"></div>
+        </section>
+
+        <section id="publicMeetingSignatureReview" class="hidden">
+          <div class="public-meeting-review-head">
+            <span class="eyebrow">REVISIÓN Y CONFORMIDAD</span>
+            <h2 id="publicMeetingSignatureName">—</h2>
+            <p id="publicMeetingSignatureWorkerMeta">—</p>
+          </div>
+
+          <div class="public-meeting-summary-grid">
+            <article><span>Acta</span><strong id="publicMeetingSignatureActNumber">—</strong></article>
+            <article><span>Fecha</span><strong id="publicMeetingSignatureDate">—</strong></article>
+            <article><span>Horario</span><strong id="publicMeetingSignatureTime">—</strong></article>
+            <article><span>Lugar</span><strong id="publicMeetingSignaturePlace">—</strong></article>
+          </div>
+
+          <section class="public-meeting-agenda-card">
+            <h3>Agenda registrada</h3>
+            <div id="publicMeetingSignatureAgenda"></div>
+          </section>
+
+          <label class="public-meeting-consent">
+            <input id="publicMeetingSignatureConsent" type="checkbox" />
+            <span id="publicMeetingSignatureConsentText">Declaro que he revisado la información mostrada del acta, manifiesto mi conformidad con mi participación y autorizo que la firma manuscrita trazada a continuación sea registrada como firma electrónica asociada a esta acta.</span>
+          </label>
+
+          <section class="public-meeting-signature-pad">
+            <span class="eyebrow">FIRMA ELECTRÓNICA MANUSCRITA</span>
+            <h3>Firma dentro del recuadro</h3>
+            <p>La casilla de conformidad debe ser marcada por ti antes de registrar la firma.</p>
+            <div class="public-meeting-signature-canvas-wrap">
+              <canvas id="publicMeetingSignatureCanvas" width="900" height="300"></canvas>
+            </div>
+            <div class="public-signature-actions">
+              <button id="clearPublicMeetingSignatureButton" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="savePublicMeetingSignatureButton" class="primary-btn" type="button">Firmar y enviar conformidad</button>
+            </div>
+          </section>
+
+          <div id="publicMeetingSignatureSubmitMessage" class="form-message"></div>
+        </section>
+
+        <section id="publicMeetingSignatureCompleted" class="public-meeting-signature-completed hidden">
+          <div class="public-result-icon">✓</div>
+          <span class="eyebrow">CONFORMIDAD REGISTRADA</span>
+          <h2>Firma registrada correctamente</h2>
+          <p id="publicMeetingSignatureCompletedText">Tu conformidad quedó asociada al acta.</p>
+          <div class="public-completion-box">
+            <strong>✓ Participación confirmada</strong>
+            <span>Tu nombre y firma aparecerán en el acta final emitida por el sistema.</span>
+          </div>
+        </section>
+      </main>
+
+      <footer class="public-exam-footer">
+        <span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span>
+        <span>By RonyC</span>
+      </footer>
+    </div>
+  </section>
+
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
     <div class="public-exam-shell">
       <header class="public-exam-header">
@@ -1867,6 +1958,7 @@
                   <option value="">Todos los estados</option>
                   <option value="PROGRAMADA">Programadas</option>
                   <option value="BORRADOR">Borradores</option>
+                  <option value="EN_FIRMA">En firma</option>
                   <option value="CERRADA">Cerradas</option>
                 </select>
                 <button id="refreshCommitteeMeetingsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
@@ -2055,9 +2147,14 @@
 
             <section class="meeting-editor-section">
               <div class="meeting-editor-section-head">
-                <div><span class="meeting-section-number">2.7</span><div><h4>Revisión de pendientes de acuerdos de reuniones anteriores</h4><p>El sistema muestra automáticamente los acuerdos anteriores que todavía no se encuentran cerrados.</p></div></div>
+                <div><span class="meeting-section-number">2.7</span><div><h4>Revisión de pendientes de acuerdos de reuniones anteriores</h4><p>El sistema muestra automáticamente los pendientes anteriores y también permite agregar texto manual cuando necesites registrar un tema que no proviene del historial.</p></div></div>
+                <button class="secondary-btn small-btn" id="addCommitteeMeetingPreviousManualButton" type="button">+ Agregar texto</button>
               </div>
               <div id="committeeMeetingPreviousAgreements" class="meeting-previous-agreements"></div>
+              <div class="meeting-manual-pending-head">
+                <span class="eyebrow">REGISTRO MANUAL ADICIONAL</span>
+              </div>
+              <div id="committeeMeetingPreviousManualRows" class="meeting-dynamic-rows"></div>
             </section>
 
             <section class="meeting-editor-section">
@@ -2069,9 +2166,40 @@
               <div id="committeeMeetingAgreementsRows" class="meeting-dynamic-rows"></div>
             </section>
 
+            <section class="meeting-editor-section meeting-signing-admin-section">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">✓</span>
+                  <div>
+                    <h4>Firma de conformidad de los integrantes</h4>
+                    <p>Finaliza primero el contenido del acta. Luego habilita el enlace para que cada integrante ingrese con su DNI, marque su conformidad y trace su firma electrónica manuscrita.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="meeting-sign-status-grid">
+                <article><span>Firmas registradas</span><strong id="committeeMeetingSignedCount">0 / 0</strong></article>
+                <article><span>Estado de firma</span><strong id="committeeMeetingSigningState">NO HABILITADA</strong></article>
+              </div>
+
+              <div id="committeeMeetingSignatureLinkBox" class="meeting-sign-link-box hidden">
+                <input id="committeeMeetingSignatureLink" readonly />
+                <button id="copyCommitteeMeetingSignatureLinkButton" class="secondary-btn" type="button">Copiar</button>
+                <button id="whatsappCommitteeMeetingSignatureButton" class="whatsapp-btn" type="button">WhatsApp</button>
+              </div>
+
+              <div class="meeting-signing-actions">
+                <button id="enableCommitteeMeetingSignaturesButton" class="primary-btn" type="button">Habilitar y compartir firmas</button>
+              </div>
+
+              <div class="meeting-signing-note">
+                <strong>Importante:</strong> esta función registra una <b>firma electrónica manuscrita</b> y el consentimiento expreso del integrante. No se presenta en la aplicación como “firma digital certificada”.
+              </div>
+            </section>
+
             <section class="meeting-editor-section">
               <div class="meeting-editor-section-head">
-                <div><span class="meeting-section-number">3</span><div><h4>Participantes de la reunión</h4><p>Marca a los integrantes presentes. En el PDF la columna de firma quedará en blanco para firma física.</p></div></div>
+                <div><span class="meeting-section-number">3</span><div><h4>Participantes de la reunión</h4><p>La lista administrativa permite verificar los convocados. En el PDF final solo aparecerán los integrantes que hayan registrado su conformidad y firma electrónica desde el enlace compartido.</p></div></div>
                 <button id="syncCommitteeMeetingAttendeesButton" class="secondary-btn small-btn" type="button">Sincronizar integrantes</button>
               </div>
               <div class="table-wrap meeting-attendance-wrap">
@@ -2419,6 +2547,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16b"></script>
+  <script src="app.js?v=20261012-16b1"></script>
 </body>
 </html>

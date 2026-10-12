@@ -14,6 +14,7 @@ const logoutButton = document.getElementById('logoutButton');
 const publicExamScreen = document.getElementById('publicExamScreen');
 const publicPracticeScreen = document.getElementById('publicPracticeScreen');
 const publicEvaluationScreen = document.getElementById('publicEvaluationScreen');
+const publicMeetingSignatureScreen = document.getElementById('publicMeetingSignatureScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -39,6 +40,7 @@ function showAuthScreen() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.remove('hidden');
   authLoading?.classList.add('hidden');
@@ -49,6 +51,7 @@ function showLoading() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.remove('hidden');
@@ -58,6 +61,7 @@ function showApp() {
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
@@ -203,6 +207,7 @@ async function initializeAuth() {
   const publicInductionTokenParam = publicParams.get('induction');
   const publicPracticeCodeParam = publicParams.get('practice');
   const publicEvaluationCodeParam = publicParams.get('evaluation');
+  const publicMeetingSignatureTokenParam = publicParams.get('meetingSign');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
     return;
@@ -217,6 +222,10 @@ async function initializeAuth() {
   }
   if (publicEvaluationCodeParam) {
     await initializePublicEvaluationMode(publicEvaluationCodeParam);
+    return;
+  }
+  if (publicMeetingSignatureTokenParam) {
+    await initializePublicCommitteeMeetingSignature(publicMeetingSignatureTokenParam);
     return;
   }
 
@@ -327,6 +336,11 @@ let committeeMeetingAgreements = [];
 let committeeMeetingsLoaded = false;
 let activeCommitteeMeetingId = null;
 let committeeMeetingAdditionalAgenda = [];
+let publicCommitteeMeetingSignatureToken = '';
+let publicCommitteeMeetingSignatureData = null;
+let publicCommitteeMeetingSignatureDrawing = false;
+let publicCommitteeMeetingSignatureCtx = null;
+
 
 const COMMITTEE_BASE_AGENDA = [
   'Revisión de incidentes/ accidentes',
@@ -1118,6 +1132,7 @@ function committeeMeetingStatusLabel(status) {
   return {
     PROGRAMADA:'PROGRAMADA',
     BORRADOR:'BORRADOR',
+    EN_FIRMA:'EN FIRMA',
     CERRADA:'CERRADA'
   }[status] || status || '—';
 }
@@ -1241,6 +1256,7 @@ function renderCommitteeMeetingList() {
     const total=attendees.length;
     const evidence=committeeMeetingEvidences.filter(x=>x.reunion_id===record.id).length;
     const agreements=committeeMeetingAgreements.filter(x=>x.reunion_id===record.id).length;
+    const signed=attendees.filter(x=>x.firmado_at && x.consentimiento_firma).length;
     const unit=committeeUnitName(committee);
 
     return `
@@ -1264,14 +1280,16 @@ function renderCommitteeMeetingList() {
             <span>${present}/${total} presentes</span>
             <span>${evidence} imagen(es)</span>
             <span>${agreements} acuerdo(s)</span>
+            <span>${signed}/${total} firma(s)</span>
           </div>
         </div>
 
         <div class="committee-meeting-card-actions">
           <button class="committee-manage-btn" type="button" data-committee-meeting-open="${record.id}">${canManage?'Desarrollar':'Ver reunión'}</button>
           <button class="meeting-pdf-outline" type="button" data-committee-meeting-pdf="${record.id}">Acta PDF</button>
-          ${canManage ? `<button class="secondary-btn" type="button" data-committee-meeting-edit="${record.id}">Programación</button>` : ''}
-          ${canManage ? `<button class="induction-delete-btn" type="button" data-committee-meeting-delete="${record.id}">Eliminar</button>` : ''}
+          ${canManage && record.estado==='EN_FIRMA' ? `<button class="meeting-share-sign-btn" type="button" data-committee-meeting-share-sign="${record.id}">Compartir firma</button>` : ''}
+          ${canManage && !['EN_FIRMA','CERRADA'].includes(record.estado) ? `<button class="secondary-btn" type="button" data-committee-meeting-edit="${record.id}">Programación</button>` : ''}
+          ${canManage && !['EN_FIRMA','CERRADA'].includes(record.estado) ? `<button class="induction-delete-btn" type="button" data-committee-meeting-delete="${record.id}">Eliminar</button>` : ''}
         </div>
       </article>
     `;
@@ -1283,6 +1301,13 @@ function renderCommitteeMeetingList() {
 
   list.querySelectorAll('[data-committee-meeting-pdf]').forEach(button=>{
     button.addEventListener('click',()=>downloadCommitteeMeetingMinutesById(button.dataset.committeeMeetingPdf,button));
+  });
+
+  list.querySelectorAll('[data-committee-meeting-share-sign]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const record=committeeMeetingRecords.find(x=>x.id===button.dataset.committeeMeetingShareSign);
+      if (record) shareCommitteeMeetingSignatureLink(record);
+    });
   });
 
   list.querySelectorAll('[data-committee-meeting-edit]').forEach(button=>{
@@ -1314,7 +1339,7 @@ async function loadCommitteeMeetingsModule(force=false) {
       .order('fecha',{ascending:false})
       .order('hora_inicio',{ascending:false}),
     client.from('comite_sst_reunion_asistentes')
-      .select('id,reunion_id,integrante_id,presente,observacion,comite_sst_integrantes(id,comite_id,trabajador_id,representacion,condicion,cargo_comite,fecha_inicio,fecha_fin,activo,trabajadores(id,dni,nombres,apellidos,cargo,area,sede_id,proyecto_id,activo))'),
+      .select('id,reunion_id,integrante_id,presente,observacion,firma_electronica,consentimiento_firma,consentimiento_texto,firmado_at,user_agent,comite_sst_integrantes(id,comite_id,trabajador_id,representacion,condicion,cargo_comite,fecha_inicio,fecha_fin,activo,trabajadores(id,dni,nombres,apellidos,cargo,area,sede_id,proyecto_id,activo))'),
     client.from('comite_sst_reunion_evidencias')
       .select('*')
       .order('orden',{ascending:true}),
@@ -1600,6 +1625,44 @@ function renderCommitteeMeetingPreviousAgreements(meeting) {
   `;
 }
 
+
+function renderCommitteeMeetingPreviousManualRows(rows=[]) {
+  const container=document.getElementById('committeeMeetingPreviousManualRows');
+  if (!container) return;
+  const data=rows.length ? rows : [];
+
+  if (!data.length) {
+    container.innerHTML='<div class="meeting-empty-note">No hay texto manual adicional. Usa “Agregar texto” si necesitas incorporar un pendiente que no proviene del historial automático.</div>';
+    return;
+  }
+
+  container.innerHTML=data.map((row,index)=>`
+    <div class="meeting-row-card meeting-previous-manual-row" data-meeting-previous-manual-row>
+      <span class="meeting-row-number">${index+1}</span>
+      <label><span>Tema / pendiente</span><textarea class="meeting-prev-manual-topic" rows="2">${escapeHtml(row.tema || '')}</textarea></label>
+      <label><span>Responsable</span><input class="meeting-prev-manual-responsible" value="${escapeHtml(row.responsable || '')}" /></label>
+      <label><span>Estado</span><input class="meeting-prev-manual-status" value="${escapeHtml(row.estado || '')}" placeholder="Pendiente / En proceso / Cerrado" /></label>
+      <button class="meeting-row-remove" type="button" data-remove-meeting-prev-manual="${index}">×</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-remove-meeting-prev-manual]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectCommitteeMeetingPreviousManualRows();
+      current.splice(Number(button.dataset.removeMeetingPrevManual),1);
+      renderCommitteeMeetingPreviousManualRows(current);
+    });
+  });
+}
+
+function collectCommitteeMeetingPreviousManualRows() {
+  return [...document.querySelectorAll('[data-meeting-previous-manual-row]')].map(row=>({
+    tema:row.querySelector('.meeting-prev-manual-topic')?.value.trim() || '',
+    responsable:row.querySelector('.meeting-prev-manual-responsible')?.value.trim() || '',
+    estado:row.querySelector('.meeting-prev-manual-status')?.value.trim() || ''
+  })).filter(x=>x.tema || x.responsable || x.estado);
+}
+
 function renderCommitteeMeetingAgreements(rows=[]) {
   const container=document.getElementById('committeeMeetingAgreementsRows');
   if (!container) return;
@@ -1746,23 +1809,29 @@ async function openCommitteeMeetingEditor(id) {
   renderCommitteeMeetingObjectives(Array.isArray(record.objetivos_sst)?record.objetivos_sst:[]);
   renderCommitteeMeetingSubcommitteeRows(Array.isArray(record.acuerdos_subcomites)?record.acuerdos_subcomites:[]);
   renderCommitteeMeetingPreviousAgreements(record);
+  renderCommitteeMeetingPreviousManualRows(Array.isArray(record.pendientes_adicionales)?record.pendientes_adicionales:[]);
   renderCommitteeMeetingAgreements(committeeMeetingAgreements.filter(x=>x.reunion_id===record.id));
   renderCommitteeMeetingResponsibleOptions(record);
   renderCommitteeMeetingAttendance(record);
   renderCommitteeMeetingEvidence(record);
   fillCommitteeMeetingMetrics(record);
 
-  document.getElementById('saveCommitteeMeetingEditorButton').classList.toggle('hidden',!canManage);
+  const contentLocked=['EN_FIRMA','CERRADA'].includes(record.estado);
+  const canEditContent=canManage && !contentLocked;
+
+  document.getElementById('saveCommitteeMeetingEditorButton').classList.toggle('hidden',!canEditContent);
   document.getElementById('closeCommitteeMeetingButton').classList.toggle('hidden',!canManage || record.estado==='CERRADA');
-  document.getElementById('syncCommitteeMeetingAttendeesButton').classList.toggle('hidden',!canManage);
-  document.getElementById('uploadCommitteeMeetingEvidenceButton').classList.toggle('hidden',!canManage);
-  document.getElementById('committeeMeetingEvidenceFiles').disabled=!canManage;
+  document.getElementById('syncCommitteeMeetingAttendeesButton').classList.toggle('hidden',!canEditContent);
+  document.getElementById('uploadCommitteeMeetingEvidenceButton').classList.toggle('hidden',!canEditContent);
+  document.getElementById('committeeMeetingEvidenceFiles').disabled=!canEditContent;
 
   document.querySelectorAll('#committeeMeetingEditorModal input,#committeeMeetingEditorModal textarea,#committeeMeetingEditorModal select').forEach(el=>{
-    if (!el.classList.contains('meeting-attendance-check') && el.id!=='committeeMeetingEvidenceFiles') {
-      el.disabled=!canManage;
+    if (!el.classList.contains('meeting-attendance-check') && el.id!=='committeeMeetingEvidenceFiles' && el.id!=='committeeMeetingSignatureLink') {
+      el.disabled=!canEditContent;
     }
   });
+
+  renderCommitteeMeetingSigningAdmin(record,canManage);
 
   committeeMeetingEditorMessage('');
   const modal=document.getElementById('committeeMeetingEditorModal');
@@ -1803,6 +1872,7 @@ function collectCommitteeMeetingEditorPayload(record) {
     },
     objetivos_sst:collectMeetingObjectiveRows(),
     acuerdos_subcomites:collectMeetingSubcommitteeRows(),
+    pendientes_adicionales:collectCommitteeMeetingPreviousManualRows(),
     proxima_fecha:document.getElementById('committeeMeetingNextDate').value || null,
     proxima_hora:document.getElementById('committeeMeetingNextTime').value || null,
     proxima_agenda:document.getElementById('committeeMeetingNextAgenda').value.trim() || null,
@@ -2057,6 +2127,357 @@ async function deleteCommitteeMeeting(id) {
   committeeMessage('Reunión eliminada correctamente.','success');
 }
 
+
+// ------------------------------------------------------------
+// FIRMA ELECTRÓNICA DE CONFORMIDAD - ADMINISTRACIÓN
+// ------------------------------------------------------------
+function committeeMeetingSignaturePublicUrl(record) {
+  if (!record?.public_token) return '';
+  const url=new URL(window.location.href);
+  url.search='';
+  url.hash='';
+  url.searchParams.set('meetingSign',record.public_token);
+  return url.toString();
+}
+
+function renderCommitteeMeetingSigningAdmin(record,canManage=true) {
+  const attendees=committeeMeetingAttendees.filter(x=>x.reunion_id===record.id);
+  const signed=attendees.filter(x=>x.firmado_at && x.consentimiento_firma && x.firma_electronica);
+  const count=document.getElementById('committeeMeetingSignedCount');
+  const state=document.getElementById('committeeMeetingSigningState');
+  const box=document.getElementById('committeeMeetingSignatureLinkBox');
+  const input=document.getElementById('committeeMeetingSignatureLink');
+  const enable=document.getElementById('enableCommitteeMeetingSignaturesButton');
+
+  if (count) count.textContent=`${signed.length} / ${attendees.length}`;
+  if (state) {
+    state.textContent=record.estado==='EN_FIRMA'
+      ? 'HABILITADA'
+      : record.estado==='CERRADA'
+        ? 'CERRADA'
+        : 'NO HABILITADA';
+  }
+
+  const showLink=['EN_FIRMA','CERRADA'].includes(record.estado) && !!record.public_token;
+  box?.classList.toggle('hidden',!showLink);
+  if (input) input.value=showLink ? committeeMeetingSignaturePublicUrl(record) : '';
+
+  if (enable) {
+    enable.classList.toggle('hidden',!canManage || ['EN_FIRMA','CERRADA'].includes(record.estado));
+    enable.disabled=!canManage;
+  }
+}
+
+async function enableCommitteeMeetingSignatures() {
+  if (!activeCommitteeMeetingId) return;
+  const record=committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  if (!record || !committeeMeetingCanManage(record)) return;
+
+  const endTime=document.getElementById('committeeMeetingActualEndTime')?.value || record.hora_fin || '';
+  if (!endTime) {
+    committeeMeetingEditorMessage('Antes de habilitar las firmas registra la hora real de culminación de la reunión.');
+    document.getElementById('committeeMeetingActualEndTime')?.focus();
+    return;
+  }
+
+  if (!confirm(
+    'Al habilitar las firmas se considera que el contenido del acta está finalizado. '+
+    'El editor quedará bloqueado mientras los integrantes registran su conformidad. ¿Continuar?'
+  )) return;
+
+  const saved=await persistCommitteeMeetingEditor(false,true);
+  if (!saved) {
+    committeeMeetingEditorMessage('No fue posible guardar el contenido antes de habilitar las firmas.');
+    return;
+  }
+
+  const button=document.getElementById('enableCommitteeMeetingSignaturesButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Habilitando…';
+
+  const {data,error}=await client.rpc('habilitar_firmas_reunion',{
+    p_reunion_id:activeCommitteeMeetingId
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    committeeMeetingEditorMessage(data?.error || error?.message || 'No fue posible habilitar las firmas.');
+    return;
+  }
+
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+  await openCommitteeMeetingEditor(activeCommitteeMeetingId);
+  committeeMeetingEditorMessage(
+    'Firma electrónica habilitada. Comparte el enlace únicamente con los integrantes convocados.',
+    'success'
+  );
+}
+
+async function copyCommitteeMeetingSignatureLink(record=null) {
+  const item=record || committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  const link=committeeMeetingSignaturePublicUrl(item);
+  if (!link) return;
+
+  try {
+    await navigator.clipboard.writeText(link);
+    if (activeCommitteeMeetingId===item.id) {
+      committeeMeetingEditorMessage('Enlace de firma copiado.','success');
+    } else {
+      alert('Enlace de firma copiado.');
+    }
+  } catch {
+    window.prompt('Copia el enlace de firma:',link);
+  }
+}
+
+function shareCommitteeMeetingSignatureLink(record=null) {
+  const item=record || committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  const link=committeeMeetingSignaturePublicUrl(item);
+  if (!link) return;
+
+  const committee=committeeMeetingCommittee(item);
+  const text=
+    `Firma de conformidad - Acta N° ${item.numero_acta || ''}\n`+
+    `${committee?.nombre || 'Comité SST'}\n`+
+    `Ingresa con tu DNI, revisa los datos del acta y registra tu conformidad:\n${link}`;
+
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
+}
+
+// ------------------------------------------------------------
+// FIRMA ELECTRÓNICA DE CONFORMIDAD - PÚBLICO
+// ------------------------------------------------------------
+function publicCommitteeMeetingSignatureMessage(message='',type='error',target='publicMeetingSignatureMessage') {
+  const el=document.getElementById(target);
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+async function initializePublicCommitteeMeetingSignature(token) {
+  publicCommitteeMeetingSignatureToken=String(token || '').trim();
+  publicCommitteeMeetingSignatureData=null;
+
+  publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
+  appShell?.classList.add('hidden');
+  authScreen?.classList.add('hidden');
+  authLoading?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.remove('hidden');
+
+  document.getElementById('publicMeetingSignatureIdentity')?.classList.remove('hidden');
+  document.getElementById('publicMeetingSignatureReview')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureCompleted')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureAct').textContent='Acta de reunión · Identificación requerida';
+  document.getElementById('publicMeetingSignatureDni').value='';
+  publicCommitteeMeetingSignatureMessage('');
+  setTimeout(()=>document.getElementById('publicMeetingSignatureDni')?.focus(),50);
+}
+
+function setupPublicCommitteeMeetingSignatureCanvas() {
+  const canvas=document.getElementById('publicMeetingSignatureCanvas');
+  if (!canvas) return;
+
+  const ctx=canvas.getContext('2d');
+  publicCommitteeMeetingSignatureCtx=ctx;
+  publicCommitteeMeetingSignatureDrawing=false;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.lineWidth=4;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.strokeStyle='#17263c';
+
+  const point=(event)=>{
+    const rect=canvas.getBoundingClientRect();
+    const p=event.touches?.[0] || event;
+    return {
+      x:(p.clientX-rect.left)*(canvas.width/rect.width),
+      y:(p.clientY-rect.top)*(canvas.height/rect.height)
+    };
+  };
+
+  canvas.onpointerdown=(event)=>{
+    publicCommitteeMeetingSignatureDrawing=true;
+    const p=point(event);
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y);
+    canvas.setPointerCapture?.(event.pointerId);
+  };
+
+  canvas.onpointermove=(event)=>{
+    if (!publicCommitteeMeetingSignatureDrawing) return;
+    const p=point(event);
+    ctx.lineTo(p.x,p.y);
+    ctx.stroke();
+  };
+
+  canvas.onpointerup=()=>{publicCommitteeMeetingSignatureDrawing=false;};
+  canvas.onpointercancel=()=>{publicCommitteeMeetingSignatureDrawing=false;};
+  canvas.onpointerleave=()=>{publicCommitteeMeetingSignatureDrawing=false;};
+}
+
+function publicCommitteeMeetingSignatureIsBlank() {
+  const canvas=document.getElementById('publicMeetingSignatureCanvas');
+  if (!canvas) return true;
+  const ctx=canvas.getContext('2d');
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  for (let i=3;i<pixels.length;i+=4) {
+    if (pixels[i]!==0) return false;
+  }
+  return true;
+}
+
+function showPublicCommitteeMeetingAlreadySigned(data) {
+  document.getElementById('publicMeetingSignatureIdentity')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureReview')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureCompleted')?.classList.remove('hidden');
+
+  const participant=data.participante || {};
+  const signedAt=participant.firmado_at
+    ? new Date(participant.firmado_at).toLocaleString('es-PE')
+    : '';
+  document.getElementById('publicMeetingSignatureCompletedText').textContent=
+    `La conformidad de ${[participant.apellidos,participant.nombres].filter(Boolean).join(' ')} ya fue registrada${signedAt ? ` el ${signedAt}` : ''}.`;
+  document.getElementById('publicMeetingSignatureAct').textContent=
+    `Acta N° ${data.reunion?.numero_acta || '—'}`;
+}
+
+async function lookupPublicCommitteeMeetingSignature() {
+  const dni=(document.getElementById('publicMeetingSignatureDni')?.value || '').replace(/\D/g,'').slice(0,8);
+  document.getElementById('publicMeetingSignatureDni').value=dni;
+  publicCommitteeMeetingSignatureMessage('');
+
+  if (!/^\d{8}$/.test(dni)) {
+    publicCommitteeMeetingSignatureMessage('Ingresa un DNI válido de 8 dígitos.');
+    return;
+  }
+
+  const button=document.getElementById('publicMeetingSignatureLookupButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Verificando…';
+
+  const {data,error}=await client.rpc('obtener_reunion_publica_firma',{
+    p_token:publicCommitteeMeetingSignatureToken,
+    p_dni:dni
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    publicCommitteeMeetingSignatureMessage(data?.error || error?.message || 'No fue posible validar tu participación.');
+    return;
+  }
+
+  publicCommitteeMeetingSignatureData=data;
+
+  if (data.participante?.firmado) {
+    showPublicCommitteeMeetingAlreadySigned(data);
+    return;
+  }
+
+  const participant=data.participante || {};
+  const meeting=data.reunion || {};
+  const fullName=[participant.apellidos,participant.nombres].filter(Boolean).join(' ');
+
+  document.getElementById('publicMeetingSignatureAct').textContent=`Acta N° ${meeting.numero_acta || '—'}`;
+  document.getElementById('publicMeetingSignatureName').textContent=fullName || 'Integrante';
+  document.getElementById('publicMeetingSignatureWorkerMeta').textContent=
+    `DNI ${participant.dni || '—'} · ${participant.cargo_comite || participant.cargo || 'Integrante'} · ${participant.area || '—'}`;
+  document.getElementById('publicMeetingSignatureActNumber').textContent=meeting.numero_acta || '—';
+  document.getElementById('publicMeetingSignatureDate').textContent=formatDatePE(meeting.fecha);
+  document.getElementById('publicMeetingSignatureTime').textContent=
+    `${formatCommitteeTime12(meeting.hora_inicio)} - ${formatCommitteeTime12(meeting.hora_fin)}`;
+  document.getElementById('publicMeetingSignaturePlace').textContent=meeting.lugar || '—';
+
+  const agenda=[...(meeting.agenda || []),...(meeting.agenda_adicional || [])];
+  document.getElementById('publicMeetingSignatureAgenda').innerHTML=
+    agenda.map(item=>`<div class="public-meeting-agenda-item">✓ ${escapeHtml(item)}</div>`).join('');
+
+  document.getElementById('publicMeetingSignatureConsent').checked=false;
+  document.getElementById('publicMeetingSignatureIdentity')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureReview')?.classList.remove('hidden');
+  document.getElementById('publicMeetingSignatureCompleted')?.classList.add('hidden');
+
+  setupPublicCommitteeMeetingSignatureCanvas();
+  publicCommitteeMeetingSignatureMessage('','error','publicMeetingSignatureSubmitMessage');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function submitPublicCommitteeMeetingSignature() {
+  if (!publicCommitteeMeetingSignatureData) return;
+
+  const consent=document.getElementById('publicMeetingSignatureConsent')?.checked;
+  const consentText=document.getElementById('publicMeetingSignatureConsentText')?.textContent?.trim() || '';
+  const dni=document.getElementById('publicMeetingSignatureDni')?.value || '';
+
+  publicCommitteeMeetingSignatureMessage('','error','publicMeetingSignatureSubmitMessage');
+
+  if (!consent) {
+    publicCommitteeMeetingSignatureMessage(
+      'Marca voluntariamente la casilla de conformidad antes de firmar.',
+      'error',
+      'publicMeetingSignatureSubmitMessage'
+    );
+    return;
+  }
+
+  if (publicCommitteeMeetingSignatureIsBlank()) {
+    publicCommitteeMeetingSignatureMessage(
+      'Registra tu firma dentro del recuadro.',
+      'error',
+      'publicMeetingSignatureSubmitMessage'
+    );
+    return;
+  }
+
+  const canvas=document.getElementById('publicMeetingSignatureCanvas');
+  const firma=canvas.toDataURL('image/png');
+
+  const button=document.getElementById('savePublicMeetingSignatureButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Registrando…';
+
+  const {data,error}=await client.rpc('registrar_firma_reunion',{
+    p_token:publicCommitteeMeetingSignatureToken,
+    p_dni:dni,
+    p_firma:firma,
+    p_consentimiento:true,
+    p_consentimiento_texto:consentText,
+    p_user_agent:navigator.userAgent || ''
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    publicCommitteeMeetingSignatureMessage(
+      data?.error || error?.message || 'No fue posible registrar tu firma.',
+      'error',
+      'publicMeetingSignatureSubmitMessage'
+    );
+    return;
+  }
+
+  document.getElementById('publicMeetingSignatureReview')?.classList.add('hidden');
+  document.getElementById('publicMeetingSignatureCompleted')?.classList.remove('hidden');
+  document.getElementById('publicMeetingSignatureCompletedText').textContent=
+    `${data.nombre || 'Integrante'}, tu conformidad quedó registrada para el Acta N° ${data.numero_acta || '—'}.`;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+
 // ------------------------------------------------------------
 // PDF - ACTA EDP-SIG-SSOMAC-RE-EA-131
 // ------------------------------------------------------------
@@ -2138,12 +2559,18 @@ function meetingPdfTable(doc,head,body,startY,widths=null,options={}) {
     widths.forEach((w,index)=>columnStyles[index]={cellWidth:w});
   }
 
+  const pageWidth=doc.internal.pageSize.getWidth();
+  const tableWidth=Array.isArray(widths) ? widths.reduce((sum,w)=>sum+Number(w||0),0) : pageWidth-32;
+  const centeredLeft=Math.max(10,(pageWidth-tableWidth)/2);
+
   doc.autoTable({
     startY,
     head:[head],
     body:body.length ? body : [head.map((_,idx)=>idx===0?'1':'')],
-    margin:{left:16,right:16,top:34,bottom:12},
+    margin:{left:centeredLeft,right:centeredLeft,top:34,bottom:12},
+    tableWidth:Array.isArray(widths)?tableWidth:'auto',
     styles,
+    bodyStyles:options.bodyStyles || {},
     headStyles:{
       fillColor:[225,221,232],
       textColor:[10,10,10],
@@ -2155,7 +2582,8 @@ function meetingPdfTable(doc,head,body,startY,widths=null,options={}) {
     columnStyles,
     theme:'grid',
     rowPageBreak:'avoid',
-    didDrawPage:options.didDrawPage
+    didDrawPage:options.didDrawPage,
+    didDrawCell:options.didDrawCell
   });
 
   return doc.lastAutoTable.finalY;
@@ -2332,10 +2760,15 @@ async function generateCommitteeMeetingMinutesPdf(data,button=null) {
 
     doc.setFont('helvetica','bold');doc.setFontSize(7.3);
     doc.text('2.7.     REVISIÓN DE PENDIENTES DE ACUERDOS DE REUNIONES ANTERIORES',24,y);
+    const manualPrevious=Array.isArray(meeting.pendientes_adicionales)?meeting.pendientes_adicionales:[];
+    const previousRows=[
+      ...data.previous.map(r=>({tema:r.accion||'',responsable:r.responsable||'',estado:r.estado||''})),
+      ...manualPrevious.map(r=>({tema:r.tema||'',responsable:r.responsable||'',estado:r.estado||''}))
+    ];
     y=meetingPdfTable(
       doc,['N°','TEMA','RESPONSABLE','ESTADO'],
-      (data.previous.length?data.previous:[{accion:'',responsable:'',estado:''},{},{},]).map((r,i)=>[
-        String(i+1),r.accion||'',r.responsable||'',r.estado||''
+      (previousRows.length?previousRows:[{tema:'',responsable:'',estado:''},{},{},]).map((r,i)=>[
+        String(i+1),r.tema||'',r.responsable||'',r.estado||''
       ]),
       y+2,[10,95,35,20],{didDrawPage:headerHook}
     )+6;
@@ -2362,20 +2795,51 @@ async function generateCommitteeMeetingMinutesPdf(data,button=null) {
     doc.text(closeLines,18,y);
     y+=closeLines.length*3.6+2;
 
-    const present=data.attendees.filter(x=>x.presente);
+    const signedAttendees=data.attendees.filter(x=>x.firmado_at && x.consentimiento_firma && x.firma_electronica);
+    const participantRows=(signedAttendees.length?signedAttendees:[{}]).map((a,i)=>{
+      const member=a.comite_sst_integrantes || {};
+      const worker=member.trabajadores || {};
+      let role=member.cargo_comite || '';
+      if (role==='PRESIDENTE') role='Presidente CSST';
+      else if (role==='SECRETARIO') role='Secretario Comité SST';
+      else if (member.representacion==='TRABAJADORES') role='Representante de los trabajadores';
+      else if (member.representacion==='EMPLEADOR') role='Representante del empleador';
+      return [String(i+1),a.id?committeeWorkerName(worker):'',role,''];
+    });
+
     y=meetingPdfTable(
       doc,['N°','PERSONAL','CARGO','FIRMA'],
-      (present.length?present:[{}]).map((a,i)=>{
-        const member=a.comite_sst_integrantes || {};
-        const worker=member.trabajadores || {};
-        let role=member.cargo_comite || '';
-        if (role==='PRESIDENTE') role='Presidente CSST';
-        else if (role==='SECRETARIO') role='Secretario Comité SST';
-        else if (member.representacion==='TRABAJADORES') role='Representante de los trabajadores';
-        else if (member.representacion==='EMPLEADOR') role='Representante del empleador';
-        return [String(i+1),committeeWorkerName(worker),role,''];
-      }),
-      y,[10,58,61,31],{didDrawPage:headerHook}
+      participantRows,
+      y,[10,58,61,31],{
+        didDrawPage:headerHook,
+        bodyStyles:{minCellHeight:14},
+        didDrawCell:(cellData)=>{
+          if (
+            cellData.section==='body' &&
+            cellData.column.index===3 &&
+            signedAttendees[cellData.row.index]?.firma_electronica
+          ) {
+            const sig=signedAttendees[cellData.row.index].firma_electronica;
+            try {
+              const pad=1.2;
+              const maxW=cellData.cell.width-pad*2;
+              const maxH=cellData.cell.height-pad*2;
+              const img=doc.getImageProperties(sig);
+              const ratio=Math.min(maxW/img.width,maxH/img.height);
+              const drawW=img.width*ratio;
+              const drawH=img.height*ratio;
+              doc.addImage(
+                sig,'PNG',
+                cellData.cell.x+(cellData.cell.width-drawW)/2,
+                cellData.cell.y+(cellData.cell.height-drawH)/2,
+                drawW,drawH,undefined,'FAST'
+              );
+            } catch(e) {
+              console.warn('No se pudo insertar firma de participante',e);
+            }
+          }
+        }
+      }
     )+7;
 
     if (y>235) {doc.addPage();y=header();}
@@ -2384,7 +2848,8 @@ async function generateCommitteeMeetingMinutesPdf(data,button=null) {
     doc.text('4.     FECHA Y HORA PARA LA PRÓXIMA REUNIÓN',24,y);
     y+=3;
 
-    const presidentAttendee=data.attendees.find(a=>a.comite_sst_integrantes?.cargo_comite==='PRESIDENTE');
+    const presidentAttendee=data.attendees.find(a=>a.firmado_at && a.comite_sst_integrantes?.cargo_comite==='PRESIDENTE')
+      || data.attendees.find(a=>a.comite_sst_integrantes?.cargo_comite==='PRESIDENTE');
     const presidentName=presidentAttendee ? committeeWorkerName(presidentAttendee.comite_sst_integrantes?.trabajadores) : '';
     const nextDateTime=[
       meeting.proxima_fecha ? formatDatePE(meeting.proxima_fecha) : '',
@@ -2423,7 +2888,8 @@ async function downloadCommitteeMeetingMinutesById(id,button=null) {
 async function downloadCurrentCommitteeMeetingMinutes() {
   if (!activeCommitteeMeetingId) return;
   const button=document.getElementById('downloadCommitteeMeetingMinutesButton');
-  if (committeeMeetingCanManage(committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId))) {
+  const current=committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  if (committeeMeetingCanManage(current) && !['EN_FIRMA','CERRADA'].includes(current?.estado)) {
     const ok=await persistCommitteeMeetingEditor(false,true);
     if (!ok) return;
   }
@@ -2432,12 +2898,27 @@ async function downloadCurrentCommitteeMeetingMinutes() {
 
 async function closeCurrentCommitteeMeeting() {
   if (!activeCommitteeMeetingId) return;
-  if (!confirm('¿Cerrar la reunión? El acta quedará marcada como CERRADA.')) return;
+  const record=committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  if (!record) return;
+
+  if (!confirm('¿Cerrar la reunión? El acta quedará marcada como CERRADA y ya no aceptará nuevas firmas.')) return;
   const id=activeCommitteeMeetingId;
-  const ok=await persistCommitteeMeetingEditor(true,false);
-  if (!ok) return;
+
+  if (record.estado==='EN_FIRMA') {
+    const {error}=await client.from('comite_sst_reuniones').update({estado:'CERRADA'}).eq('id',id);
+    if (error) {
+      committeeMeetingEditorMessage(error.message || 'No fue posible cerrar la reunión.');
+      return;
+    }
+    committeeMeetingsLoaded=false;
+    await loadCommitteeMeetingsModule(true);
+  } else {
+    const ok=await persistCommitteeMeetingEditor(true,false);
+    if (!ok) return;
+  }
+
   await openCommitteeMeetingEditor(id);
-  committeeMeetingEditorMessage('Reunión cerrada correctamente. Ya puedes descargar el acta final.','success');
+  committeeMeetingEditorMessage('Reunión cerrada correctamente. El PDF final mostrará únicamente a quienes registraron su firma electrónica.','success');
 }
 
 // ------------------------------------------------------------
@@ -2481,6 +2962,12 @@ document.getElementById('addCommitteeMeetingSubcommitteeAgreementButton')?.addEv
   renderCommitteeMeetingSubcommitteeRows(rows);
 });
 
+document.getElementById('addCommitteeMeetingPreviousManualButton')?.addEventListener('click',()=>{
+  const rows=collectCommitteeMeetingPreviousManualRows();
+  rows.push({tema:'',responsable:'',estado:'PENDIENTE'});
+  renderCommitteeMeetingPreviousManualRows(rows);
+});
+
 document.getElementById('addCommitteeMeetingAgreementButton')?.addEventListener('click',()=>{
   const rows=collectMeetingAgreementRows();
   rows.push({accion:'',responsable:'',fecha_cumplimiento:''});
@@ -2492,6 +2979,10 @@ document.getElementById('closeCommitteeMeetingButton')?.addEventListener('click'
 document.getElementById('downloadCommitteeMeetingMinutesButton')?.addEventListener('click',downloadCurrentCommitteeMeetingMinutes);
 document.getElementById('syncCommitteeMeetingAttendeesButton')?.addEventListener('click',syncCommitteeMeetingAttendees);
 document.getElementById('uploadCommitteeMeetingEvidenceButton')?.addEventListener('click',uploadCommitteeMeetingEvidence);
+
+document.getElementById('enableCommitteeMeetingSignaturesButton')?.addEventListener('click',enableCommitteeMeetingSignatures);
+document.getElementById('copyCommitteeMeetingSignatureLinkButton')?.addEventListener('click',()=>copyCommitteeMeetingSignatureLink());
+document.getElementById('whatsappCommitteeMeetingSignatureButton')?.addEventListener('click',()=>shareCommitteeMeetingSignatureLink());
 
 document.getElementById('committeeMeetingSearch')?.addEventListener('input',renderCommitteeMeetingList);
 document.getElementById('committeeMeetingCommitteeFilter')?.addEventListener('change',renderCommitteeMeetingList);
@@ -9704,6 +10195,20 @@ document.getElementById('clearPublicEvaluationSignature')?.addEventListener('cli
 document.getElementById('publicEvaluationSubmitButton')?.addEventListener('click',()=>submitPublicEvaluation(false));
 document.getElementById('publicEvaluationReviewButton')?.addEventListener('click',reviewPublicEvaluation);
 document.getElementById('publicEvaluationReviewBack')?.addEventListener('click',()=>{document.getElementById('publicEvaluationReviewView')?.classList.add('hidden');document.getElementById('publicEvaluationResultView')?.classList.remove('hidden');});
+
+
+document.getElementById('publicMeetingSignatureDni')?.addEventListener('input',event=>{
+  event.target.value=event.target.value.replace(/\D/g,'').slice(0,8);
+});
+document.getElementById('publicMeetingSignatureDni')?.addEventListener('keydown',event=>{
+  if (event.key==='Enter') {
+    event.preventDefault();
+    lookupPublicCommitteeMeetingSignature();
+  }
+});
+document.getElementById('publicMeetingSignatureLookupButton')?.addEventListener('click',lookupPublicCommitteeMeetingSignature);
+document.getElementById('clearPublicMeetingSignatureButton')?.addEventListener('click',setupPublicCommitteeMeetingSignatureCanvas);
+document.getElementById('savePublicMeetingSignatureButton')?.addEventListener('click',submitPublicCommitteeMeetingSignature);
 
 
 initializeAuth();

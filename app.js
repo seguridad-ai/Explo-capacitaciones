@@ -2722,54 +2722,269 @@ async function deleteCommitteeAgreementEvidence(id) {
   committeeAgreementMessage('Evidencia eliminada.','success');
 }
 
-function exportCommitteeAgreementsCsv() {
-  const rows=committeeMeetingAgreements.map(agreement=>{
-    const meeting=committeeAgreementMeeting(agreement);
-    const committee=committeeAgreementCommittee(agreement);
-    const due=committeeAgreementDueState(agreement);
-
-    return {
-      'Acta':meeting?.numero_acta || '',
-      'Fecha reunión':meeting?.fecha || '',
-      'Comité/Subcomité':committee?.nombre || '',
-      'Unidad':committeeUnitName(committee),
-      'Acción requerida':agreement.accion || '',
-      'Responsable':agreement.responsable || '',
-      'Fecha compromiso':agreement.fecha_cumplimiento || '',
-      'Situación':due.label,
-      'Estado':committeeAgreementStatusLabel(agreement.estado),
-      'Fecha cierre':agreement.fecha_cierre || '',
-      'Observación':agreement.observacion || '',
-      'Comentario cierre':agreement.cierre_observacion || '',
-      'Evidencias':committeeAgreementEvidences.filter(x=>x.acuerdo_id===agreement.id).length
-    };
-  });
-
-  if (!rows.length) {
-    alert('No hay acuerdos para exportar.');
+async function exportCommitteeAgreementsOfficialExcel() {
+  if (!window.JSZip) {
+    alert('No se cargó el generador de Excel. Actualiza la página e inténtalo nuevamente.');
     return;
   }
 
-  const headers=Object.keys(rows[0]);
-  const escapeCsv=value=>{
-    const text=String(value ?? '');
-    return `"${text.replace(/"/g,'""')}"`;
-  };
+  const button=document.getElementById('exportCommitteeAgreementsButton');
+  const oldText=button?.textContent || '';
+  if (button) {
+    button.disabled=true;
+    button.textContent='Generando Excel…';
+  }
 
-  const csv=[
-    headers.map(escapeCsv).join(','),
-    ...rows.map(row=>headers.map(h=>escapeCsv(row[h])).join(','))
-  ].join('\r\n');
+  try {
+    // Se exportan todos los acuerdos visibles para el usuario, no solo los filtrados en pantalla.
+    const agreements=[...committeeMeetingAgreements].sort((a,b)=>{
+      const ma=committeeAgreementMeeting(a);
+      const mb=committeeAgreementMeeting(b);
+      const dateA=ma?.fecha || '';
+      const dateB=mb?.fecha || '';
+      if (dateA!==dateB) return dateA.localeCompare(dateB);
+      const actA=ma?.numero_acta || '';
+      const actB=mb?.numero_acta || '';
+      if (actA!==actB) return actA.localeCompare(actB,'es',{numeric:true});
+      return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+    });
 
-  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=`Seguimiento_Acuerdos_Comite_SST_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+    if (!agreements.length) {
+      alert('No hay acuerdos registrados para descargar.');
+      return;
+    }
+
+    const templateUrl=new URL('assets/seguimiento-acuerdos-comite-sst-2026.xlsx',window.location.href);
+    const response=await fetch(templateUrl);
+    if (!response.ok) {
+      throw new Error(`No se pudo cargar el formato oficial (${response.status}).`);
+    }
+
+    const templateBuffer=await response.arrayBuffer();
+    const zip=await JSZip.loadAsync(templateBuffer);
+
+    const sheetFile=zip.file('xl/worksheets/sheet1.xml');
+    const workbookFile=zip.file('xl/workbook.xml');
+    if (!sheetFile || !workbookFile) {
+      throw new Error('El formato Excel no contiene la estructura esperada.');
+    }
+
+    const [sheetXmlText,workbookXmlText]=await Promise.all([
+      sheetFile.async('text'),
+      workbookFile.async('text')
+    ]);
+
+    const parser=new DOMParser();
+    const serializer=new XMLSerializer();
+
+    const sheetDoc=parser.parseFromString(sheetXmlText,'application/xml');
+    const workbookDoc=parser.parseFromString(workbookXmlText,'application/xml');
+
+    if (sheetDoc.querySelector('parsererror') || workbookDoc.querySelector('parsererror')) {
+      throw new Error('No fue posible leer la estructura XML del formato Excel.');
+    }
+
+    const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const sheetData=sheetDoc.getElementsByTagNameNS(NS,'sheetData')[0];
+    if (!sheetData) throw new Error('No se encontró la hoja principal del formato.');
+
+    const sourceRow=[...sheetData.getElementsByTagNameNS(NS,'row')]
+      .find(row=>row.getAttribute('r')==='6');
+
+    if (!sourceRow) throw new Error('No se encontró la fila modelo del formato.');
+
+    // Guardamos una fila base con todos los estilos/bordes del formato oficial.
+    const rowTemplate=sourceRow.cloneNode(true);
+
+    // Elimina únicamente las filas de contenido (6 en adelante). Se conservan encabezados 1-5.
+    [...sheetData.getElementsByTagNameNS(NS,'row')].forEach(row=>{
+      const number=Number(row.getAttribute('r') || 0);
+      if (number>=6) row.remove();
+    });
+
+    const escapeXmlText=value=>String(value ?? '');
+    const excelSerial=isoDate=>{
+      if (!isoDate) return null;
+      const match=String(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!match) return null;
+      const utc=Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]));
+      return Math.round((utc-Date.UTC(1899,11,30))/86400000);
+    };
+
+    const getCell=(row,col,rowNumber)=>{
+      const ref=`${col}${rowNumber}`;
+      let cell=[...row.getElementsByTagNameNS(NS,'c')].find(c=>c.getAttribute('r')===ref);
+      if (cell) return cell;
+
+      // Fallback: locate the original template cell by column and retarget it.
+      cell=[...row.getElementsByTagNameNS(NS,'c')].find(c=>
+        String(c.getAttribute('r') || '').replace(/\d+/g,'')===col
+      );
+      if (cell) {
+        cell.setAttribute('r',ref);
+        return cell;
+      }
+
+      cell=sheetDoc.createElementNS(NS,'c');
+      cell.setAttribute('r',ref);
+      row.appendChild(cell);
+      return cell;
+    };
+
+    const clearCellContent=cell=>{
+      [...cell.childNodes].forEach(node=>cell.removeChild(node));
+      cell.removeAttribute('t');
+    };
+
+    const setInlineText=(cell,value)=>{
+      clearCellContent(cell);
+      cell.setAttribute('t','inlineStr');
+      const is=sheetDoc.createElementNS(NS,'is');
+      const t=sheetDoc.createElementNS(NS,'t');
+      t.setAttribute('xml:space','preserve');
+      t.textContent=escapeXmlText(value);
+      is.appendChild(t);
+      cell.appendChild(is);
+    };
+
+    const setDate=(cell,isoDate)=>{
+      clearCellContent(cell);
+      const serial=excelSerial(isoDate);
+      if (serial===null) return;
+      const v=sheetDoc.createElementNS(NS,'v');
+      v.textContent=String(serial);
+      cell.appendChild(v);
+    };
+
+    const statusForTemplate=status=>{
+      if (status==='CERRADO') return 'CERRADO';
+      if (status==='EN_PROCESO') return 'EN PROCESO';
+      return 'ABIERTO';
+    };
+
+    const evidenceText=agreement=>{
+      const evidences=committeeAgreementEvidences.filter(x=>x.acuerdo_id===agreement.id);
+      if (!evidences.length) return 'Sin evidencia adjunta';
+      return evidences.map((ev,index)=>{
+        const name=ev.nombre_archivo || `Evidencia ${index+1}`;
+        return `${index+1}. ${name}${ev.url ? `\n${ev.url}` : ''}`;
+      }).join('\n\n');
+    };
+
+    const dataRows=agreements.length ? agreements : [null];
+    const lastRow=5+dataRows.length;
+
+    dataRows.forEach((agreement,index)=>{
+      const rowNumber=6+index;
+      const row=rowTemplate.cloneNode(true);
+      row.setAttribute('r',String(rowNumber));
+
+      // Corrige referencias de todas las celdas clonadas.
+      [...row.getElementsByTagNameNS(NS,'c')].forEach(cell=>{
+        const col=String(cell.getAttribute('r') || '').replace(/\d+/g,'');
+        cell.setAttribute('r',`${col}${rowNumber}`);
+        clearCellContent(cell);
+      });
+
+      if (agreement) {
+        const meeting=committeeAgreementMeeting(agreement);
+        const committee=committeeAgreementCommittee(agreement);
+
+        setInlineText(getCell(row,'A',rowNumber),index+1);
+        setInlineText(
+          getCell(row,'B',rowNumber),
+          meeting?.numero_acta ? `Acta N° ${meeting.numero_acta}` : (committee?.nombre || 'Reunión SST')
+        );
+        setDate(getCell(row,'C',rowNumber),meeting?.fecha || null);
+        setInlineText(getCell(row,'D',rowNumber),agreement.accion || '');
+        setInlineText(getCell(row,'E',rowNumber),agreement.responsable || '');
+        setDate(getCell(row,'F',rowNumber),agreement.fecha_cumplimiento || null);
+        setDate(getCell(row,'G',rowNumber),agreement.fecha_cierre || null);
+        setInlineText(getCell(row,'H',rowNumber),evidenceText(agreement));
+        setInlineText(getCell(row,'J',rowNumber),statusForTemplate(agreement.estado));
+      }
+
+      sheetData.appendChild(row);
+    });
+
+    // Actualiza la dimensión de la hoja.
+    const dimension=sheetDoc.getElementsByTagNameNS(NS,'dimension')[0];
+    if (dimension) dimension.setAttribute('ref',`A1:L${lastRow}`);
+
+    // Mantiene las combinaciones del encabezado y recrea H:I en cada fila de seguimiento.
+    const mergeCells=sheetDoc.getElementsByTagNameNS(NS,'mergeCells')[0];
+    if (mergeCells) {
+      [...mergeCells.getElementsByTagNameNS(NS,'mergeCell')].forEach(node=>{
+        const ref=node.getAttribute('ref') || '';
+        if (/^H\d+:I\d+$/.test(ref) && Number(ref.match(/\d+/)?.[0] || 0)>=6) {
+          node.remove();
+        }
+      });
+
+      for (let rowNumber=6;rowNumber<=lastRow;rowNumber++) {
+        const merge=sheetDoc.createElementNS(NS,'mergeCell');
+        merge.setAttribute('ref',`H${rowNumber}:I${rowNumber}`);
+        mergeCells.appendChild(merge);
+      }
+
+      mergeCells.setAttribute(
+        'count',
+        String(mergeCells.getElementsByTagNameNS(NS,'mergeCell').length)
+      );
+    }
+
+    // Extiende la validación de Estado a todas las filas exportadas.
+    const validations=sheetDoc.getElementsByTagNameNS(NS,'dataValidations')[0];
+    if (validations) {
+      const validation=[...validations.getElementsByTagNameNS(NS,'dataValidation')]
+        .find(v=>(v.getAttribute('sqref') || '').includes('J6'));
+      if (validation) validation.setAttribute('sqref',`J6:J${lastRow}`);
+    }
+
+    // El área de impresión crece según el número real de acuerdos.
+    const definedNames=workbookDoc.getElementsByTagNameNS(NS,'definedNames')[0];
+    if (definedNames) {
+      [...definedNames.getElementsByTagNameNS(NS,'definedName')].forEach(name=>{
+        if (
+          name.getAttribute('name')==='_xlnm.Print_Area' &&
+          name.getAttribute('localSheetId')==='0'
+        ) {
+          name.textContent=`'Acuerdos del Sub Comité'!$A$1:$J$${lastRow}`;
+        }
+      });
+    }
+
+    zip.file('xl/worksheets/sheet1.xml',serializer.serializeToString(sheetDoc));
+    zip.file('xl/workbook.xml',serializer.serializeToString(workbookDoc));
+
+    const output=await zip.generateAsync({
+      type:'arraybuffer',
+      mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      compression:'DEFLATE',
+      compressionOptions:{level:6}
+    });
+
+    const blob=new Blob(
+      [output],
+      {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+    );
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`EDP-SIG-SSOMAC-RE-EA-131-17 Seguimiento a los acuerdos del Comité de SST 2026.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el Excel de seguimiento.');
+  } finally {
+    if (button) {
+      button.disabled=false;
+      button.textContent=oldText;
+    }
+  }
 }
 
 
@@ -3648,7 +3863,7 @@ document.getElementById('refreshCommitteeAgreementsButton')?.addEventListener('c
   loadCommitteeAgreementsModule(true);
 });
 
-document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsCsv);
+document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsOfficialExcel);
 
 document.getElementById('committeeAgreementStatus')?.addEventListener('change',toggleCommitteeAgreementCloseFields);
 document.getElementById('saveCommitteeAgreementButton')?.addEventListener('click',saveCommitteeAgreement);

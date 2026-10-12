@@ -340,6 +340,11 @@ let publicCommitteeMeetingSignatureToken = '';
 let publicCommitteeMeetingSignatureData = null;
 let publicCommitteeMeetingSignatureDrawing = false;
 let publicCommitteeMeetingSignatureCtx = null;
+let committeeAgreementEvidences = [];
+let committeeAgreementHistory = [];
+let committeeAgreementsLoaded = false;
+let activeCommitteeAgreementId = null;
+
 
 
 const COMMITTEE_BASE_AGENDA = [
@@ -1018,7 +1023,7 @@ document.getElementById('newCommitteeButton')?.addEventListener('click',async()=
   if (!committeeModuleLoaded) await loadCommitteeModule(true);
   if (committeeModuleMode==='MEETINGS') {
     openCommitteeMeetingProgramModal();
-  } else {
+  } else if (committeeModuleMode==='CONFORMATIONS') {
     openCommitteeForm();
   }
 });
@@ -1086,22 +1091,27 @@ document.getElementById('refreshCommitteeButton')?.addEventListener('click',()=>
 // ============================================================
 
 function setCommitteeModuleMode(mode) {
-  committeeModuleMode = mode==='MEETINGS' ? 'MEETINGS' : 'CONFORMATIONS';
+  committeeModuleMode=['MEETINGS','AGREEMENTS'].includes(mode) ? mode : 'CONFORMATIONS';
 
   document.getElementById('committeeConformationsTab')?.classList.toggle('active',committeeModuleMode==='CONFORMATIONS');
   document.getElementById('committeeMeetingsTab')?.classList.toggle('active',committeeModuleMode==='MEETINGS');
+  document.getElementById('committeeAgreementsTab')?.classList.toggle('active',committeeModuleMode==='AGREEMENTS');
 
   document.getElementById('committeeConformationsStats')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
   document.getElementById('committeeConformationsPanel')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
   document.getElementById('committeeMeetingsView')?.classList.toggle('hidden',committeeModuleMode!=='MEETINGS');
+  document.getElementById('committeeAgreementsView')?.classList.toggle('hidden',committeeModuleMode!=='AGREEMENTS');
 
   const button=document.getElementById('newCommitteeButton');
   if (button) {
+    button.classList.toggle('hidden',committeeModuleMode==='AGREEMENTS');
     button.textContent=committeeModuleMode==='MEETINGS' ? '+ Programar reunión' : '+ Nueva conformación';
   }
 
   if (committeeModuleMode==='MEETINGS') {
     loadCommitteeMeetingsModule();
+  } else if (committeeModuleMode==='AGREEMENTS') {
+    loadCommitteeAgreementsModule();
   }
 }
 
@@ -1360,6 +1370,10 @@ async function loadCommitteeMeetingsModule(force=false) {
   committeeMeetingEvidences=evidences.data || [];
   committeeMeetingAgreements=agreements.data || [];
   committeeMeetingsLoaded=true;
+
+  if (committeeModuleMode==='AGREEMENTS') {
+    committeeAgreementsLoaded=false;
+  }
 
   populateCommitteeMeetingSelectors();
   updateCommitteeMeetingStats();
@@ -1681,11 +1695,12 @@ function renderCommitteeMeetingAgreements(rows=[]) {
   const data=rows.length ? rows : [{accion:'',responsable:'',fecha_cumplimiento:''}];
 
   container.innerHTML=data.map((row,index)=>`
-    <div class="meeting-row-card meeting-agreement-row" data-meeting-agreement-row>
+    <div class="meeting-row-card meeting-agreement-row" data-meeting-agreement-row data-agreement-id="${escapeHtml(row.id || '')}">
       <span class="meeting-row-number">${index+1}</span>
       <label><span>Acción requerida</span><textarea class="meeting-agreement-action" rows="2">${escapeHtml(row.accion || '')}</textarea></label>
       <label><span>Persona responsable</span><input class="meeting-agreement-responsible" list="committeeMeetingResponsibleOptions" value="${escapeHtml(row.responsable || '')}" /></label>
       <label><span>Fecha de cumplimiento</span><input class="meeting-agreement-date" type="date" value="${escapeHtml(row.fecha_cumplimiento || '')}" /></label>
+      ${row.id ? `<span class="meeting-agreement-status-chip ${String(row.estado||'PENDIENTE').toLowerCase()}">${escapeHtml((row.estado||'PENDIENTE').replace('_',' '))}</span>` : ''}
       <button class="meeting-row-remove" type="button" data-remove-meeting-agreement="${index}">×</button>
     </div>
   `).join('');
@@ -1701,6 +1716,7 @@ function renderCommitteeMeetingAgreements(rows=[]) {
 
 function collectMeetingAgreementRows() {
   return [...document.querySelectorAll('[data-meeting-agreement-row]')].map(row=>({
+    id:row.dataset.agreementId || null,
     accion:row.querySelector('.meeting-agreement-action')?.value.trim() || '',
     responsable:row.querySelector('.meeting-agreement-responsible')?.value.trim() || '',
     fecha_cumplimiento:row.querySelector('.meeting-agreement-date')?.value || null
@@ -1960,17 +1976,32 @@ async function persistCommitteeMeetingEditor(closeMeeting=false,silent=false) {
   await Promise.all(evidenceUpdates);
 
   const agreements=collectMeetingAgreementRows();
-  const deleteResult=await client.from('comite_sst_acuerdos').delete().eq('reunion_id',activeCommitteeMeetingId);
-  if (deleteResult.error) {
-    console.error(deleteResult.error);
-    if (!silent) committeeMeetingEditorMessage(deleteResult.error.message || 'No fue posible actualizar los acuerdos.');
-    if (button && !silent) {button.disabled=false;button.textContent=old;}
-    return false;
+  const existingMeetingAgreements=committeeMeetingAgreements.filter(x=>x.reunion_id===activeCommitteeMeetingId);
+  const submittedIds=new Set(agreements.map(x=>x.id).filter(Boolean));
+
+  // Actualiza los acuerdos existentes conservando su ID, estado, historial y evidencias.
+  for (const agreement of agreements.filter(x=>x.id)) {
+    const updateResult=await client.from('comite_sst_acuerdos')
+      .update({
+        accion:agreement.accion || '—',
+        responsable:agreement.responsable || '—',
+        fecha_cumplimiento:agreement.fecha_cumplimiento
+      })
+      .eq('id',agreement.id);
+
+    if (updateResult.error) {
+      console.error(updateResult.error);
+      if (!silent) committeeMeetingEditorMessage(updateResult.error.message || 'No fue posible actualizar un acuerdo.');
+      if (button && !silent) {button.disabled=false;button.textContent=old;}
+      return false;
+    }
   }
 
-  if (agreements.length) {
+  // Inserta únicamente acuerdos nuevos.
+  const newAgreements=agreements.filter(x=>!x.id);
+  if (newAgreements.length) {
     const insertResult=await client.from('comite_sst_acuerdos').insert(
-      agreements.map(a=>({
+      newAgreements.map(a=>({
         reunion_id:activeCommitteeMeetingId,
         comite_id:record.comite_id,
         accion:a.accion || '—',
@@ -1981,7 +2012,22 @@ async function persistCommitteeMeetingEditor(closeMeeting=false,silent=false) {
     );
     if (insertResult.error) {
       console.error(insertResult.error);
-      if (!silent) committeeMeetingEditorMessage(insertResult.error.message || 'No fue posible guardar los acuerdos.');
+      if (!silent) committeeMeetingEditorMessage(insertResult.error.message || 'No fue posible guardar los acuerdos nuevos.');
+      if (button && !silent) {button.disabled=false;button.textContent=old;}
+      return false;
+    }
+  }
+
+  // Elimina solamente los acuerdos retirados manualmente del acta.
+  const removedIds=existingMeetingAgreements
+    .filter(x=>!submittedIds.has(x.id))
+    .map(x=>x.id);
+
+  if (removedIds.length) {
+    const deleteResult=await client.from('comite_sst_acuerdos').delete().in('id',removedIds);
+    if (deleteResult.error) {
+      console.error(deleteResult.error);
+      if (!silent) committeeMeetingEditorMessage(deleteResult.error.message || 'No fue posible eliminar los acuerdos retirados.');
       if (button && !silent) {button.disabled=false;button.textContent=old;}
       return false;
     }
@@ -2158,6 +2204,572 @@ async function deleteCommitteeMeeting(id) {
   committeeMeetingsLoaded=false;
   await loadCommitteeMeetingsModule(true);
   committeeMessage('Reunión eliminada correctamente.','success');
+}
+
+
+
+// ============================================================
+// ETAPA 16C · SEGUIMIENTO DE ACUERDOS
+// ============================================================
+
+function committeeAgreementMessage(message='',type='error') {
+  const el=document.getElementById('committeeAgreementModalMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeAgreementMeeting(agreement) {
+  return committeeMeetingRecords.find(x=>x.id===agreement?.reunion_id) || null;
+}
+
+function committeeAgreementCommittee(agreement) {
+  return committeeRecords.find(x=>x.id===agreement?.comite_id)
+    || committeeMeetingCommittee(committeeAgreementMeeting(agreement));
+}
+
+function committeeAgreementCanManage(agreement) {
+  return committeeCanManage(committeeAgreementCommittee(agreement));
+}
+
+function committeeAgreementDueState(agreement) {
+  if (!agreement || agreement.estado==='CERRADO') return {code:'CERRADO',label:'Cerrado',days:null};
+
+  if (!agreement.fecha_cumplimiento) {
+    return {code:'SIN_FECHA',label:'Sin fecha',days:null};
+  }
+
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  const due=new Date(`${agreement.fecha_cumplimiento}T00:00:00`);
+  const diff=Math.ceil((due-today)/86400000);
+
+  if (diff<0) return {code:'VENCIDO',label:`Vencido ${Math.abs(diff)} día(s)`,days:diff};
+  if (diff===0) return {code:'HOY',label:'Vence hoy',days:0};
+  if (diff<=7) return {code:'PROXIMO',label:`Vence en ${diff} día(s)`,days:diff};
+  return {code:'VIGENTE',label:`${diff} día(s) restantes`,days:diff};
+}
+
+function committeeAgreementStatusLabel(status) {
+  return {
+    PENDIENTE:'PENDIENTE',
+    EN_PROCESO:'EN PROCESO',
+    CERRADO:'CERRADO'
+  }[status] || status || '—';
+}
+
+function populateCommitteeAgreementSelectors() {
+  const select=document.getElementById('committeeAgreementCommitteeFilter');
+  if (!select) return;
+  const current=select.value;
+
+  select.innerHTML=
+    '<option value="">Todos los Comités/Subcomités</option>'+
+    committeeRecords.map(record=>{
+      const type=record.tipo==='SUBCOMITE'?'Subcomité':'Comité';
+      return `<option value="${record.id}">${escapeHtml(type)} · ${escapeHtml(committeeUnitName(record))} · ${escapeHtml(record.codigo || '')}</option>`;
+    }).join('');
+
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function updateCommitteeAgreementStats() {
+  const agreements=committeeMeetingAgreements;
+  const total=agreements.length;
+  const pending=agreements.filter(x=>x.estado==='PENDIENTE').length;
+  const inProgress=agreements.filter(x=>x.estado==='EN_PROCESO').length;
+  const closed=agreements.filter(x=>x.estado==='CERRADO').length;
+  const overdue=agreements.filter(x=>committeeAgreementDueState(x).code==='VENCIDO').length;
+  const compliance=total ? Math.round((closed/total)*100) : 0;
+
+  const map={
+    committeeAgreementTotalCount:total,
+    committeeAgreementPendingCount:pending,
+    committeeAgreementInProgressCount:inProgress,
+    committeeAgreementOverdueCount:overdue,
+    committeeAgreementClosedCount:closed,
+    committeeAgreementCompliance:`${compliance}%`
+  };
+
+  Object.entries(map).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderCommitteeAgreementTable() {
+  const body=document.getElementById('committeeAgreementTableBody');
+  if (!body) return;
+
+  const q=(document.getElementById('committeeAgreementSearch')?.value || '').trim().toLowerCase();
+  const committeeId=document.getElementById('committeeAgreementCommitteeFilter')?.value || '';
+  const status=document.getElementById('committeeAgreementStatusFilter')?.value || '';
+  const deadline=document.getElementById('committeeAgreementDeadlineFilter')?.value || '';
+
+  const rows=committeeMeetingAgreements.filter(agreement=>{
+    const meeting=committeeAgreementMeeting(agreement);
+    const committee=committeeAgreementCommittee(agreement);
+    const due=committeeAgreementDueState(agreement);
+
+    if (committeeId && agreement.comite_id!==committeeId) return false;
+    if (status && agreement.estado!==status) return false;
+    if (deadline==='VENCIDO' && due.code!=='VENCIDO') return false;
+    if (deadline==='PROXIMO' && !['PROXIMO','HOY'].includes(due.code)) return false;
+    if (deadline==='SIN_FECHA' && due.code!=='SIN_FECHA') return false;
+
+    const hay=[
+      agreement.accion,
+      agreement.responsable,
+      meeting?.numero_acta,
+      committee?.nombre,
+      committeeUnitName(committee),
+      agreement.estado
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  if (!rows.length) {
+    body.innerHTML='<tr><td colspan="8" class="table-empty">No se encontraron acuerdos con los filtros seleccionados.</td></tr>';
+    return;
+  }
+
+  body.innerHTML=rows.map(agreement=>{
+    const meeting=committeeAgreementMeeting(agreement);
+    const committee=committeeAgreementCommittee(agreement);
+    const due=committeeAgreementDueState(agreement);
+    const evidenceCount=committeeAgreementEvidences.filter(x=>x.acuerdo_id===agreement.id).length;
+    const canManage=committeeAgreementCanManage(agreement);
+
+    return `
+      <tr class="${due.code==='VENCIDO'?'agreement-overdue-row':''}">
+        <td class="agreement-origin-cell">
+          <strong>${escapeHtml(meeting?.numero_acta || '—')}</strong>
+          <small>${escapeHtml(formatDatePE(meeting?.fecha))}</small>
+          <small>${escapeHtml(committeeUnitName(committee))}</small>
+        </td>
+        <td class="agreement-action-cell">${escapeHtml(agreement.accion || '—')}</td>
+        <td>${escapeHtml(agreement.responsable || '—')}</td>
+        <td>${agreement.fecha_cumplimiento ? escapeHtml(formatDatePE(agreement.fecha_cumplimiento)) : '<span class="muted">Sin fecha</span>'}</td>
+        <td><span class="agreement-deadline-badge ${due.code.toLowerCase()}">${escapeHtml(due.label)}</span></td>
+        <td><span class="agreement-status-badge ${String(agreement.estado||'').toLowerCase()}">${escapeHtml(committeeAgreementStatusLabel(agreement.estado))}</span></td>
+        <td><span class="agreement-evidence-count">${evidenceCount} archivo(s)</span></td>
+        <td class="agreement-actions-cell">
+          <button class="committee-manage-btn small-btn" type="button" data-open-agreement="${agreement.id}">${canManage?'Gestionar':'Ver'}</button>
+          ${meeting ? `<button class="secondary-btn small-btn" type="button" data-open-agreement-meeting="${meeting.id}">Acta</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  body.querySelectorAll('[data-open-agreement]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeAgreementModal(button.dataset.openAgreement));
+  });
+
+  body.querySelectorAll('[data-open-agreement-meeting]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeMeetingEditor(button.dataset.openAgreementMeeting));
+  });
+}
+
+async function loadCommitteeAgreementsModule(force=false) {
+  if (!client) return;
+
+  if (!committeeModuleLoaded) await loadCommitteeModule(true);
+  if (!committeeMeetingsLoaded || force) await loadCommitteeMeetingsModule(true);
+
+  if (committeeAgreementsLoaded && !force) {
+    populateCommitteeAgreementSelectors();
+    updateCommitteeAgreementStats();
+    renderCommitteeAgreementTable();
+    return;
+  }
+
+  const [evidences,history]=await Promise.all([
+    client.from('comite_sst_acuerdo_evidencias')
+      .select('*')
+      .order('created_at',{ascending:false}),
+    client.from('comite_sst_acuerdo_historial')
+      .select('*')
+      .order('changed_at',{ascending:false})
+  ]);
+
+  if (evidences.error || history.error) {
+    console.error(evidences.error,history.error);
+    committeeMessage(
+      evidences.error?.message || history.error?.message || 'No fue posible cargar el seguimiento de acuerdos.'
+    );
+    return;
+  }
+
+  committeeAgreementEvidences=evidences.data || [];
+  committeeAgreementHistory=history.data || [];
+  committeeAgreementsLoaded=true;
+
+  populateCommitteeAgreementSelectors();
+  updateCommitteeAgreementStats();
+  renderCommitteeAgreementTable();
+}
+
+function renderCommitteeAgreementEvidence(agreement) {
+  const container=document.getElementById('committeeAgreementEvidenceList');
+  if (!container) return;
+
+  const rows=committeeAgreementEvidences.filter(x=>x.acuerdo_id===agreement.id);
+  if (!rows.length) {
+    container.innerHTML='<div class="meeting-empty-note">Todavía no se han cargado evidencias para este acuerdo.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(row=>{
+    const isPdf=(row.tipo_archivo || '').includes('pdf') || String(row.nombre_archivo || '').toLowerCase().endsWith('.pdf');
+    return `
+      <article class="agreement-evidence-item">
+        <div class="agreement-evidence-preview">
+          ${isPdf
+            ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener" class="agreement-pdf-preview">PDF</a>`
+            : `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(row.url)}" alt="Evidencia del acuerdo" /></a>`
+          }
+        </div>
+        <div class="agreement-evidence-meta">
+          <strong>${escapeHtml(row.nombre_archivo || 'Evidencia')}</strong>
+          <input class="agreement-evidence-description-input" data-agreement-evidence-description="${row.id}" value="${escapeHtml(row.descripcion || '')}" placeholder="Descripción de la evidencia" />
+          <small>${row.created_at ? new Date(row.created_at).toLocaleString('es-PE') : ''}</small>
+        </div>
+        ${committeeAgreementCanManage(agreement) ? `<button type="button" class="meeting-evidence-delete" data-delete-agreement-evidence="${row.id}">Eliminar</button>` : ''}
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-delete-agreement-evidence]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeAgreementEvidence(button.dataset.deleteAgreementEvidence));
+  });
+}
+
+function renderCommitteeAgreementHistory(agreement) {
+  const container=document.getElementById('committeeAgreementHistoryList');
+  if (!container) return;
+
+  const rows=committeeAgreementHistory.filter(x=>x.acuerdo_id===agreement.id);
+  if (!rows.length) {
+    container.innerHTML='<div class="meeting-empty-note">Aún no existen cambios registrados en el historial.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(row=>{
+    const statusChanged=row.estado_anterior!==row.estado_nuevo;
+    const responsibleChanged=row.responsable_anterior!==row.responsable_nuevo;
+    const dateChanged=row.fecha_anterior!==row.fecha_nueva;
+    const details=[];
+
+    if (statusChanged) details.push(`Estado: ${committeeAgreementStatusLabel(row.estado_anterior)} → ${committeeAgreementStatusLabel(row.estado_nuevo)}`);
+    if (responsibleChanged) details.push(`Responsable: ${row.responsable_anterior || '—'} → ${row.responsable_nuevo || '—'}`);
+    if (dateChanged) details.push(`Fecha: ${row.fecha_anterior ? formatDatePE(row.fecha_anterior) : '—'} → ${row.fecha_nueva ? formatDatePE(row.fecha_nueva) : '—'}`);
+
+    return `
+      <article class="agreement-history-item">
+        <span class="agreement-history-dot"></span>
+        <div>
+          <strong>${escapeHtml(details.join(' · ') || 'Actualización del acuerdo')}</strong>
+          ${row.observacion ? `<p>${escapeHtml(row.observacion)}</p>` : ''}
+          <small>${row.changed_at ? new Date(row.changed_at).toLocaleString('es-PE') : ''}</small>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function toggleCommitteeAgreementCloseFields() {
+  const status=document.getElementById('committeeAgreementStatus')?.value;
+  document.getElementById('committeeAgreementCloseObservationField')?.classList.toggle('hidden',status!=='CERRADO');
+}
+
+async function openCommitteeAgreementModal(id) {
+  if (!committeeAgreementsLoaded) await loadCommitteeAgreementsModule(true);
+
+  const agreement=committeeMeetingAgreements.find(x=>x.id===id);
+  if (!agreement) return;
+
+  activeCommitteeAgreementId=id;
+  const meeting=committeeAgreementMeeting(agreement);
+  const committee=committeeAgreementCommittee(agreement);
+  const canManage=committeeAgreementCanManage(agreement);
+
+  document.getElementById('committeeAgreementId').value=agreement.id;
+  document.getElementById('committeeAgreementModalTitle').textContent=`Acuerdo · ${agreement.estado==='CERRADO'?'Cerrado':'Seguimiento'}`;
+  document.getElementById('committeeAgreementModalOrigin').textContent=
+    `${meeting?.numero_acta || 'Acta'} · ${committee?.nombre || 'Comité SST'} · ${committeeUnitName(committee)}`;
+
+  document.getElementById('committeeAgreementActNumber').textContent=meeting?.numero_acta || '—';
+  document.getElementById('committeeAgreementMeetingDate').textContent=formatDatePE(meeting?.fecha);
+  document.getElementById('committeeAgreementCommitteeName').textContent=committee?.nombre || '—';
+  document.getElementById('committeeAgreementUnitName').textContent=committeeUnitName(committee);
+
+  document.getElementById('committeeAgreementAction').value=agreement.accion || '';
+  document.getElementById('committeeAgreementResponsible').value=agreement.responsable || '';
+  document.getElementById('committeeAgreementDueDate').value=agreement.fecha_cumplimiento || '';
+  document.getElementById('committeeAgreementStatus').value=agreement.estado || 'PENDIENTE';
+  document.getElementById('committeeAgreementCloseDate').value=agreement.fecha_cierre || '';
+  document.getElementById('committeeAgreementObservation').value=agreement.observacion || '';
+  document.getElementById('committeeAgreementCloseObservation').value=agreement.cierre_observacion || '';
+
+  toggleCommitteeAgreementCloseFields();
+  renderCommitteeAgreementEvidence(agreement);
+  renderCommitteeAgreementHistory(agreement);
+  committeeAgreementMessage('');
+
+  [
+    'committeeAgreementAction',
+    'committeeAgreementResponsible',
+    'committeeAgreementDueDate',
+    'committeeAgreementStatus',
+    'committeeAgreementObservation',
+    'committeeAgreementCloseObservation',
+    'committeeAgreementEvidenceFiles'
+  ].forEach(fieldId=>{
+    const el=document.getElementById(fieldId);
+    if (el) el.disabled=!canManage;
+  });
+
+  document.getElementById('saveCommitteeAgreementButton')?.classList.toggle('hidden',!canManage);
+  document.getElementById('uploadCommitteeAgreementEvidenceButton')?.classList.toggle('hidden',!canManage);
+
+  const modal=document.getElementById('committeeAgreementModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeAgreementModal() {
+  const modal=document.getElementById('committeeAgreementModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  activeCommitteeAgreementId=null;
+  document.body.classList.remove('modal-open');
+}
+
+async function saveCommitteeAgreement() {
+  if (!activeCommitteeAgreementId) return;
+
+  const agreement=committeeMeetingAgreements.find(x=>x.id===activeCommitteeAgreementId);
+  if (!agreement || !committeeAgreementCanManage(agreement)) return;
+
+  committeeAgreementMessage('');
+
+  const accion=document.getElementById('committeeAgreementAction').value.trim();
+  const responsable=document.getElementById('committeeAgreementResponsible').value.trim();
+  const fecha_cumplimiento=document.getElementById('committeeAgreementDueDate').value || null;
+  const estado=document.getElementById('committeeAgreementStatus').value;
+  const observacion=document.getElementById('committeeAgreementObservation').value.trim() || null;
+  const cierre_observacion=document.getElementById('committeeAgreementCloseObservation').value.trim() || null;
+
+  if (!accion || !responsable) {
+    committeeAgreementMessage('Completa la acción requerida y el responsable.');
+    return;
+  }
+
+  if (estado==='CERRADO' && !cierre_observacion) {
+    committeeAgreementMessage('Para cerrar el acuerdo registra el comentario de cierre.');
+    return;
+  }
+
+  const descriptionUpdates=[...document.querySelectorAll('[data-agreement-evidence-description]')].map(input=>
+    client.from('comite_sst_acuerdo_evidencias')
+      .update({descripcion:input.value.trim() || null})
+      .eq('id',input.dataset.agreementEvidenceDescription)
+  );
+  await Promise.all(descriptionUpdates);
+
+  const button=document.getElementById('saveCommitteeAgreementButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const payload={
+    accion,
+    responsable,
+    fecha_cumplimiento,
+    estado,
+    observacion,
+    cierre_observacion:estado==='CERRADO' ? cierre_observacion : null
+  };
+
+  const {error}=await client.from('comite_sst_acuerdos')
+    .update(payload)
+    .eq('id',activeCommitteeAgreementId);
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error) {
+    console.error(error);
+    committeeAgreementMessage(error.message || 'No fue posible guardar el seguimiento.');
+    return;
+  }
+
+  const id=activeCommitteeAgreementId;
+  committeeAgreementsLoaded=false;
+  committeeMeetingsLoaded=false;
+  await loadCommitteeAgreementsModule(true);
+  await openCommitteeAgreementModal(id);
+  committeeAgreementMessage('Seguimiento actualizado correctamente.','success');
+}
+
+async function uploadCommitteeAgreementEvidence() {
+  if (!activeCommitteeAgreementId) return;
+  const agreement=committeeMeetingAgreements.find(x=>x.id===activeCommitteeAgreementId);
+  if (!agreement || !committeeAgreementCanManage(agreement)) return;
+
+  const input=document.getElementById('committeeAgreementEvidenceFiles');
+  const files=[...(input.files || [])];
+
+  if (!files.length) {
+    committeeAgreementMessage('Selecciona uno o más archivos.');
+    return;
+  }
+
+  const existing=committeeAgreementEvidences.filter(x=>x.acuerdo_id===activeCommitteeAgreementId);
+  if (existing.length+files.length>6) {
+    committeeAgreementMessage('Se permite un máximo de 6 evidencias por acuerdo.');
+    return;
+  }
+
+  const button=document.getElementById('uploadCommitteeAgreementEvidenceButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Subiendo…';
+
+  try {
+    for (const file of files) {
+      if (file.size>8*1024*1024) {
+        throw new Error(`${file.name}: supera el máximo de 8 MB.`);
+      }
+
+      const allowed=['image/jpeg','image/png','image/webp','application/pdf'];
+      if (!allowed.includes(file.type)) {
+        throw new Error(`${file.name}: formato no permitido.`);
+      }
+
+      let uploadBody=file;
+      let contentType=file.type;
+      let extension=file.name.split('.').pop()?.toLowerCase() || '';
+
+      if (file.type.startsWith('image/')) {
+        uploadBody=await resizeCommitteeMeetingImage(file);
+        contentType='image/jpeg';
+        extension='jpg';
+      }
+
+      const path=`${activeCommitteeAgreementId}/${crypto.randomUUID()}.${extension || 'bin'}`;
+
+      const {error:uploadError}=await client.storage
+        .from('comite-sst-acuerdos')
+        .upload(path,uploadBody,{contentType,cacheControl:'3600',upsert:false});
+
+      if (uploadError) throw uploadError;
+
+      const url=client.storage.from('comite-sst-acuerdos').getPublicUrl(path).data.publicUrl;
+
+      const {error:rowError}=await client.from('comite_sst_acuerdo_evidencias').insert({
+        acuerdo_id:activeCommitteeAgreementId,
+        storage_path:path,
+        url,
+        nombre_archivo:file.name,
+        tipo_archivo:contentType,
+        descripcion:null,
+        created_by:currentProfile?.id || null
+      });
+
+      if (rowError) throw rowError;
+    }
+
+    input.value='';
+    committeeAgreementsLoaded=false;
+    await loadCommitteeAgreementsModule(true);
+    await openCommitteeAgreementModal(activeCommitteeAgreementId);
+    committeeAgreementMessage('Evidencia cargada correctamente.','success');
+  } catch(err) {
+    console.error(err);
+    committeeAgreementMessage(err?.message || 'No fue posible cargar la evidencia.');
+  } finally {
+    button.disabled=false;
+    button.textContent=old;
+  }
+}
+
+async function deleteCommitteeAgreementEvidence(id) {
+  const row=committeeAgreementEvidences.find(x=>x.id===id);
+  if (!row) return;
+
+  const agreement=committeeMeetingAgreements.find(x=>x.id===row.acuerdo_id);
+  if (!agreement || !committeeAgreementCanManage(agreement)) return;
+
+  if (!confirm('¿Eliminar esta evidencia del acuerdo?')) return;
+
+  if (row.storage_path) {
+    const storageResult=await client.storage.from('comite-sst-acuerdos').remove([row.storage_path]);
+    if (storageResult.error) console.warn(storageResult.error);
+  }
+
+  const {error}=await client.from('comite_sst_acuerdo_evidencias').delete().eq('id',id);
+  if (error) {
+    committeeAgreementMessage(error.message || 'No fue posible eliminar la evidencia.');
+    return;
+  }
+
+  committeeAgreementsLoaded=false;
+  await loadCommitteeAgreementsModule(true);
+  await openCommitteeAgreementModal(activeCommitteeAgreementId);
+  committeeAgreementMessage('Evidencia eliminada.','success');
+}
+
+function exportCommitteeAgreementsCsv() {
+  const rows=committeeMeetingAgreements.map(agreement=>{
+    const meeting=committeeAgreementMeeting(agreement);
+    const committee=committeeAgreementCommittee(agreement);
+    const due=committeeAgreementDueState(agreement);
+
+    return {
+      'Acta':meeting?.numero_acta || '',
+      'Fecha reunión':meeting?.fecha || '',
+      'Comité/Subcomité':committee?.nombre || '',
+      'Unidad':committeeUnitName(committee),
+      'Acción requerida':agreement.accion || '',
+      'Responsable':agreement.responsable || '',
+      'Fecha compromiso':agreement.fecha_cumplimiento || '',
+      'Situación':due.label,
+      'Estado':committeeAgreementStatusLabel(agreement.estado),
+      'Fecha cierre':agreement.fecha_cierre || '',
+      'Observación':agreement.observacion || '',
+      'Comentario cierre':agreement.cierre_observacion || '',
+      'Evidencias':committeeAgreementEvidences.filter(x=>x.acuerdo_id===agreement.id).length
+    };
+  });
+
+  if (!rows.length) {
+    alert('No hay acuerdos para exportar.');
+    return;
+  }
+
+  const headers=Object.keys(rows[0]);
+  const escapeCsv=value=>{
+    const text=String(value ?? '');
+    return `"${text.replace(/"/g,'""')}"`;
+  };
+
+  const csv=[
+    headers.map(escapeCsv).join(','),
+    ...rows.map(row=>headers.map(h=>escapeCsv(row[h])).join(','))
+  ].join('\r\n');
+
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`Seguimiento_Acuerdos_Comite_SST_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 
@@ -2959,6 +3571,7 @@ async function closeCurrentCommitteeMeeting() {
 // ------------------------------------------------------------
 document.getElementById('committeeConformationsTab')?.addEventListener('click',()=>setCommitteeModuleMode('CONFORMATIONS'));
 document.getElementById('committeeMeetingsTab')?.addEventListener('click',()=>setCommitteeModuleMode('MEETINGS'));
+document.getElementById('committeeAgreementsTab')?.addEventListener('click',()=>setCommitteeModuleMode('AGREEMENTS'));
 
 document.getElementById('committeeMeetingProgramForm')?.addEventListener('submit',saveCommitteeMeetingProgram);
 document.getElementById('closeCommitteeMeetingProgramModal')?.addEventListener('click',closeCommitteeMeetingProgramModal);
@@ -3003,7 +3616,7 @@ document.getElementById('addCommitteeMeetingPreviousManualButton')?.addEventList
 
 document.getElementById('addCommitteeMeetingAgreementButton')?.addEventListener('click',()=>{
   const rows=collectMeetingAgreementRows();
-  rows.push({accion:'',responsable:'',fecha_cumplimiento:''});
+  rows.push({id:null,accion:'',responsable:'',fecha_cumplimiento:''});
   renderCommitteeMeetingAgreements(rows);
 });
 
@@ -3023,6 +3636,36 @@ document.getElementById('committeeMeetingStatusFilter')?.addEventListener('chang
 document.getElementById('refreshCommitteeMeetingsButton')?.addEventListener('click',()=>{
   committeeMeetingsLoaded=false;
   loadCommitteeMeetingsModule(true);
+});
+
+document.getElementById('committeeAgreementSearch')?.addEventListener('input',renderCommitteeAgreementTable);
+document.getElementById('committeeAgreementCommitteeFilter')?.addEventListener('change',renderCommitteeAgreementTable);
+document.getElementById('committeeAgreementStatusFilter')?.addEventListener('change',renderCommitteeAgreementTable);
+document.getElementById('committeeAgreementDeadlineFilter')?.addEventListener('change',renderCommitteeAgreementTable);
+
+document.getElementById('refreshCommitteeAgreementsButton')?.addEventListener('click',()=>{
+  committeeAgreementsLoaded=false;
+  loadCommitteeAgreementsModule(true);
+});
+
+document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsCsv);
+
+document.getElementById('committeeAgreementStatus')?.addEventListener('change',toggleCommitteeAgreementCloseFields);
+document.getElementById('saveCommitteeAgreementButton')?.addEventListener('click',saveCommitteeAgreement);
+document.getElementById('uploadCommitteeAgreementEvidenceButton')?.addEventListener('click',uploadCommitteeAgreementEvidence);
+
+document.getElementById('closeCommitteeAgreementModal')?.addEventListener('click',closeCommitteeAgreementModal);
+document.getElementById('cancelCommitteeAgreementModal')?.addEventListener('click',closeCommitteeAgreementModal);
+document.getElementById('committeeAgreementModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeAgreementModal);
+
+document.getElementById('viewCommitteeAgreementMeetingButton')?.addEventListener('click',()=>{
+  const agreement=committeeMeetingAgreements.find(x=>x.id===activeCommitteeAgreementId);
+  if (!agreement) return;
+  const meeting=committeeAgreementMeeting(agreement);
+  if (!meeting) return;
+  closeCommitteeAgreementModal();
+  setCommitteeModuleMode('MEETINGS');
+  openCommitteeMeetingEditor(meeting.id);
 });
 
 

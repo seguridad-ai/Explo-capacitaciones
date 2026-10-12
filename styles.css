@@ -2463,3 +2463,422 @@ body.modal-open{
   font-size:8px;
   line-height:1.35;
 }
+
+
+/* ============================================================
+   ETAPA 16C · SEGUIMIENTO DE ACUERDOS
+   ============================================================ */
+
+.committee-agreements-view{
+  display:block;
+}
+
+.committee-agreement-stats{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:12px;
+  margin:18px 0;
+}
+
+.committee-agreement-stats article{
+  border:1px solid #dce3ec;
+  border-radius:14px;
+  background:#fff;
+  padding:15px 16px;
+  box-shadow:0 5px 18px rgba(28,45,68,.04);
+}
+
+.committee-agreement-stats span,
+.committee-agreement-stats small{
+  display:block;
+  color:#758399;
+  font-size:8px;
+}
+
+.committee-agreement-stats strong{
+  display:block;
+  margin:5px 0 2px;
+  color:#102640;
+  font-size:24px;
+}
+
+.committee-agreement-stats .agreement-stat-overdue strong{
+  color:#c00000;
+}
+
+.committee-agreement-toolbar{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+}
+
+.committee-agreement-filter{
+  display:grid;
+  grid-template-columns:minmax(280px,1fr) 250px 160px 170px auto;
+  gap:8px;
+  padding:13px 15px;
+  border-top:1px solid #e2e7ed;
+}
+
+.committee-agreement-table-wrap{
+  width:100%;
+  overflow:auto;
+}
+
+.committee-agreement-table{
+  min-width:1240px;
+}
+
+.committee-agreement-table th{
+  white-space:nowrap;
+}
+
+.committee-agreement-table td{
+  vertical-align:top;
+}
+
+.agreement-origin-cell{
+  min-width:130px;
+}
+
+.agreement-origin-cell strong,
+.agreement-origin-cell small{
+  display:block;
+}
+
+.agreement-origin-cell small{
+  margin-top:4px;
+  color:#7a8798;
+  font-size:8px;
+}
+
+.agreement-action-cell{
+  min-width:280px;
+  max-width:390px;
+  white-space:normal!important;
+  line-height:1.45;
+}
+
+.agreement-overdue-row{
+  background:#fff9f9;
+}
+
+.agreement-deadline-badge,
+.agreement-status-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:5px 8px;
+  white-space:nowrap;
+  font-size:8px;
+  font-weight:850;
+}
+
+.agreement-deadline-badge.vencido{
+  background:#ffe4e4;
+  color:#b00000;
+}
+
+.agreement-deadline-badge.hoy{
+  background:#fff1da;
+  color:#995900;
+}
+
+.agreement-deadline-badge.proximo{
+  background:#fff6db;
+  color:#8e6500;
+}
+
+.agreement-deadline-badge.vigente{
+  background:#eaf7ee;
+  color:#147a38;
+}
+
+.agreement-deadline-badge.sin_fecha{
+  background:#eef1f5;
+  color:#657285;
+}
+
+.agreement-deadline-badge.cerrado{
+  background:#eaf7ee;
+  color:#147a38;
+}
+
+.agreement-status-badge.pendiente{
+  background:#fff1da;
+  color:#8d5b00;
+}
+
+.agreement-status-badge.en_proceso{
+  background:#e8f0ff;
+  color:#2458b8;
+}
+
+.agreement-status-badge.cerrado{
+  background:#e4f7ea;
+  color:#0d7c34;
+}
+
+.agreement-evidence-count{
+  color:#5c6b80;
+  font-size:9px;
+  white-space:nowrap;
+}
+
+.agreement-actions-cell{
+  display:flex;
+  gap:6px;
+  min-width:160px;
+}
+
+.committee-agreement-modal-card{
+  width:min(1180px,calc(100vw - 24px))!important;
+  max-width:1180px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.committee-agreement-origin-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+
+.committee-agreement-origin-grid article{
+  border:1px solid #dce3eb;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:11px 12px;
+}
+
+.committee-agreement-origin-grid span{
+  display:block;
+  color:#7b8798;
+  font-size:8px;
+}
+
+.committee-agreement-origin-grid strong{
+  display:block;
+  margin-top:4px;
+  color:#17263c;
+  font-size:10px;
+}
+
+.committee-agreement-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.committee-agreement-form-grid label>span{
+  color:#526179;
+  font-size:8px;
+  font-weight:800;
+}
+
+.committee-agreement-form-grid input,
+.committee-agreement-form-grid select,
+.committee-agreement-form-grid textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.agreement-evidence-section,
+.agreement-history-section{
+  margin-top:15px;
+  border:1px solid #dce3eb;
+  border-radius:12px;
+  padding:14px;
+}
+
+.agreement-evidence-list{
+  display:grid;
+  gap:9px;
+  margin-top:11px;
+}
+
+.agreement-evidence-item{
+  display:grid;
+  grid-template-columns:110px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid #e0e5ec;
+  border-radius:10px;
+  padding:9px;
+  background:#fafbfd;
+}
+
+.agreement-evidence-preview img{
+  width:110px;
+  height:75px;
+  object-fit:cover;
+  border-radius:7px;
+  border:1px solid #dce3eb;
+}
+
+.agreement-pdf-preview{
+  width:110px;
+  height:75px;
+  display:grid;
+  place-items:center;
+  border-radius:7px;
+  background:#fff0f0;
+  color:#c00000;
+  font-weight:900;
+  text-decoration:none;
+  border:1px solid #f1caca;
+}
+
+.agreement-evidence-meta strong,
+.agreement-evidence-meta small{
+  display:block;
+}
+
+.agreement-evidence-meta strong{
+  color:#26364c;
+  font-size:9px;
+  word-break:break-word;
+}
+
+.agreement-evidence-meta small{
+  margin-top:5px;
+  color:#8290a2;
+  font-size:7.5px;
+}
+
+.agreement-evidence-description-input{
+  width:100%;
+  height:36px;
+  margin-top:6px;
+  border:1px solid #ccd6e2;
+  border-radius:7px;
+  padding:0 8px;
+  font:inherit;
+}
+
+.agreement-history-list{
+  display:grid;
+  gap:8px;
+}
+
+.agreement-history-item{
+  display:grid;
+  grid-template-columns:14px 1fr;
+  gap:9px;
+  align-items:flex-start;
+  border-bottom:1px solid #edf0f4;
+  padding:8px 0;
+}
+
+.agreement-history-item:last-child{
+  border-bottom:0;
+}
+
+.agreement-history-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:#c00000;
+  margin-top:4px;
+}
+
+.agreement-history-item strong{
+  color:#35455b;
+  font-size:8.5px;
+}
+
+.agreement-history-item p{
+  margin:4px 0;
+  color:#65748a;
+  font-size:8.5px;
+}
+
+.agreement-history-item small{
+  color:#8995a4;
+  font-size:7.5px;
+}
+
+.committee-agreement-modal-actions{
+  position:sticky;
+  bottom:-1px;
+  background:#fff;
+  padding-top:12px;
+  z-index:5;
+}
+
+.meeting-agreement-status-chip{
+  position:absolute;
+  right:39px;
+  top:-8px;
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:7px;
+  font-weight:850;
+  background:#eef1f5;
+  color:#57667b;
+}
+
+.meeting-agreement-status-chip.en_proceso{
+  background:#e8f0ff;
+  color:#2458b8;
+}
+
+.meeting-agreement-status-chip.cerrado{
+  background:#e4f7ea;
+  color:#0d7c34;
+}
+
+@media(max-width:1250px){
+  .committee-agreement-stats{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+  .committee-agreement-filter{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-agreement-filter input{
+    grid-column:1/-1;
+  }
+}
+
+@media(max-width:760px){
+  .committee-agreement-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-agreement-filter{
+    grid-template-columns:1fr;
+  }
+
+  .committee-agreement-filter input{
+    grid-column:auto;
+  }
+
+  .committee-agreement-origin-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .agreement-evidence-item{
+    grid-template-columns:1fr;
+  }
+
+  .agreement-evidence-preview img,
+  .agreement-pdf-preview{
+    width:100%;
+    height:160px;
+  }
+
+  .committee-agreement-modal-actions{
+    flex-direction:column;
+  }
+
+  .committee-agreement-modal-actions button{
+    width:100%;
+  }
+}

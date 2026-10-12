@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16b2" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16c" />
 </head>
 <body>
   <section id="publicMeetingSignatureScreen" class="public-meeting-signature-screen hidden" aria-label="Firma de acta del Comité SST">
@@ -1882,6 +1882,7 @@
         <div class="committee-module-tabs">
           <button id="committeeConformationsTab" class="active" type="button">Conformaciones e integrantes</button>
           <button id="committeeMeetingsTab" type="button">Reuniones y actas</button>
+          <button id="committeeAgreementsTab" type="button">Seguimiento de acuerdos</button>
         </div>
 
         <div id="committeeConformationsStats" class="committee-stats">
@@ -1970,6 +1971,198 @@
             </div>
           </article>
         </section>
+
+        <section id="committeeAgreementsView" class="committee-agreements-view hidden">
+          <div class="committee-agreement-stats">
+            <article>
+              <span>Total de acuerdos</span>
+              <strong id="committeeAgreementTotalCount">0</strong>
+              <small>Registrados en reuniones</small>
+            </article>
+            <article>
+              <span>Pendientes</span>
+              <strong id="committeeAgreementPendingCount">0</strong>
+              <small>Sin iniciar / por atender</small>
+            </article>
+            <article>
+              <span>En proceso</span>
+              <strong id="committeeAgreementInProgressCount">0</strong>
+              <small>Con seguimiento activo</small>
+            </article>
+            <article class="agreement-stat-overdue">
+              <span>Vencidos</span>
+              <strong id="committeeAgreementOverdueCount">0</strong>
+              <small>Fecha comprometida superada</small>
+            </article>
+            <article>
+              <span>Cerrados</span>
+              <strong id="committeeAgreementClosedCount">0</strong>
+              <small>Atendidos</small>
+            </article>
+            <article>
+              <span>Cumplimiento</span>
+              <strong id="committeeAgreementCompliance">0%</strong>
+              <small>Cerrados / total</small>
+            </article>
+          </div>
+
+          <article class="catalog-panel committee-agreements-panel">
+            <div class="catalog-panel-head catalog-panel-head-wrap">
+              <div>
+                <span class="eyebrow">SEGUIMIENTO</span>
+                <h3>Acuerdos del Comité y Subcomités SST</h3>
+                <p class="committee-meeting-help">Controla responsables, fechas comprometidas, vencimientos, estado, evidencias y cierre de cada acuerdo.</p>
+              </div>
+              <div class="committee-agreement-toolbar">
+                <button id="exportCommitteeAgreementsButton" class="secondary-btn" type="button">Exportar CSV</button>
+              </div>
+            </div>
+
+            <div class="catalog-filter committee-agreement-filter">
+              <input id="committeeAgreementSearch" type="search" placeholder="Buscar acuerdo, responsable, acta o proyecto..." />
+              <select id="committeeAgreementCommitteeFilter">
+                <option value="">Todos los Comités/Subcomités</option>
+              </select>
+              <select id="committeeAgreementStatusFilter">
+                <option value="">Todos los estados</option>
+                <option value="PENDIENTE">Pendientes</option>
+                <option value="EN_PROCESO">En proceso</option>
+                <option value="CERRADO">Cerrados</option>
+              </select>
+              <select id="committeeAgreementDeadlineFilter">
+                <option value="">Todas las fechas</option>
+                <option value="VENCIDO">Vencidos</option>
+                <option value="PROXIMO">Vencen en 7 días</option>
+                <option value="SIN_FECHA">Sin fecha</option>
+              </select>
+              <button id="refreshCommitteeAgreementsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+
+            <div class="committee-agreement-table-wrap">
+              <table class="data-table committee-agreement-table">
+                <thead>
+                  <tr>
+                    <th>Origen</th>
+                    <th>Acuerdo / Acción requerida</th>
+                    <th>Responsable</th>
+                    <th>Fecha compromiso</th>
+                    <th>Situación</th>
+                    <th>Estado</th>
+                    <th>Evidencia</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="committeeAgreementTableBody">
+                  <tr><td colspan="8" class="table-empty">Cargando acuerdos…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <div id="committeeAgreementModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-agreement-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">SEGUIMIENTO DE ACUERDO</span>
+                <h3 id="committeeAgreementModalTitle">Acuerdo</h3>
+                <p id="committeeAgreementModalOrigin" class="modal-subtitle">—</p>
+              </div>
+              <button id="closeCommitteeAgreementModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <input id="committeeAgreementId" type="hidden" />
+
+            <div class="committee-agreement-origin-grid">
+              <article><span>Acta</span><strong id="committeeAgreementActNumber">—</strong></article>
+              <article><span>Fecha de reunión</span><strong id="committeeAgreementMeetingDate">—</strong></article>
+              <article><span>Comité / Subcomité</span><strong id="committeeAgreementCommitteeName">—</strong></article>
+              <article><span>Unidad</span><strong id="committeeAgreementUnitName">—</strong></article>
+            </div>
+
+            <div class="form-grid committee-agreement-form-grid">
+              <label class="form-span-2">
+                <span>Acción requerida *</span>
+                <textarea id="committeeAgreementAction" rows="4" maxlength="3000"></textarea>
+              </label>
+
+              <label>
+                <span>Responsable *</span>
+                <input id="committeeAgreementResponsible" maxlength="180" />
+              </label>
+
+              <label>
+                <span>Fecha de cumplimiento</span>
+                <input id="committeeAgreementDueDate" type="date" />
+              </label>
+
+              <label>
+                <span>Estado *</span>
+                <select id="committeeAgreementStatus">
+                  <option value="PENDIENTE">PENDIENTE</option>
+                  <option value="EN_PROCESO">EN PROCESO</option>
+                  <option value="CERRADO">CERRADO</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Fecha de cierre</span>
+                <input id="committeeAgreementCloseDate" type="date" readonly />
+              </label>
+
+              <label class="form-span-2">
+                <span>Observación / seguimiento</span>
+                <textarea id="committeeAgreementObservation" rows="3" maxlength="2000" placeholder="Avances, coordinaciones, dificultades o comentario de seguimiento"></textarea>
+              </label>
+
+              <label id="committeeAgreementCloseObservationField" class="form-span-2 hidden">
+                <span>Comentario de cierre *</span>
+                <textarea id="committeeAgreementCloseObservation" rows="3" maxlength="2000" placeholder="Describe cómo se atendió y cerró el acuerdo"></textarea>
+              </label>
+            </div>
+
+            <section class="agreement-evidence-section">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">✓</span>
+                  <div>
+                    <h4>Evidencias de seguimiento / cierre</h4>
+                    <p>Adjunta fotografías o PDF como sustento. Máximo 6 archivos de 8 MB cada uno.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="meeting-evidence-uploader">
+                <input id="committeeAgreementEvidenceFiles" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple />
+                <button id="uploadCommitteeAgreementEvidenceButton" class="primary-btn" type="button">Subir evidencia</button>
+              </div>
+
+              <div id="committeeAgreementEvidenceList" class="agreement-evidence-list"></div>
+            </section>
+
+            <section class="agreement-history-section">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">↺</span>
+                  <div>
+                    <h4>Historial de cambios</h4>
+                    <p>Registro de cambios de estado, responsable y fecha comprometida.</p>
+                  </div>
+                </div>
+              </div>
+              <div id="committeeAgreementHistoryList" class="agreement-history-list"></div>
+            </section>
+
+            <div id="committeeAgreementModalMessage" class="form-message"></div>
+
+            <div class="modal-actions committee-agreement-modal-actions">
+              <button id="viewCommitteeAgreementMeetingButton" class="secondary-btn" type="button">Ver acta origen</button>
+              <button id="cancelCommitteeAgreementModal" class="secondary-btn" type="button">Cancelar</button>
+              <button id="saveCommitteeAgreementButton" class="primary-btn" type="button">Guardar seguimiento</button>
+            </div>
+          </div>
+        </div>
 
         <div id="committeeMeetingProgramModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
@@ -2555,6 +2748,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16b2"></script>
+  <script src="app.js?v=20261012-16c"></script>
 </body>
 </html>

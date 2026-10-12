@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16a1" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16b" />
 </head>
 <body>
   <section id="publicExamScreen" class="public-exam-screen hidden" aria-label="Examen de capacitación">
@@ -1788,7 +1788,12 @@
 
         <div id="committeeModuleMessage" class="module-message"></div>
 
-        <div class="committee-stats">
+        <div class="committee-module-tabs">
+          <button id="committeeConformationsTab" class="active" type="button">Conformaciones e integrantes</button>
+          <button id="committeeMeetingsTab" type="button">Reuniones y actas</button>
+        </div>
+
+        <div id="committeeConformationsStats" class="committee-stats">
           <article>
             <span>Conformaciones visibles</span>
             <strong id="committeeTotalCount">0</strong>
@@ -1811,7 +1816,7 @@
           </article>
         </div>
 
-        <article class="catalog-panel committee-panel">
+        <article id="committeeConformationsPanel" class="catalog-panel committee-panel">
           <div class="catalog-panel-head catalog-panel-head-wrap">
             <div>
               <span class="eyebrow">CONFORMACIONES</span>
@@ -1837,6 +1842,265 @@
             <div class="training-library-empty">Cargando conformaciones…</div>
           </div>
         </article>
+
+        <section id="committeeMeetingsView" class="committee-meetings-view hidden">
+          <div class="committee-meeting-stats">
+            <article><span>Reuniones visibles</span><strong id="committeeMeetingTotalCount">0</strong><small>Programadas e históricas</small></article>
+            <article><span>Programadas</span><strong id="committeeMeetingScheduledCount">0</strong><small>Pendientes de realizar</small></article>
+            <article><span>Cerradas</span><strong id="committeeMeetingClosedCount">0</strong><small>Con acta final</small></article>
+            <article><span>Acuerdos pendientes</span><strong id="committeeMeetingAgreementCount">0</strong><small>De reuniones anteriores</small></article>
+          </div>
+
+          <article class="catalog-panel committee-meetings-panel">
+            <div class="catalog-panel-head catalog-panel-head-wrap">
+              <div>
+                <span class="eyebrow">REUNIONES</span>
+                <h3>Reuniones del Comité y Subcomités SST</h3>
+                <p class="committee-meeting-help">Programa la reunión, registra el desarrollo, adjunta evidencias de inspección y genera el acta en PDF.</p>
+              </div>
+              <div class="catalog-filter committee-meeting-filter">
+                <input id="committeeMeetingSearch" type="search" placeholder="Buscar acta, Comité, proyecto o lugar..." />
+                <select id="committeeMeetingCommitteeFilter">
+                  <option value="">Todos los Comités/Subcomités</option>
+                </select>
+                <select id="committeeMeetingStatusFilter">
+                  <option value="">Todos los estados</option>
+                  <option value="PROGRAMADA">Programadas</option>
+                  <option value="BORRADOR">Borradores</option>
+                  <option value="CERRADA">Cerradas</option>
+                </select>
+                <button id="refreshCommitteeMeetingsButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+              </div>
+            </div>
+
+            <div id="committeeMeetingList" class="committee-meeting-list">
+              <div class="training-library-empty">Cargando reuniones…</div>
+            </div>
+          </article>
+        </section>
+
+        <div id="committeeMeetingProgramModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-meeting-program-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">PROGRAMACIÓN DE REUNIÓN</span>
+                <h3 id="committeeMeetingProgramTitle">Nueva reunión</h3>
+                <p class="modal-subtitle">Datos generales que se utilizarán para generar el Acta de Reunión del Comité/Subcomité SST.</p>
+              </div>
+              <button id="closeCommitteeMeetingProgramModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="committeeMeetingProgramForm" novalidate>
+              <input id="committeeMeetingProgramId" type="hidden" />
+
+              <div class="form-grid committee-meeting-program-grid">
+                <label class="form-span-2">
+                  <span>Comité / Subcomité *</span>
+                  <select id="committeeMeetingCommittee">
+                    <option value="">Seleccione una conformación</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Tipo de reunión *</span>
+                  <select id="committeeMeetingType">
+                    <option value="ORDINARIA">Ordinaria</option>
+                    <option value="EXTRAORDINARIA">Extraordinaria</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Estado *</span>
+                  <select id="committeeMeetingStatus">
+                    <option value="PROGRAMADA">PROGRAMADA</option>
+                    <option value="BORRADOR">BORRADOR</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Fecha de reunión *</span>
+                  <input id="committeeMeetingDate" type="date" />
+                </label>
+
+                <label>
+                  <span>Hora de inicio *</span>
+                  <input id="committeeMeetingStartTime" type="time" />
+                </label>
+
+                <label>
+                  <span>Hora de término estimada</span>
+                  <input id="committeeMeetingEndTime" type="time" />
+                </label>
+
+                <label>
+                  <span>Mes cuyos resultados se revisarán *</span>
+                  <input id="committeeMeetingResultsMonth" type="month" />
+                </label>
+
+                <label class="form-span-2">
+                  <span>Lugar *</span>
+                  <input id="committeeMeetingPlace" maxlength="180" placeholder="Ej. Lima / Sala de reuniones / Campamento Cerro Verde" />
+                </label>
+
+                <label class="form-span-2">
+                  <span>Observaciones de programación</span>
+                  <textarea id="committeeMeetingProgramNotes" rows="3" maxlength="1000" placeholder="Información adicional de la convocatoria"></textarea>
+                </label>
+              </div>
+
+              <div id="committeeMeetingProgramMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="cancelCommitteeMeetingProgramModal" class="secondary-btn" type="button">Cancelar</button>
+                <button id="saveCommitteeMeetingProgramButton" class="primary-btn" type="submit">Programar y desarrollar reunión</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="committeeMeetingEditorModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-meeting-editor-card">
+            <div class="modal-head committee-meeting-editor-head">
+              <div>
+                <span id="committeeMeetingEditorType" class="eyebrow">ACTA DE REUNIÓN</span>
+                <h3 id="committeeMeetingEditorTitle">Acta N° —</h3>
+                <p id="committeeMeetingEditorSubtitle" class="modal-subtitle">—</p>
+              </div>
+              <button id="closeCommitteeMeetingEditorModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="committee-meeting-editor-summary">
+              <article><span>Acta</span><strong id="committeeMeetingEditorActNumber">—</strong></article>
+              <article><span>Fecha</span><strong id="committeeMeetingEditorDate">—</strong></article>
+              <article><span>Hora</span><strong id="committeeMeetingEditorTime">—</strong></article>
+              <article><span>Estado</span><strong id="committeeMeetingEditorStatus">—</strong></article>
+            </div>
+
+            <div id="committeeMeetingEditorMessage" class="form-message"></div>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">1</span><div><h4>Agenda</h4><p>Se carga la agenda base del formato oficial. Puedes activar/desactivar temas y agregar temas adicionales.</p></div></div>
+              </div>
+              <div id="committeeMeetingAgendaOptions" class="meeting-agenda-options"></div>
+              <div class="meeting-additional-agenda">
+                <input id="committeeMeetingAdditionalAgendaInput" maxlength="260" placeholder="Tema adicional para la agenda" />
+                <button id="addCommitteeMeetingAgendaButton" class="secondary-btn" type="button">+ Agregar tema</button>
+              </div>
+              <div id="committeeMeetingAdditionalAgendaList" class="meeting-chip-list"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.1</span><div><h4>Revisión de incidentes / accidentes / estadísticas</h4><p>Registra los eventos revisados y el comentario o plan de acción correspondiente.</p></div></div>
+                <button class="secondary-btn small-btn" id="addCommitteeMeetingIncidentButton" type="button">+ Agregar fila</button>
+              </div>
+              <div id="committeeMeetingIncidentsRows" class="meeting-dynamic-rows"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.2</span><div><h4>Revisión de estadísticas de SST</h4><p>Índices de Frecuencia, Severidad y Accidentabilidad del mes revisado.</p></div></div>
+              </div>
+              <div class="form-grid meeting-metrics-grid">
+                <label><span>IF</span><input id="committeeMeetingIF" type="number" step="0.01" value="0" /></label>
+                <label><span>IS</span><input id="committeeMeetingIS" type="number" step="0.01" value="0" /></label>
+                <label><span>IA</span><input id="committeeMeetingIA" type="number" step="0.01" value="0" /></label>
+                <label class="form-span-2"><span>Comentarios / repercusión</span><textarea id="committeeMeetingSstComments" rows="3"></textarea></label>
+              </div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.3</span><div><h4>Revisión de estadísticas de Salud Ocupacional</h4><p>Datos que serán incorporados en el acta.</p></div></div>
+              </div>
+              <div class="form-grid meeting-so-grid">
+                <label><span>Enfermedades ocupacionales</span><input id="committeeMeetingOccupationalDiseases" type="number" step="0.01" value="0" /></label>
+                <label><span>Trabajadores expuestos al agente</span><input id="committeeMeetingExposedWorkers" type="number" step="0.01" value="0" /></label>
+                <label><span>Tasa de incidencia</span><input id="committeeMeetingIncidenceRate" type="number" step="0.01" value="0" /></label>
+                <label><span>Trabajadores con enfermedades ocupacionales</span><input id="committeeMeetingWorkersWithDisease" type="number" step="0.01" value="0" /></label>
+                <label class="form-span-2"><span>Comentarios / repercusión</span><textarea id="committeeMeetingSoComments" rows="3"></textarea></label>
+              </div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.4</span><div><h4>Revisión de cumplimiento de objetivos y asuntos relevantes de SST</h4><p>Registra todos los temas revisados durante la sesión.</p></div></div>
+                <button class="secondary-btn small-btn" id="addCommitteeMeetingObjectiveButton" type="button">+ Agregar fila</button>
+              </div>
+              <div id="committeeMeetingObjectivesRows" class="meeting-dynamic-rows"></div>
+            </section>
+
+            <section class="meeting-editor-section meeting-evidence-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.5</span><div><h4>Revisión de inspecciones realizadas</h4><p>Adjunta fotografías de la inspección realizada por el Comité/Subcomité SST, evidenciando hallazgos y levantamientos.</p></div></div>
+              </div>
+              <div class="meeting-evidence-uploader">
+                <input id="committeeMeetingEvidenceFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+                <button id="uploadCommitteeMeetingEvidenceButton" class="primary-btn" type="button">Subir imágenes</button>
+                <small>Máximo 4 imágenes por acta, 5 MB por imagen.</small>
+              </div>
+              <div id="committeeMeetingEvidenceGrid" class="meeting-evidence-grid"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.6</span><div><h4>Revisión de acuerdos de Subcomité SST de proyectos</h4><p>Registra proyecto, acuerdo, acción y estado revisado.</p></div></div>
+                <button class="secondary-btn small-btn" id="addCommitteeMeetingSubcommitteeAgreementButton" type="button">+ Agregar fila</button>
+              </div>
+              <div id="committeeMeetingSubcommitteeRows" class="meeting-dynamic-rows"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.7</span><div><h4>Revisión de pendientes de acuerdos de reuniones anteriores</h4><p>El sistema muestra automáticamente los acuerdos anteriores que todavía no se encuentran cerrados.</p></div></div>
+              </div>
+              <div id="committeeMeetingPreviousAgreements" class="meeting-previous-agreements"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">2.8</span><div><h4>Acuerdos de la reunión</h4><p>Estos acuerdos quedarán disponibles para seguimiento en las siguientes reuniones.</p></div></div>
+                <button class="secondary-btn small-btn" id="addCommitteeMeetingAgreementButton" type="button">+ Agregar acuerdo</button>
+              </div>
+              <datalist id="committeeMeetingResponsibleOptions"></datalist>
+              <div id="committeeMeetingAgreementsRows" class="meeting-dynamic-rows"></div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">3</span><div><h4>Participantes de la reunión</h4><p>Marca a los integrantes presentes. En el PDF la columna de firma quedará en blanco para firma física.</p></div></div>
+                <button id="syncCommitteeMeetingAttendeesButton" class="secondary-btn small-btn" type="button">Sincronizar integrantes</button>
+              </div>
+              <div class="table-wrap meeting-attendance-wrap">
+                <table class="data-table meeting-attendance-table">
+                  <thead><tr><th>Presente</th><th>DNI</th><th>Personal</th><th>Cargo en Comité</th><th>Representación</th></tr></thead>
+                  <tbody id="committeeMeetingAttendanceBody"><tr><td colspan="5" class="table-empty">Sin participantes.</td></tr></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="meeting-editor-section">
+              <div class="meeting-editor-section-head">
+                <div><span class="meeting-section-number">4</span><div><h4>Fecha y hora para la próxima reunión</h4><p>Completa la programación que aparecerá al final del acta.</p></div></div>
+              </div>
+              <div class="form-grid meeting-next-grid">
+                <label><span>Fecha próxima reunión</span><input id="committeeMeetingNextDate" type="date" /></label>
+                <label><span>Hora próxima reunión</span><input id="committeeMeetingNextTime" type="time" /></label>
+                <label class="form-span-2"><span>Tema específico / agenda adicional</span><textarea id="committeeMeetingNextAgenda" rows="4" placeholder="Tema específico para la próxima agenda"></textarea></label>
+                <label><span>Hora real de culminación</span><input id="committeeMeetingActualEndTime" type="time" /></label>
+              </div>
+            </section>
+
+            <div class="committee-meeting-editor-actions">
+              <button id="saveCommitteeMeetingEditorButton" class="secondary-btn" type="button">Guardar cambios</button>
+              <button id="downloadCommitteeMeetingMinutesButton" class="meeting-pdf-btn" type="button">Descargar Acta PDF</button>
+              <button id="closeCommitteeMeetingButton" class="primary-btn" type="button">Cerrar reunión</button>
+            </div>
+          </div>
+        </div>
 
         <div id="committeeFormModal" class="modal hidden" aria-hidden="true">
           <div class="modal-backdrop"></div>
@@ -2155,6 +2419,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16a1"></script>
+  <script src="app.js?v=20261012-16b"></script>
 </body>
 </html>

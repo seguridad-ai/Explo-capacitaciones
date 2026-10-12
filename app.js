@@ -319,6 +319,26 @@ let committeeModuleLoaded = false;
 let committeeActiveId = null;
 let committeeCurrentType = 'COMITE';
 let committeeSelectedWorker = null;
+let committeeModuleMode = 'CONFORMATIONS';
+let committeeMeetingRecords = [];
+let committeeMeetingAttendees = [];
+let committeeMeetingEvidences = [];
+let committeeMeetingAgreements = [];
+let committeeMeetingsLoaded = false;
+let activeCommitteeMeetingId = null;
+let committeeMeetingAdditionalAgenda = [];
+
+const COMMITTEE_BASE_AGENDA = [
+  'Revisión de incidentes/ accidentes',
+  'Revisión de estadísticas de SST',
+  'Revisión de estadísticas de SO',
+  'Revisión de Objetivos y asuntos relevantes de Seguridad y Salud en el Trabajo.',
+  'Revisión de las inspecciones realizadas.',
+  'Revisión de las actas del subcomité de SST.',
+  'Revisión de acuerdos pendientes',
+  'Acuerdos de la reunión'
+];
+
 
 function committeeMessage(message='',type='error') {
   const el=document.getElementById('committeeModuleMessage');
@@ -982,7 +1002,11 @@ async function toggleCommitteeMember(memberId,next) {
 // ------------------------------------------------------------
 document.getElementById('newCommitteeButton')?.addEventListener('click',async()=>{
   if (!committeeModuleLoaded) await loadCommitteeModule(true);
-  openCommitteeForm();
+  if (committeeModuleMode==='MEETINGS') {
+    openCommitteeMeetingProgramModal();
+  } else {
+    openCommitteeForm();
+  }
 });
 
 document.getElementById('committeeTypeSiteButton')?.addEventListener('click',()=>{
@@ -1039,6 +1063,1442 @@ document.getElementById('committeeStatusFilter')?.addEventListener('change',rend
 document.getElementById('refreshCommitteeButton')?.addEventListener('click',()=>{
   committeeModuleLoaded=false;
   loadCommitteeModule(true);
+});
+
+
+
+// ============================================================
+// ETAPA 16B · REUNIONES Y ACTAS DEL COMITÉ / SUBCOMITÉ SST
+// ============================================================
+
+function setCommitteeModuleMode(mode) {
+  committeeModuleMode = mode==='MEETINGS' ? 'MEETINGS' : 'CONFORMATIONS';
+
+  document.getElementById('committeeConformationsTab')?.classList.toggle('active',committeeModuleMode==='CONFORMATIONS');
+  document.getElementById('committeeMeetingsTab')?.classList.toggle('active',committeeModuleMode==='MEETINGS');
+
+  document.getElementById('committeeConformationsStats')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
+  document.getElementById('committeeConformationsPanel')?.classList.toggle('hidden',committeeModuleMode!=='CONFORMATIONS');
+  document.getElementById('committeeMeetingsView')?.classList.toggle('hidden',committeeModuleMode!=='MEETINGS');
+
+  const button=document.getElementById('newCommitteeButton');
+  if (button) {
+    button.textContent=committeeModuleMode==='MEETINGS' ? '+ Programar reunión' : '+ Nueva conformación';
+  }
+
+  if (committeeModuleMode==='MEETINGS') {
+    loadCommitteeMeetingsModule();
+  }
+}
+
+function committeeMeetingProgramMessage(message='',type='error') {
+  const el=document.getElementById('committeeMeetingProgramMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeMeetingEditorMessage(message='',type='error') {
+  const el=document.getElementById('committeeMeetingEditorMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeMeetingCommittee(record) {
+  if (!record) return null;
+  return record.comites_sst || committeeRecords.find(x=>x.id===record.comite_id) || null;
+}
+
+function committeeMeetingCanManage(record) {
+  return committeeCanManage(committeeMeetingCommittee(record));
+}
+
+function committeeMeetingStatusLabel(status) {
+  return {
+    PROGRAMADA:'PROGRAMADA',
+    BORRADOR:'BORRADOR',
+    CERRADA:'CERRADA'
+  }[status] || status || '—';
+}
+
+function committeeMeetingStatusClass(status) {
+  return String(status || '').toLowerCase();
+}
+
+function formatCommitteeTime(value) {
+  if (!value) return '—';
+  return String(value).slice(0,5);
+}
+
+function formatCommitteeTime12(value) {
+  if (!value) return '—';
+  const [hh,mm]=String(value).slice(0,5).split(':').map(Number);
+  if (Number.isNaN(hh)) return value;
+  const suffix=hh>=12?'p.m.':'a.m.';
+  const hour=(hh%12)||12;
+  return `${hour}:${String(mm||0).padStart(2,'0')} ${suffix}`;
+}
+
+function committeeMonthLabel(value) {
+  if (!value) return '—';
+  const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  const parts=String(value).split('-');
+  const y=Number(parts[0]);
+  const m=Number(parts[1]);
+  if (!y || !m) return value;
+  return `${months[m-1] || parts[1]} de ${y}`;
+}
+
+function meetingDatePhrase(value) {
+  if (!value) return '—';
+  const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  const [y,m,d]=String(value).split('-').map(Number);
+  if (!y || !m || !d) return value;
+  return `${d} días del mes de ${months[m-1]} del año ${y}`;
+}
+
+function populateCommitteeMeetingSelectors() {
+  const selects=[
+    document.getElementById('committeeMeetingCommittee'),
+    document.getElementById('committeeMeetingCommitteeFilter')
+  ];
+
+  selects.forEach((select,index)=>{
+    if (!select) return;
+    const current=select.value;
+    const first=index===0
+      ? '<option value="">Seleccione una conformación</option>'
+      : '<option value="">Todos los Comités/Subcomités</option>';
+
+    const items=committeeRecords
+      .filter(x=>index!==0 || x.estado==='ACTIVO')
+      .map(x=>{
+        const unit=committeeUnitName(x);
+        const type=x.tipo==='SUBCOMITE'?'Subcomité':'Comité';
+        return `<option value="${x.id}">${escapeHtml(type)} · ${escapeHtml(unit)} · ${escapeHtml(x.codigo || '')}</option>`;
+      }).join('');
+
+    select.innerHTML=first+items;
+    if ([...select.options].some(o=>o.value===current)) select.value=current;
+  });
+}
+
+function updateCommitteeMeetingStats() {
+  const total=committeeMeetingRecords.length;
+  const scheduled=committeeMeetingRecords.filter(x=>x.estado==='PROGRAMADA').length;
+  const closed=committeeMeetingRecords.filter(x=>x.estado==='CERRADA').length;
+  const visibleCommitteeIds=new Set(committeeRecords.map(x=>x.id));
+  const pending=committeeMeetingAgreements.filter(x=>visibleCommitteeIds.has(x.comite_id) && x.estado!=='CERRADO').length;
+
+  const map={
+    committeeMeetingTotalCount:total,
+    committeeMeetingScheduledCount:scheduled,
+    committeeMeetingClosedCount:closed,
+    committeeMeetingAgreementCount:pending
+  };
+  Object.entries(map).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderCommitteeMeetingList() {
+  const list=document.getElementById('committeeMeetingList');
+  if (!list) return;
+
+  const q=(document.getElementById('committeeMeetingSearch')?.value || '').trim().toLowerCase();
+  const committeeId=document.getElementById('committeeMeetingCommitteeFilter')?.value || '';
+  const status=document.getElementById('committeeMeetingStatusFilter')?.value || '';
+
+  const rows=committeeMeetingRecords.filter(record=>{
+    if (committeeId && record.comite_id!==committeeId) return false;
+    if (status && record.estado!==status) return false;
+
+    const committee=committeeMeetingCommittee(record);
+    const hay=[
+      record.numero_acta,
+      committee?.nombre,
+      committee?.codigo,
+      committeeUnitName(committee),
+      record.lugar,
+      record.tipo_reunion
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  if (!rows.length) {
+    list.innerHTML='<div class="training-library-empty">No se encontraron reuniones.</div>';
+    return;
+  }
+
+  list.innerHTML=rows.map(record=>{
+    const committee=committeeMeetingCommittee(record);
+    const canManage=committeeMeetingCanManage(record);
+    const attendees=committeeMeetingAttendees.filter(x=>x.reunion_id===record.id);
+    const present=attendees.filter(x=>x.presente).length;
+    const total=attendees.length;
+    const evidence=committeeMeetingEvidences.filter(x=>x.reunion_id===record.id).length;
+    const agreements=committeeMeetingAgreements.filter(x=>x.reunion_id===record.id).length;
+    const unit=committeeUnitName(committee);
+
+    return `
+      <article class="committee-meeting-card">
+        <div class="committee-meeting-card-icon ${committee?.tipo==='SUBCOMITE'?'project':'site'}">▤</div>
+        <div class="committee-meeting-card-main">
+          <div class="committee-meeting-card-top">
+            <div>
+              <span class="eyebrow">${committee?.tipo==='SUBCOMITE'?'SUBCOMITÉ SST · PROYECTO':'COMITÉ SST · CORPORATIVO'}</span>
+              <h4>Acta N° ${escapeHtml(record.numero_acta || '—')}</h4>
+              <p>${escapeHtml(committee?.nombre || '—')} · ${escapeHtml(unit)}</p>
+            </div>
+            <span class="committee-status ${committeeMeetingStatusClass(record.estado)}">${escapeHtml(committeeMeetingStatusLabel(record.estado))}</span>
+          </div>
+
+          <div class="committee-meeting-card-meta">
+            <span>▣ ${escapeHtml(formatDatePE(record.fecha))}</span>
+            <span>◷ ${escapeHtml(formatCommitteeTime(record.hora_inicio))}${record.hora_fin ? ` - ${escapeHtml(formatCommitteeTime(record.hora_fin))}` : ''}</span>
+            <span>${record.tipo_reunion==='EXTRAORDINARIA'?'Extraordinaria':'Ordinaria'}</span>
+            <span>Resultados: ${escapeHtml(committeeMonthLabel(record.mes_resultados))}</span>
+            <span>${present}/${total} presentes</span>
+            <span>${evidence} imagen(es)</span>
+            <span>${agreements} acuerdo(s)</span>
+          </div>
+        </div>
+
+        <div class="committee-meeting-card-actions">
+          <button class="committee-manage-btn" type="button" data-committee-meeting-open="${record.id}">${canManage?'Desarrollar':'Ver reunión'}</button>
+          <button class="meeting-pdf-outline" type="button" data-committee-meeting-pdf="${record.id}">Acta PDF</button>
+          ${canManage ? `<button class="secondary-btn" type="button" data-committee-meeting-edit="${record.id}">Programación</button>` : ''}
+          ${canManage ? `<button class="induction-delete-btn" type="button" data-committee-meeting-delete="${record.id}">Eliminar</button>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-committee-meeting-open]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeMeetingEditor(button.dataset.committeeMeetingOpen));
+  });
+
+  list.querySelectorAll('[data-committee-meeting-pdf]').forEach(button=>{
+    button.addEventListener('click',()=>downloadCommitteeMeetingMinutesById(button.dataset.committeeMeetingPdf,button));
+  });
+
+  list.querySelectorAll('[data-committee-meeting-edit]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const record=committeeMeetingRecords.find(x=>x.id===button.dataset.committeeMeetingEdit);
+      openCommitteeMeetingProgramModal(record);
+    });
+  });
+
+  list.querySelectorAll('[data-committee-meeting-delete]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeMeeting(button.dataset.committeeMeetingDelete));
+  });
+}
+
+async function loadCommitteeMeetingsModule(force=false) {
+  if (!client) return;
+  if (!committeeModuleLoaded) await loadCommitteeModule(true);
+
+  if (committeeMeetingsLoaded && !force) {
+    populateCommitteeMeetingSelectors();
+    updateCommitteeMeetingStats();
+    renderCommitteeMeetingList();
+    return;
+  }
+
+  const [meetings,attendees,evidences,agreements]=await Promise.all([
+    client.from('comite_sst_reuniones')
+      .select('*,comites_sst(id,codigo,tipo,nombre,sede_id,proyecto_id,estado)')
+      .order('fecha',{ascending:false})
+      .order('hora_inicio',{ascending:false}),
+    client.from('comite_sst_reunion_asistentes')
+      .select('id,reunion_id,integrante_id,presente,observacion,comite_sst_integrantes(id,comite_id,trabajador_id,representacion,condicion,cargo_comite,fecha_inicio,fecha_fin,activo,trabajadores(id,dni,nombres,apellidos,cargo,area,sede_id,proyecto_id,activo))'),
+    client.from('comite_sst_reunion_evidencias')
+      .select('*')
+      .order('orden',{ascending:true}),
+    client.from('comite_sst_acuerdos')
+      .select('*')
+      .order('created_at',{ascending:true})
+  ]);
+
+  const errors=[meetings.error,attendees.error,evidences.error,agreements.error].filter(Boolean);
+  if (errors.length) {
+    console.error(errors);
+    committeeMessage(errors[0].message || 'No fue posible cargar las reuniones del Comité SST.');
+    return;
+  }
+
+  committeeMeetingRecords=meetings.data || [];
+  committeeMeetingAttendees=attendees.data || [];
+  committeeMeetingEvidences=evidences.data || [];
+  committeeMeetingAgreements=agreements.data || [];
+  committeeMeetingsLoaded=true;
+
+  populateCommitteeMeetingSelectors();
+  updateCommitteeMeetingStats();
+  renderCommitteeMeetingList();
+}
+
+function openCommitteeMeetingProgramModal(record=null) {
+  if (!committeeModuleLoaded) return;
+
+  committeeMeetingProgramMessage('');
+  const modal=document.getElementById('committeeMeetingProgramModal');
+  document.getElementById('committeeMeetingProgramId').value=record?.id || '';
+  document.getElementById('committeeMeetingProgramTitle').textContent=record ? `Editar programación · Acta ${record.numero_acta || ''}` : 'Nueva reunión';
+
+  populateCommitteeMeetingSelectors();
+
+  document.getElementById('committeeMeetingCommittee').value=record?.comite_id || '';
+  document.getElementById('committeeMeetingCommittee').disabled=!!record;
+  document.getElementById('committeeMeetingType').value=record?.tipo_reunion || 'ORDINARIA';
+  document.getElementById('committeeMeetingStatus').value=record?.estado==='CERRADA' ? 'PROGRAMADA' : (record?.estado || 'PROGRAMADA');
+
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('committeeMeetingDate').value=record?.fecha || today;
+  document.getElementById('committeeMeetingStartTime').value=record?.hora_inicio ? String(record.hora_inicio).slice(0,5) : '16:00';
+  document.getElementById('committeeMeetingEndTime').value=record?.hora_fin ? String(record.hora_fin).slice(0,5) : '';
+  document.getElementById('committeeMeetingPlace').value=record?.lugar || 'Lima';
+
+  const baseMonth=record?.mes_resultados
+    ? String(record.mes_resultados).slice(0,7)
+    : new Date(new Date().setMonth(new Date().getMonth()-1)).toISOString().slice(0,7);
+  document.getElementById('committeeMeetingResultsMonth').value=baseMonth;
+  document.getElementById('committeeMeetingProgramNotes').value=record?.observaciones || '';
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeMeetingProgramModal() {
+  const modal=document.getElementById('committeeMeetingProgramModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  document.getElementById('committeeMeetingCommittee').disabled=false;
+  document.body.classList.remove('modal-open');
+}
+
+async function saveCommitteeMeetingProgram(event) {
+  event.preventDefault();
+  committeeMeetingProgramMessage('');
+
+  const id=document.getElementById('committeeMeetingProgramId').value || null;
+  const comite_id=document.getElementById('committeeMeetingCommittee').value || null;
+  const tipo_reunion=document.getElementById('committeeMeetingType').value;
+  const estado=document.getElementById('committeeMeetingStatus').value;
+  const fecha=document.getElementById('committeeMeetingDate').value;
+  const hora_inicio=document.getElementById('committeeMeetingStartTime').value;
+  const hora_fin=document.getElementById('committeeMeetingEndTime').value || null;
+  const lugar=document.getElementById('committeeMeetingPlace').value.trim();
+  const month=document.getElementById('committeeMeetingResultsMonth').value;
+  const mes_resultados=month ? `${month}-01` : null;
+  const observaciones=document.getElementById('committeeMeetingProgramNotes').value.trim() || null;
+
+  if (!comite_id || !fecha || !hora_inicio || !lugar || !mes_resultados) {
+    committeeMeetingProgramMessage('Completa Comité/Subcomité, fecha, hora de inicio, lugar y mes de resultados.');
+    return;
+  }
+
+  const committee=committeeRecords.find(x=>x.id===comite_id);
+  if (!committee || !committeeCanManage(committee)) {
+    committeeMeetingProgramMessage('No tienes permiso para programar una reunión para esta conformación.');
+    return;
+  }
+
+  const payload={
+    comite_id,tipo_reunion,fecha,hora_inicio,hora_fin,lugar,mes_resultados,
+    observaciones,estado
+  };
+  if (!id) payload.created_by=currentProfile?.id || null;
+
+  const button=document.getElementById('saveCommitteeMeetingProgramButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const result=id
+    ? await client.from('comite_sst_reuniones').update(payload).eq('id',id).select().single()
+    : await client.from('comite_sst_reuniones').insert(payload).select().single();
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (result.error) {
+    console.error(result.error);
+    committeeMeetingProgramMessage(result.error.message || 'No fue posible guardar la reunión.');
+    return;
+  }
+
+  closeCommitteeMeetingProgramModal();
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+  await openCommitteeMeetingEditor(result.data.id);
+}
+
+function meetingRowInput(value='',placeholder='',cls='') {
+  return `<textarea class="${cls}" rows="2" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value || '')}</textarea>`;
+}
+
+function renderCommitteeMeetingAgenda(record) {
+  const container=document.getElementById('committeeMeetingAgendaOptions');
+  if (!container) return;
+
+  const selected=Array.isArray(record.agenda) ? record.agenda : COMMITTEE_BASE_AGENDA;
+  container.innerHTML=COMMITTEE_BASE_AGENDA.map((item,index)=>`
+    <label class="meeting-agenda-option">
+      <input type="checkbox" data-meeting-agenda-index="${index}" ${selected.includes(item)?'checked':''} />
+      <span>${escapeHtml(item)}</span>
+    </label>
+  `).join('');
+
+  committeeMeetingAdditionalAgenda=Array.isArray(record.agenda_adicional) ? [...record.agenda_adicional] : [];
+  renderCommitteeMeetingAdditionalAgenda();
+}
+
+function renderCommitteeMeetingAdditionalAgenda() {
+  const list=document.getElementById('committeeMeetingAdditionalAgendaList');
+  if (!list) return;
+  list.innerHTML=committeeMeetingAdditionalAgenda.map((item,index)=>`
+    <span class="meeting-chip">${escapeHtml(item)}<button type="button" data-remove-meeting-agenda="${index}">×</button></span>
+  `).join('');
+
+  list.querySelectorAll('[data-remove-meeting-agenda]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      committeeMeetingAdditionalAgenda.splice(Number(button.dataset.removeMeetingAgenda),1);
+      renderCommitteeMeetingAdditionalAgenda();
+    });
+  });
+}
+
+function renderCommitteeMeetingIncidents(rows=[]) {
+  const container=document.getElementById('committeeMeetingIncidentsRows');
+  if (!container) return;
+  const data=rows.length ? rows : [{incidente:'',comentarios:''}];
+
+  container.innerHTML=data.map((row,index)=>`
+    <div class="meeting-row-card" data-meeting-incident-row>
+      <span class="meeting-row-number">${index+1}</span>
+      <label><span>Incidente / accidente</span>${meetingRowInput(row.incidente,'Descripción del evento','meeting-incident-event')}</label>
+      <label><span>Comentarios / plan de acción</span>${meetingRowInput(row.comentarios,'Comentarios o plan de acción','meeting-incident-comments')}</label>
+      <button class="meeting-row-remove" type="button" data-remove-meeting-incident="${index}">×</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-remove-meeting-incident]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectMeetingIncidentRows();
+      current.splice(Number(button.dataset.removeMeetingIncident),1);
+      renderCommitteeMeetingIncidents(current);
+    });
+  });
+}
+
+function collectMeetingIncidentRows() {
+  return [...document.querySelectorAll('[data-meeting-incident-row]')].map(row=>({
+    incidente:row.querySelector('.meeting-incident-event')?.value.trim() || '',
+    comentarios:row.querySelector('.meeting-incident-comments')?.value.trim() || ''
+  })).filter(x=>x.incidente || x.comentarios);
+}
+
+function renderCommitteeMeetingObjectives(rows=[]) {
+  const container=document.getElementById('committeeMeetingObjectivesRows');
+  if (!container) return;
+  const data=rows.length ? rows : [{tema:'',comentarios:''},{tema:'',comentarios:''}];
+
+  container.innerHTML=data.map((row,index)=>`
+    <div class="meeting-row-card" data-meeting-objective-row>
+      <span class="meeting-row-number">${index+1}</span>
+      <label><span>Tema</span>${meetingRowInput(row.tema,'Objetivo o asunto relevante','meeting-objective-topic')}</label>
+      <label><span>Comentarios / repercusión</span>${meetingRowInput(row.comentarios,'Comentarios o repercusión','meeting-objective-comments')}</label>
+      <button class="meeting-row-remove" type="button" data-remove-meeting-objective="${index}">×</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-remove-meeting-objective]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectMeetingObjectiveRows();
+      current.splice(Number(button.dataset.removeMeetingObjective),1);
+      renderCommitteeMeetingObjectives(current);
+    });
+  });
+}
+
+function collectMeetingObjectiveRows() {
+  return [...document.querySelectorAll('[data-meeting-objective-row]')].map(row=>({
+    tema:row.querySelector('.meeting-objective-topic')?.value.trim() || '',
+    comentarios:row.querySelector('.meeting-objective-comments')?.value.trim() || ''
+  })).filter(x=>x.tema || x.comentarios);
+}
+
+function renderCommitteeMeetingSubcommitteeRows(rows=[]) {
+  const container=document.getElementById('committeeMeetingSubcommitteeRows');
+  if (!container) return;
+  const data=rows.length ? rows : [{proyecto:'',acuerdo:'',acciones:'',estado:''}];
+
+  container.innerHTML=data.map((row,index)=>`
+    <div class="meeting-row-card meeting-row-four" data-meeting-subcommittee-row>
+      <span class="meeting-row-number">${index+1}</span>
+      <label><span>Proyecto</span><input class="meeting-sub-project" value="${escapeHtml(row.proyecto || '')}" /></label>
+      <label><span>Acuerdo</span><textarea class="meeting-sub-agreement" rows="2">${escapeHtml(row.acuerdo || '')}</textarea></label>
+      <label><span>Acciones</span><textarea class="meeting-sub-actions" rows="2">${escapeHtml(row.acciones || '')}</textarea></label>
+      <label><span>Estado</span><input class="meeting-sub-status" value="${escapeHtml(row.estado || '')}" placeholder="Pendiente / Cerrado" /></label>
+      <button class="meeting-row-remove" type="button" data-remove-meeting-sub="${index}">×</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-remove-meeting-sub]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectMeetingSubcommitteeRows();
+      current.splice(Number(button.dataset.removeMeetingSub),1);
+      renderCommitteeMeetingSubcommitteeRows(current);
+    });
+  });
+}
+
+function collectMeetingSubcommitteeRows() {
+  return [...document.querySelectorAll('[data-meeting-subcommittee-row]')].map(row=>({
+    proyecto:row.querySelector('.meeting-sub-project')?.value.trim() || '',
+    acuerdo:row.querySelector('.meeting-sub-agreement')?.value.trim() || '',
+    acciones:row.querySelector('.meeting-sub-actions')?.value.trim() || '',
+    estado:row.querySelector('.meeting-sub-status')?.value.trim() || ''
+  })).filter(x=>x.proyecto || x.acuerdo || x.acciones || x.estado);
+}
+
+function previousCommitteeMeetingAgreements(meeting) {
+  return committeeMeetingAgreements.filter(a=>
+    a.comite_id===meeting.comite_id &&
+    a.reunion_id!==meeting.id &&
+    a.estado!=='CERRADO'
+  );
+}
+
+function renderCommitteeMeetingPreviousAgreements(meeting) {
+  const container=document.getElementById('committeeMeetingPreviousAgreements');
+  if (!container) return;
+
+  const rows=previousCommitteeMeetingAgreements(meeting);
+  if (!rows.length) {
+    container.innerHTML='<div class="meeting-empty-note">No existen acuerdos pendientes de reuniones anteriores.</div>';
+    return;
+  }
+
+  container.innerHTML=`
+    <div class="meeting-previous-table">
+      <div class="meeting-previous-head"><span>N°</span><span>Tema</span><span>Responsable</span><span>Estado</span></div>
+      ${rows.map((row,index)=>`
+        <div class="meeting-previous-row">
+          <span>${index+1}</span>
+          <span>${escapeHtml(row.accion)}</span>
+          <span>${escapeHtml(row.responsable || '—')}</span>
+          <span><b>${escapeHtml(row.estado)}</b></span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderCommitteeMeetingAgreements(rows=[]) {
+  const container=document.getElementById('committeeMeetingAgreementsRows');
+  if (!container) return;
+  const data=rows.length ? rows : [{accion:'',responsable:'',fecha_cumplimiento:''}];
+
+  container.innerHTML=data.map((row,index)=>`
+    <div class="meeting-row-card meeting-agreement-row" data-meeting-agreement-row>
+      <span class="meeting-row-number">${index+1}</span>
+      <label><span>Acción requerida</span><textarea class="meeting-agreement-action" rows="2">${escapeHtml(row.accion || '')}</textarea></label>
+      <label><span>Persona responsable</span><input class="meeting-agreement-responsible" list="committeeMeetingResponsibleOptions" value="${escapeHtml(row.responsable || '')}" /></label>
+      <label><span>Fecha de cumplimiento</span><input class="meeting-agreement-date" type="date" value="${escapeHtml(row.fecha_cumplimiento || '')}" /></label>
+      <button class="meeting-row-remove" type="button" data-remove-meeting-agreement="${index}">×</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-remove-meeting-agreement]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectMeetingAgreementRows();
+      current.splice(Number(button.dataset.removeMeetingAgreement),1);
+      renderCommitteeMeetingAgreements(current);
+    });
+  });
+}
+
+function collectMeetingAgreementRows() {
+  return [...document.querySelectorAll('[data-meeting-agreement-row]')].map(row=>({
+    accion:row.querySelector('.meeting-agreement-action')?.value.trim() || '',
+    responsable:row.querySelector('.meeting-agreement-responsible')?.value.trim() || '',
+    fecha_cumplimiento:row.querySelector('.meeting-agreement-date')?.value || null
+  })).filter(x=>x.accion || x.responsable || x.fecha_cumplimiento);
+}
+
+function renderCommitteeMeetingResponsibleOptions(meeting) {
+  const list=document.getElementById('committeeMeetingResponsibleOptions');
+  if (!list) return;
+  const attendees=committeeMeetingAttendees.filter(x=>x.reunion_id===meeting.id);
+  list.innerHTML=attendees.map(a=>{
+    const worker=a.comite_sst_integrantes?.trabajadores;
+    return `<option value="${escapeHtml(committeeWorkerName(worker))}"></option>`;
+  }).join('');
+}
+
+function renderCommitteeMeetingAttendance(meeting) {
+  const body=document.getElementById('committeeMeetingAttendanceBody');
+  if (!body) return;
+
+  const rows=committeeMeetingAttendees.filter(x=>x.reunion_id===meeting.id);
+  if (!rows.length) {
+    body.innerHTML='<tr><td colspan="5" class="table-empty">No hay integrantes sincronizados.</td></tr>';
+    return;
+  }
+
+  const roleOrder={PRESIDENTE:1,SECRETARIO:2,VOCAL:3,MIEMBRO:4};
+  rows.sort((a,b)=>{
+    const ar=roleOrder[a.comite_sst_integrantes?.cargo_comite] || 99;
+    const br=roleOrder[b.comite_sst_integrantes?.cargo_comite] || 99;
+    return ar-br;
+  });
+
+  body.innerHTML=rows.map(row=>{
+    const member=row.comite_sst_integrantes || {};
+    const worker=member.trabajadores || {};
+    return `
+      <tr>
+        <td><input class="meeting-attendance-check" type="checkbox" data-attendance-id="${row.id}" ${row.presente?'checked':''} /></td>
+        <td>${escapeHtml(worker.dni || '—')}</td>
+        <td><strong>${escapeHtml(committeeWorkerName(worker))}</strong></td>
+        <td>${escapeHtml(member.cargo_comite || '—')}</td>
+        <td>${member.representacion==='EMPLEADOR'?'Empleador':'Trabajadores'}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderCommitteeMeetingEvidence(meeting) {
+  const grid=document.getElementById('committeeMeetingEvidenceGrid');
+  if (!grid) return;
+  const rows=committeeMeetingEvidences.filter(x=>x.reunion_id===meeting.id);
+
+  if (!rows.length) {
+    grid.innerHTML='<div class="meeting-empty-note">Todavía no se han cargado imágenes de inspección.</div>';
+    return;
+  }
+
+  grid.innerHTML=rows.map((row,index)=>`
+    <article class="meeting-evidence-card" data-evidence-id="${row.id}">
+      <img src="${escapeHtml(row.url)}" alt="Evidencia ${index+1}" />
+      <div>
+        <span>Evidencia ${index+1}</span>
+        <input class="meeting-evidence-description" value="${escapeHtml(row.descripcion || '')}" placeholder="Descripción / hallazgo / levantamiento" />
+      </div>
+      <button class="meeting-evidence-delete" type="button" data-delete-meeting-evidence="${row.id}">Eliminar</button>
+    </article>
+  `).join('');
+
+  grid.querySelectorAll('[data-delete-meeting-evidence]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeMeetingEvidence(button.dataset.deleteMeetingEvidence));
+  });
+}
+
+function fillCommitteeMeetingMetrics(record) {
+  const sst=record.estadisticas_sst || {};
+  document.getElementById('committeeMeetingIF').value=sst.if ?? 0;
+  document.getElementById('committeeMeetingIS').value=sst.is ?? 0;
+  document.getElementById('committeeMeetingIA').value=sst.ia ?? 0;
+  document.getElementById('committeeMeetingSstComments').value=sst.comentarios || '';
+
+  const so=record.estadisticas_so || {};
+  document.getElementById('committeeMeetingOccupationalDiseases').value=so.enfermedades_ocupacionales ?? 0;
+  document.getElementById('committeeMeetingExposedWorkers').value=so.trabajadores_expuestos ?? 0;
+  document.getElementById('committeeMeetingIncidenceRate').value=so.tasa_incidencia ?? 0;
+  document.getElementById('committeeMeetingWorkersWithDisease').value=so.trabajadores_con_enfermedad ?? 0;
+  document.getElementById('committeeMeetingSoComments').value=so.comentarios || '';
+
+  document.getElementById('committeeMeetingNextDate').value=record.proxima_fecha || '';
+  document.getElementById('committeeMeetingNextTime').value=record.proxima_hora ? String(record.proxima_hora).slice(0,5) : '';
+  document.getElementById('committeeMeetingNextAgenda').value=record.proxima_agenda || '';
+  document.getElementById('committeeMeetingActualEndTime').value=record.hora_fin ? String(record.hora_fin).slice(0,5) : '';
+}
+
+async function openCommitteeMeetingEditor(id) {
+  if (!committeeMeetingsLoaded) await loadCommitteeMeetingsModule(true);
+  const record=committeeMeetingRecords.find(x=>x.id===id);
+  if (!record) return;
+
+  activeCommitteeMeetingId=id;
+  const committee=committeeMeetingCommittee(record);
+  const canManage=committeeMeetingCanManage(record);
+
+  document.getElementById('committeeMeetingEditorType').textContent=
+    committee?.tipo==='SUBCOMITE' ? 'ACTA DE REUNIÓN DEL SUBCOMITÉ SST' : 'ACTA DE REUNIÓN DEL COMITÉ SST';
+  document.getElementById('committeeMeetingEditorTitle').textContent=`Acta N° ${record.numero_acta || '—'}`;
+  document.getElementById('committeeMeetingEditorSubtitle').textContent=
+    `${committee?.nombre || '—'} · ${committeeUnitName(committee)} · ${record.tipo_reunion==='EXTRAORDINARIA'?'Reunión extraordinaria':'Reunión ordinaria'}`;
+
+  document.getElementById('committeeMeetingEditorActNumber').textContent=record.numero_acta || '—';
+  document.getElementById('committeeMeetingEditorDate').textContent=formatDatePE(record.fecha);
+  document.getElementById('committeeMeetingEditorTime').textContent=
+    `${formatCommitteeTime(record.hora_inicio)}${record.hora_fin ? ` - ${formatCommitteeTime(record.hora_fin)}` : ''}`;
+  document.getElementById('committeeMeetingEditorStatus').textContent=committeeMeetingStatusLabel(record.estado);
+
+  renderCommitteeMeetingAgenda(record);
+  renderCommitteeMeetingIncidents(Array.isArray(record.incidentes)?record.incidentes:[]);
+  renderCommitteeMeetingObjectives(Array.isArray(record.objetivos_sst)?record.objetivos_sst:[]);
+  renderCommitteeMeetingSubcommitteeRows(Array.isArray(record.acuerdos_subcomites)?record.acuerdos_subcomites:[]);
+  renderCommitteeMeetingPreviousAgreements(record);
+  renderCommitteeMeetingAgreements(committeeMeetingAgreements.filter(x=>x.reunion_id===record.id));
+  renderCommitteeMeetingResponsibleOptions(record);
+  renderCommitteeMeetingAttendance(record);
+  renderCommitteeMeetingEvidence(record);
+  fillCommitteeMeetingMetrics(record);
+
+  document.getElementById('saveCommitteeMeetingEditorButton').classList.toggle('hidden',!canManage);
+  document.getElementById('closeCommitteeMeetingButton').classList.toggle('hidden',!canManage || record.estado==='CERRADA');
+  document.getElementById('syncCommitteeMeetingAttendeesButton').classList.toggle('hidden',!canManage);
+  document.getElementById('uploadCommitteeMeetingEvidenceButton').classList.toggle('hidden',!canManage);
+  document.getElementById('committeeMeetingEvidenceFiles').disabled=!canManage;
+
+  document.querySelectorAll('#committeeMeetingEditorModal input,#committeeMeetingEditorModal textarea,#committeeMeetingEditorModal select').forEach(el=>{
+    if (!el.classList.contains('meeting-attendance-check') && el.id!=='committeeMeetingEvidenceFiles') {
+      el.disabled=!canManage;
+    }
+  });
+
+  committeeMeetingEditorMessage('');
+  const modal=document.getElementById('committeeMeetingEditorModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeMeetingEditorModal() {
+  const modal=document.getElementById('committeeMeetingEditorModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  activeCommitteeMeetingId=null;
+  document.body.classList.remove('modal-open');
+}
+
+function collectCommitteeMeetingEditorPayload(record) {
+  const agenda=COMMITTEE_BASE_AGENDA.filter((item,index)=>
+    document.querySelector(`[data-meeting-agenda-index="${index}"]`)?.checked
+  );
+
+  return {
+    agenda,
+    agenda_adicional:[...committeeMeetingAdditionalAgenda],
+    incidentes:collectMeetingIncidentRows(),
+    estadisticas_sst:{
+      if:Number(document.getElementById('committeeMeetingIF').value || 0),
+      is:Number(document.getElementById('committeeMeetingIS').value || 0),
+      ia:Number(document.getElementById('committeeMeetingIA').value || 0),
+      comentarios:document.getElementById('committeeMeetingSstComments').value.trim()
+    },
+    estadisticas_so:{
+      enfermedades_ocupacionales:Number(document.getElementById('committeeMeetingOccupationalDiseases').value || 0),
+      trabajadores_expuestos:Number(document.getElementById('committeeMeetingExposedWorkers').value || 0),
+      tasa_incidencia:Number(document.getElementById('committeeMeetingIncidenceRate').value || 0),
+      trabajadores_con_enfermedad:Number(document.getElementById('committeeMeetingWorkersWithDisease').value || 0),
+      comentarios:document.getElementById('committeeMeetingSoComments').value.trim()
+    },
+    objetivos_sst:collectMeetingObjectiveRows(),
+    acuerdos_subcomites:collectMeetingSubcommitteeRows(),
+    proxima_fecha:document.getElementById('committeeMeetingNextDate').value || null,
+    proxima_hora:document.getElementById('committeeMeetingNextTime').value || null,
+    proxima_agenda:document.getElementById('committeeMeetingNextAgenda').value.trim() || null,
+    hora_fin:document.getElementById('committeeMeetingActualEndTime').value || record.hora_fin || null
+  };
+}
+
+async function persistCommitteeMeetingEditor(closeMeeting=false,silent=false) {
+  if (!activeCommitteeMeetingId) return false;
+  const record=committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
+  if (!record) return false;
+
+  const payload=collectCommitteeMeetingEditorPayload(record);
+  if (closeMeeting) {
+    if (!payload.hora_fin) {
+      if (!silent) committeeMeetingEditorMessage('Registra la hora real de culminación antes de cerrar la reunión.');
+      return false;
+    }
+    payload.estado='CERRADA';
+  }
+
+  if (!silent) committeeMeetingEditorMessage('');
+
+  const button=document.getElementById('saveCommitteeMeetingEditorButton');
+  const old=button?.textContent || '';
+  if (button && !silent) {
+    button.disabled=true;
+    button.textContent='Guardando…';
+  }
+
+  const {error}=await client.from('comite_sst_reuniones')
+    .update(payload)
+    .eq('id',activeCommitteeMeetingId);
+
+  if (error) {
+    console.error(error);
+    if (!silent) committeeMeetingEditorMessage(error.message || 'No fue posible guardar el acta.');
+    if (button && !silent) {button.disabled=false;button.textContent=old;}
+    return false;
+  }
+
+  const attendanceUpdates=[...document.querySelectorAll('.meeting-attendance-check')].map(check=>
+    client.from('comite_sst_reunion_asistentes')
+      .update({presente:check.checked})
+      .eq('id',check.dataset.attendanceId)
+  );
+  const attendanceResults=await Promise.all(attendanceUpdates);
+  const attendanceError=attendanceResults.find(x=>x.error)?.error;
+  if (attendanceError) {
+    console.error(attendanceError);
+    if (!silent) committeeMeetingEditorMessage(attendanceError.message || 'No fue posible guardar la asistencia.');
+    if (button && !silent) {button.disabled=false;button.textContent=old;}
+    return false;
+  }
+
+  const evidenceUpdates=[...document.querySelectorAll('.meeting-evidence-card')].map(card=>{
+    const id=card.dataset.evidenceId;
+    const descripcion=card.querySelector('.meeting-evidence-description')?.value.trim() || null;
+    return client.from('comite_sst_reunion_evidencias').update({descripcion}).eq('id',id);
+  });
+  await Promise.all(evidenceUpdates);
+
+  const agreements=collectMeetingAgreementRows();
+  const deleteResult=await client.from('comite_sst_acuerdos').delete().eq('reunion_id',activeCommitteeMeetingId);
+  if (deleteResult.error) {
+    console.error(deleteResult.error);
+    if (!silent) committeeMeetingEditorMessage(deleteResult.error.message || 'No fue posible actualizar los acuerdos.');
+    if (button && !silent) {button.disabled=false;button.textContent=old;}
+    return false;
+  }
+
+  if (agreements.length) {
+    const insertResult=await client.from('comite_sst_acuerdos').insert(
+      agreements.map(a=>({
+        reunion_id:activeCommitteeMeetingId,
+        comite_id:record.comite_id,
+        accion:a.accion || '—',
+        responsable:a.responsable || '—',
+        fecha_cumplimiento:a.fecha_cumplimiento,
+        estado:'PENDIENTE'
+      }))
+    );
+    if (insertResult.error) {
+      console.error(insertResult.error);
+      if (!silent) committeeMeetingEditorMessage(insertResult.error.message || 'No fue posible guardar los acuerdos.');
+      if (button && !silent) {button.disabled=false;button.textContent=old;}
+      return false;
+    }
+  }
+
+  if (button && !silent) {
+    button.disabled=false;
+    button.textContent=old;
+  }
+
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+
+  if (!silent) {
+    committeeMeetingEditorMessage(closeMeeting ? 'Reunión cerrada correctamente.' : 'Cambios guardados correctamente.','success');
+  }
+
+  return true;
+}
+
+async function syncCommitteeMeetingAttendees() {
+  if (!activeCommitteeMeetingId) return;
+  const button=document.getElementById('syncCommitteeMeetingAttendeesButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Sincronizando…';
+
+  const {data,error}=await client.rpc('sincronizar_asistentes_reunion',{
+    p_reunion_id:activeCommitteeMeetingId
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    committeeMeetingEditorMessage(data?.error || error?.message || 'No fue posible sincronizar los integrantes.');
+    return;
+  }
+
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+  await openCommitteeMeetingEditor(activeCommitteeMeetingId);
+  committeeMeetingEditorMessage(data.message || 'Integrantes sincronizados correctamente.','success');
+}
+
+async function resizeCommitteeMeetingImage(file) {
+  if (!file) throw new Error('Selecciona una imagen.');
+  if (file.size>5*1024*1024) throw new Error(`${file.name}: la imagen no puede superar 5 MB.`);
+
+  const bitmap=await createImageBitmap(file);
+  const max=1600;
+  const scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.round(bitmap.width*scale);
+  canvas.height=Math.round(bitmap.height*scale);
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
+  bitmap.close();
+  if (!blob) throw new Error(`No fue posible procesar ${file.name}.`);
+  return blob;
+}
+
+async function uploadCommitteeMeetingEvidence() {
+  if (!activeCommitteeMeetingId) return;
+
+  const input=document.getElementById('committeeMeetingEvidenceFiles');
+  const files=[...(input.files || [])];
+  if (!files.length) {
+    committeeMeetingEditorMessage('Selecciona una o más imágenes.');
+    return;
+  }
+
+  const existing=committeeMeetingEvidences.filter(x=>x.reunion_id===activeCommitteeMeetingId);
+  if (existing.length+files.length>4) {
+    committeeMeetingEditorMessage('El acta permite un máximo de 4 imágenes de inspección.');
+    return;
+  }
+
+  const button=document.getElementById('uploadCommitteeMeetingEvidenceButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Subiendo…';
+
+  try {
+    let order=existing.length+1;
+    for (const file of files) {
+      const blob=await resizeCommitteeMeetingImage(file);
+      const path=`${activeCommitteeMeetingId}/${crypto.randomUUID()}.jpg`;
+
+      const {error:uploadError}=await client.storage
+        .from('comite-sst-evidencias')
+        .upload(path,blob,{contentType:'image/jpeg',cacheControl:'3600',upsert:false});
+
+      if (uploadError) throw uploadError;
+
+      const url=client.storage.from('comite-sst-evidencias').getPublicUrl(path).data.publicUrl;
+
+      const {error:rowError}=await client.from('comite_sst_reunion_evidencias').insert({
+        reunion_id:activeCommitteeMeetingId,
+        storage_path:path,
+        url,
+        descripcion:null,
+        orden:order++
+      });
+
+      if (rowError) throw rowError;
+    }
+
+    input.value='';
+    committeeMeetingsLoaded=false;
+    await loadCommitteeMeetingsModule(true);
+    await openCommitteeMeetingEditor(activeCommitteeMeetingId);
+    committeeMeetingEditorMessage('Imágenes cargadas correctamente. Agrega una descripción a cada evidencia.','success');
+  } catch(err) {
+    console.error(err);
+    committeeMeetingEditorMessage(err?.message || 'No fue posible cargar las imágenes.');
+  } finally {
+    button.disabled=false;
+    button.textContent=old;
+  }
+}
+
+async function deleteCommitteeMeetingEvidence(id) {
+  const row=committeeMeetingEvidences.find(x=>x.id===id);
+  if (!row) return;
+  if (!confirm('¿Eliminar esta evidencia fotográfica?')) return;
+
+  const {error:storageError}=await client.storage.from('comite-sst-evidencias').remove([row.storage_path]);
+  if (storageError) console.warn(storageError);
+
+  const {error}=await client.from('comite_sst_reunion_evidencias').delete().eq('id',id);
+  if (error) {
+    committeeMeetingEditorMessage(error.message || 'No fue posible eliminar la evidencia.');
+    return;
+  }
+
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+  await openCommitteeMeetingEditor(activeCommitteeMeetingId);
+  committeeMeetingEditorMessage('Evidencia eliminada.','success');
+}
+
+async function deleteCommitteeMeeting(id) {
+  const record=committeeMeetingRecords.find(x=>x.id===id);
+  if (!record || !committeeMeetingCanManage(record)) return;
+  if (!confirm(`¿Eliminar definitivamente el Acta N° ${record.numero_acta || ''} y todos sus datos?`)) return;
+
+  const evidences=committeeMeetingEvidences.filter(x=>x.reunion_id===id);
+  if (evidences.length) {
+    const paths=evidences.map(x=>x.storage_path).filter(Boolean);
+    if (paths.length) {
+      const result=await client.storage.from('comite-sst-evidencias').remove(paths);
+      if (result.error) console.warn(result.error);
+    }
+  }
+
+  const {error}=await client.from('comite_sst_reuniones').delete().eq('id',id);
+  if (error) {
+    committeeMessage(error.message || 'No fue posible eliminar la reunión.');
+    return;
+  }
+
+  committeeMeetingsLoaded=false;
+  await loadCommitteeMeetingsModule(true);
+  committeeMessage('Reunión eliminada correctamente.','success');
+}
+
+// ------------------------------------------------------------
+// PDF - ACTA EDP-SIG-SSOMAC-RE-EA-131
+// ------------------------------------------------------------
+function meetingPdfHeader(doc,logo,title) {
+  const x=10,y=8,totalW=190,h=20;
+  const logoW=32,centerW=110,metaW=48;
+
+  doc.setDrawColor(20);
+  doc.setLineWidth(.25);
+  doc.rect(x,y,logoW,h);
+  doc.rect(x+logoW,y,centerW,h);
+  doc.rect(x+logoW+centerW,y,metaW,h);
+
+  if (logo) {
+    try {doc.addImage(logo,'JPEG',x+2,y+3,28,14,undefined,'FAST');} catch(e){}
+  }
+
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.text('SIG - SSOMAC',x+logoW+centerW/2,y+6,{align:'center'});
+
+  doc.setFillColor(192,0,0);
+  doc.rect(x+logoW,y+9,centerW,6,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(7.2);
+  let titleSize=7.2;
+  while (titleSize>5.2) {
+    doc.setFontSize(titleSize);
+    if (doc.getTextWidth(title)<=centerW-4) break;
+    titleSize-=.2;
+  }
+  doc.text(title,x+logoW+centerW/2,y+13.2,{align:'center'});
+
+  const mx=x+logoW+centerW;
+  const rows=[
+    ['Código:','EDP-SIG-SSOMAC-RE-EA-131'],
+    ['N°:','12'],
+    ['Versión:','6'],
+    ['Fecha Act:','Jul-25']
+  ];
+  doc.setTextColor(0);
+  rows.forEach((row,index)=>{
+    const rh=h/4,ry=y+index*rh;
+    if (index>0) doc.line(mx,ry,mx+metaW,ry);
+    doc.line(mx+16,ry,mx+16,ry+rh);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(5.5);
+    doc.text(row[0],mx+1,ry+3.2);
+    doc.setFontSize(index===0?4.6:5.5);
+    doc.text(row[1],mx+32,ry+3.2,{align:'center'});
+  });
+
+  doc.setTextColor(0);
+  return y+h+5;
+}
+
+function meetingPdfSectionTitle(doc,number,title,y) {
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8.2);
+  doc.text(`${number}.`,16,y);
+  doc.text(title,28,y);
+  return y+4;
+}
+
+function meetingPdfTable(doc,head,body,startY,widths=null,options={}) {
+  const styles={
+    font:'helvetica',
+    fontSize:6.2,
+    cellPadding:1.5,
+    lineWidth:.15,
+    lineColor:[25,25,25],
+    textColor:[20,20,20],
+    valign:'middle',
+    overflow:'linebreak'
+  };
+
+  const columnStyles={};
+  if (Array.isArray(widths)) {
+    widths.forEach((w,index)=>columnStyles[index]={cellWidth:w});
+  }
+
+  doc.autoTable({
+    startY,
+    head:[head],
+    body:body.length ? body : [head.map((_,idx)=>idx===0?'1':'')],
+    margin:{left:16,right:16,top:34,bottom:12},
+    styles,
+    headStyles:{
+      fillColor:[225,221,232],
+      textColor:[10,10,10],
+      fontStyle:'bold',
+      halign:'center',
+      lineWidth:.15,
+      lineColor:[25,25,25]
+    },
+    columnStyles,
+    theme:'grid',
+    rowPageBreak:'avoid',
+    didDrawPage:options.didDrawPage
+  });
+
+  return doc.lastAutoTable.finalY;
+}
+
+async function buildCommitteeMeetingPdfData(id) {
+  if (!committeeMeetingsLoaded) await loadCommitteeMeetingsModule(true);
+  const meeting=committeeMeetingRecords.find(x=>x.id===id);
+  if (!meeting) throw new Error('No se encontró la reunión.');
+
+  return {
+    meeting,
+    committee:committeeMeetingCommittee(meeting),
+    attendees:committeeMeetingAttendees.filter(x=>x.reunion_id===id),
+    evidences:committeeMeetingEvidences.filter(x=>x.reunion_id===id),
+    agreements:committeeMeetingAgreements.filter(x=>x.reunion_id===id),
+    previous:previousCommitteeMeetingAgreements(meeting)
+  };
+}
+
+async function generateCommitteeMeetingMinutesPdf(data,button=null) {
+  if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
+  const original=button?.textContent || '';
+  if (button) {button.disabled=true;button.textContent='Generando…';}
+
+  try {
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
+    const meeting=data.meeting;
+    const committee=data.committee || {};
+    const isSub=committee.tipo==='SUBCOMITE';
+    const committeeLabel=isSub?'Subcomité SST':'Comité SST';
+    const title=isSub?'ACTA DE REUNIÓN DEL SUBCOMITÉ SST':'ACTA DE REUNIÓN DEL COMITÉ SST';
+
+    let logo=null;
+    try {logo=await imageToDataUrl('assets/logo-explo.jpg');} catch(e){console.warn(e);}
+
+    const header=()=>meetingPdfHeader(doc,logo,title);
+    const headerHook=()=>{ meetingPdfHeader(doc,logo,title); };
+
+    let y=header();
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9);
+    doc.text(`ACTA N° ${meeting.numero_acta || '—'}`,105,y+3,{align:'center'});
+    y+=9;
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7.3);
+    const p1=`En ${meeting.lugar || 'Lima'}, a los ${meetingDatePhrase(meeting.fecha)}, a las ${formatCommitteeTime12(meeting.hora_inicio)}, se lleva a cabo la reunión del ${committeeLabel}, de la empresa EXPLO DRILLING PERÚ S.R.L. En conformidad con la Ley 29783 Ley de Seguridad y Salud en el Trabajo.`;
+    const p2=`Habiéndose verificado el quorum establecido en el articulo 69° del D.S. 005-2012-TR, se da inicio a la sesión, para analizar los resultados del mes de ${committeeMonthLabel(meeting.mes_resultados)}.`;
+
+    let lines=doc.splitTextToSize(p1,174);
+    doc.text(lines,18,y);
+    y+=lines.length*3.8+2;
+    lines=doc.splitTextToSize(p2,174);
+    doc.text(lines,18,y);
+    y+=lines.length*3.8+6;
+
+    y=meetingPdfSectionTitle(doc,'1','AGENDA',y);
+    const agenda=[...(Array.isArray(meeting.agenda)?meeting.agenda:[]),...(Array.isArray(meeting.agenda_adicional)?meeting.agenda_adicional:[])];
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7.2);
+    agenda.forEach(item=>{
+      // check mark drawn manually so standard PDF fonts are not required.
+      doc.setLineWidth(.35);
+      doc.line(30,y-1,31.5,y+.5);
+      doc.line(31.5,y+.5,34,y-2.5);
+      const wrapped=doc.splitTextToSize(item,150);
+      doc.text(wrapped,37,y);
+      y+=Math.max(4,wrapped.length*3.6);
+    });
+    y+=4;
+
+    y=meetingPdfSectionTitle(doc,'2','DESARROLLO DE LA REUNIÓN',y);
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.1.     REVISIÓN DE INCIDENTES / ACCIDENTE / ESTADÍSTICAS',24,y);
+    y+=2;
+
+    const incidents=Array.isArray(meeting.incidentes)?meeting.incidentes:[];
+    y=meetingPdfTable(
+      doc,
+      ['N°','INCIDENTE/ACCIDENTE','COMENTARIOS / PLAN DE ACCIÓN'],
+      (incidents.length?incidents:[{incidente:'',comentarios:''}]).map((r,i)=>[String(i+1),r.incidente||'',r.comentarios||'']),
+      y+2,[10,93,57],
+      {didDrawPage:headerHook}
+    )+6;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.2.     REVISIÓN DE ESTADÍSTICAS DE SST',24,y);
+    const sst=meeting.estadisticas_sst || {};
+    const sstText=`En el mes de ${committeeMonthLabel(meeting.mes_resultados)}, los índices de seguridad a la fecha son:\nIF=${Number(sst.if||0).toFixed(2)}, IS=${Number(sst.is||0).toFixed(2)}, IA=${Number(sst.ia||0).toFixed(2)}`;
+    y=meetingPdfTable(doc,['N°','TEMA','COMENTARIOS / REPERCUSIÓN'],[['1',sstText,sst.comentarios||'']],y+2,[10,93,57],{didDrawPage:headerHook})+6;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.3.     REVISIÓN DE ESTADÍSTICAS DE SO',24,y);
+    const so=meeting.estadisticas_so || {};
+    const soText=`En el mes de ${committeeMonthLabel(meeting.mes_resultados)}, los índices de Salud Ocupacional a la fecha son:\nEnfermedades Ocupacionales=${Number(so.enfermedades_ocupacionales||0).toFixed(2)}, Trabajadores Expuestos al Agente=${Number(so.trabajadores_expuestos||0).toFixed(2)}, Tasa de Incidencia=${Number(so.tasa_incidencia||0).toFixed(2)}, Trabajadores con Enfermedades Ocupacionales=${Number(so.trabajadores_con_enfermedad||0).toFixed(2)}.`;
+    y=meetingPdfTable(doc,['N°','TEMA','COMENTARIOS / REPERCUSIÓN'],[['1',soText,so.comentarios||'']],y+2,[10,93,57],{didDrawPage:headerHook})+6;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.4.     REVISIÓN DE CUMPLIMIENTO DE OBJETIVOS Y ASUNTOS RELEVANTES DE SST',24,y);
+    const objectives=Array.isArray(meeting.objetivos_sst)?meeting.objetivos_sst:[];
+    y=meetingPdfTable(
+      doc,['N°','TEMA','COMENTARIOS / REPERCUSIÓN'],
+      (objectives.length?objectives:[{tema:'',comentarios:''},{tema:'',comentarios:''}]).map((r,i)=>[String(i+1),r.tema||'',r.comentarios||'']),
+      y+2,[10,93,57],{didDrawPage:headerHook}
+    )+7;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.5.     REVISIÓN DE INSPECCIONES REALIZADAS',24,y);
+
+    // Página dedicada a evidencias para respetar el espacio indicado en el formato.
+    doc.addPage();
+    y=header();
+
+    const evidenceRows=data.evidences.slice(0,4);
+    if (!evidenceRows.length) {
+      doc.setTextColor(220,0,0);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.text('(pegar la inspección realizada por el comité SST, evidenciando levantamientos)',105,y+8,{align:'center'});
+      doc.setTextColor(0);
+      y+=17;
+    } else {
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.text('EVIDENCIAS DE INSPECCIÓN / LEVANTAMIENTOS',105,y+2,{align:'center'});
+      y+=6;
+
+      const images=[];
+      for (const ev of evidenceRows) {
+        try {images.push({ev,data:await imageToDataUrl(ev.url)});} catch(e){images.push({ev,data:null});}
+      }
+
+      const colW=84,rowH=51,gap=7,startX=18;
+      for (let i=0;i<images.length;i++) {
+        const col=i%2,row=Math.floor(i/2);
+        const x=startX+col*(colW+gap);
+        const yy=y+row*(rowH+8);
+        doc.setDrawColor(130);doc.rect(x,yy,colW,rowH);
+        if (images[i].data) {
+          try {
+            const props=doc.getImageProperties(images[i].data);
+            const ratio=Math.min((colW-4)/props.width,(rowH-10)/props.height);
+            const iw=props.width*ratio,ih=props.height*ratio;
+            doc.addImage(images[i].data,'JPEG',x+(colW-iw)/2,yy+2,iw,ih,undefined,'FAST');
+          } catch(e){}
+        }
+        doc.setFont('helvetica','normal');doc.setFontSize(5.8);
+        const caption=images[i].ev.descripcion || `Evidencia ${i+1}`;
+        const cap=doc.splitTextToSize(caption,colW-4).slice(0,2);
+        doc.text(cap,x+2,yy+rowH-5);
+      }
+      y+=Math.ceil(images.length/2)*(rowH+8)+2;
+    }
+
+    if (y>120) {
+      doc.addPage();
+      y=header();
+    }
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.6.     REVISIÓN DE ACUERDOS DE SUB COMITÉ SST DE PROYECTOS',24,y);
+    const subs=Array.isArray(meeting.acuerdos_subcomites)?meeting.acuerdos_subcomites:[];
+    y=meetingPdfTable(
+      doc,['N°','PROYECTO','ACUERDOS','ACCIONES','ESTADO'],
+      (subs.length?subs:[{proyecto:'',acuerdo:'',acciones:'',estado:''},{},{},]).map((r,i)=>[
+        String(i+1),r.proyecto||'',r.acuerdo||'',r.acciones||'',r.estado||''
+      ]),
+      y+2,[10,28,58,47,17],{didDrawPage:headerHook}
+    )+6;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.7.     REVISIÓN DE PENDIENTES DE ACUERDOS DE REUNIONES ANTERIORES',24,y);
+    y=meetingPdfTable(
+      doc,['N°','TEMA','RESPONSABLE','ESTADO'],
+      (data.previous.length?data.previous:[{accion:'',responsable:'',estado:''},{},{},]).map((r,i)=>[
+        String(i+1),r.accion||'',r.responsable||'',r.estado||''
+      ]),
+      y+2,[10,95,35,20],{didDrawPage:headerHook}
+    )+6;
+
+    doc.setFont('helvetica','bold');doc.setFontSize(7.3);
+    doc.text('2.8.     ACUERDOS DE LA REUNIÓN',24,y);
+    y=meetingPdfTable(
+      doc,['N°','ACCIONES REQUERIDAS','PERSONA RESPONSABLE','FECHA DE CUMPLIMIENTO'],
+      (data.agreements.length?data.agreements:[{accion:'',responsable:'',fecha_cumplimiento:null},{},{},]).map((r,i)=>[
+        String(i+1),r.accion||'',r.responsable||'',r.fecha_cumplimiento?formatDatePE(r.fecha_cumplimiento):''
+      ]),
+      y+2,[10,92,34,24],{didDrawPage:headerHook}
+    )+7;
+
+    if (y>235) {doc.addPage();y=header();}
+
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.text('3.     PARTICIPANTES DE LA REUNIÓN:',24,y);
+    y+=7;
+
+    doc.setFont('helvetica','normal');doc.setFontSize(7);
+    const closeText=`A horas ${formatCommitteeTime12(meeting.hora_fin)}, se da por culminado la reunión del comité de seguridad, firmando los presentes en señal de conformidad.`;
+    const closeLines=doc.splitTextToSize(closeText,170);
+    doc.text(closeLines,18,y);
+    y+=closeLines.length*3.6+2;
+
+    const present=data.attendees.filter(x=>x.presente);
+    y=meetingPdfTable(
+      doc,['N°','PERSONAL','CARGO','FIRMA'],
+      (present.length?present:[{}]).map((a,i)=>{
+        const member=a.comite_sst_integrantes || {};
+        const worker=member.trabajadores || {};
+        let role=member.cargo_comite || '';
+        if (role==='PRESIDENTE') role='Presidente CSST';
+        else if (role==='SECRETARIO') role='Secretario Comité SST';
+        else if (member.representacion==='TRABAJADORES') role='Representante de los trabajadores';
+        else if (member.representacion==='EMPLEADOR') role='Representante del empleador';
+        return [String(i+1),committeeWorkerName(worker),role,''];
+      }),
+      y,[10,58,61,31],{didDrawPage:headerHook}
+    )+7;
+
+    if (y>235) {doc.addPage();y=header();}
+
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.text('4.     FECHA Y HORA PARA LA PRÓXIMA REUNIÓN',24,y);
+    y+=3;
+
+    const presidentAttendee=data.attendees.find(a=>a.comite_sst_integrantes?.cargo_comite==='PRESIDENTE');
+    const presidentName=presidentAttendee ? committeeWorkerName(presidentAttendee.comite_sst_integrantes?.trabajadores) : '';
+    const nextDateTime=[
+      meeting.proxima_fecha ? formatDatePE(meeting.proxima_fecha) : '',
+      meeting.proxima_hora ? formatCommitteeTime12(meeting.proxima_hora) : ''
+    ].filter(Boolean).join(' · ');
+
+    const nextAgenda=[
+      ...(Array.isArray(meeting.agenda)?meeting.agenda:[]),
+      ...(meeting.proxima_agenda?[meeting.proxima_agenda]:[])
+    ].join('\n');
+
+    meetingPdfTable(
+      doc,
+      ['PRESIDENTE DE CSSOMA','FECHA Y HORA DE LA PRÓXIMA REUNIÓN','TEMA ESPECÍFICO PARA LA AGENDA'],
+      [[presidentName,nextDateTime,nextAgenda]],
+      y+2,[55,45,60],{didDrawPage:headerHook}
+    );
+
+    const code=(meeting.numero_acta || 'ACTA').replace(/[^\w-]+/g,'_');
+    doc.save(`${code}_Acta_Reunion_${isSub?'Subcomite':'Comite'}_SST.pdf`);
+  } finally {
+    if (button) {button.disabled=false;button.textContent=original;}
+  }
+}
+
+async function downloadCommitteeMeetingMinutesById(id,button=null) {
+  try {
+    const data=await buildCommitteeMeetingPdfData(id);
+    await generateCommitteeMeetingMinutesPdf(data,button);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el acta PDF.');
+  }
+}
+
+async function downloadCurrentCommitteeMeetingMinutes() {
+  if (!activeCommitteeMeetingId) return;
+  const button=document.getElementById('downloadCommitteeMeetingMinutesButton');
+  if (committeeMeetingCanManage(committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId))) {
+    const ok=await persistCommitteeMeetingEditor(false,true);
+    if (!ok) return;
+  }
+  await downloadCommitteeMeetingMinutesById(activeCommitteeMeetingId,button);
+}
+
+async function closeCurrentCommitteeMeeting() {
+  if (!activeCommitteeMeetingId) return;
+  if (!confirm('¿Cerrar la reunión? El acta quedará marcada como CERRADA.')) return;
+  const id=activeCommitteeMeetingId;
+  const ok=await persistCommitteeMeetingEditor(true,false);
+  if (!ok) return;
+  await openCommitteeMeetingEditor(id);
+  committeeMeetingEditorMessage('Reunión cerrada correctamente. Ya puedes descargar el acta final.','success');
+}
+
+// ------------------------------------------------------------
+// Eventos Etapa 16B
+// ------------------------------------------------------------
+document.getElementById('committeeConformationsTab')?.addEventListener('click',()=>setCommitteeModuleMode('CONFORMATIONS'));
+document.getElementById('committeeMeetingsTab')?.addEventListener('click',()=>setCommitteeModuleMode('MEETINGS'));
+
+document.getElementById('committeeMeetingProgramForm')?.addEventListener('submit',saveCommitteeMeetingProgram);
+document.getElementById('closeCommitteeMeetingProgramModal')?.addEventListener('click',closeCommitteeMeetingProgramModal);
+document.getElementById('cancelCommitteeMeetingProgramModal')?.addEventListener('click',closeCommitteeMeetingProgramModal);
+document.getElementById('committeeMeetingProgramModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeMeetingProgramModal);
+
+document.getElementById('closeCommitteeMeetingEditorModal')?.addEventListener('click',closeCommitteeMeetingEditorModal);
+document.getElementById('committeeMeetingEditorModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeMeetingEditorModal);
+
+document.getElementById('addCommitteeMeetingAgendaButton')?.addEventListener('click',()=>{
+  const input=document.getElementById('committeeMeetingAdditionalAgendaInput');
+  const value=input.value.trim();
+  if (!value) return;
+  committeeMeetingAdditionalAgenda.push(value);
+  input.value='';
+  renderCommitteeMeetingAdditionalAgenda();
+});
+
+document.getElementById('addCommitteeMeetingIncidentButton')?.addEventListener('click',()=>{
+  const rows=collectMeetingIncidentRows();
+  rows.push({incidente:'',comentarios:''});
+  renderCommitteeMeetingIncidents(rows);
+});
+
+document.getElementById('addCommitteeMeetingObjectiveButton')?.addEventListener('click',()=>{
+  const rows=collectMeetingObjectiveRows();
+  rows.push({tema:'',comentarios:''});
+  renderCommitteeMeetingObjectives(rows);
+});
+
+document.getElementById('addCommitteeMeetingSubcommitteeAgreementButton')?.addEventListener('click',()=>{
+  const rows=collectMeetingSubcommitteeRows();
+  rows.push({proyecto:'',acuerdo:'',acciones:'',estado:''});
+  renderCommitteeMeetingSubcommitteeRows(rows);
+});
+
+document.getElementById('addCommitteeMeetingAgreementButton')?.addEventListener('click',()=>{
+  const rows=collectMeetingAgreementRows();
+  rows.push({accion:'',responsable:'',fecha_cumplimiento:''});
+  renderCommitteeMeetingAgreements(rows);
+});
+
+document.getElementById('saveCommitteeMeetingEditorButton')?.addEventListener('click',()=>persistCommitteeMeetingEditor(false,false));
+document.getElementById('closeCommitteeMeetingButton')?.addEventListener('click',closeCurrentCommitteeMeeting);
+document.getElementById('downloadCommitteeMeetingMinutesButton')?.addEventListener('click',downloadCurrentCommitteeMeetingMinutes);
+document.getElementById('syncCommitteeMeetingAttendeesButton')?.addEventListener('click',syncCommitteeMeetingAttendees);
+document.getElementById('uploadCommitteeMeetingEvidenceButton')?.addEventListener('click',uploadCommitteeMeetingEvidence);
+
+document.getElementById('committeeMeetingSearch')?.addEventListener('input',renderCommitteeMeetingList);
+document.getElementById('committeeMeetingCommitteeFilter')?.addEventListener('change',renderCommitteeMeetingList);
+document.getElementById('committeeMeetingStatusFilter')?.addEventListener('change',renderCommitteeMeetingList);
+document.getElementById('refreshCommitteeMeetingsButton')?.addEventListener('click',()=>{
+  committeeMeetingsLoaded=false;
+  loadCommitteeMeetingsModule(true);
 });
 
 

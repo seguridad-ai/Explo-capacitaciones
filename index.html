@@ -9,9 +9,163 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16d1" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16d2" />
 </head>
 <body>
+  <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
+    <div class="public-committee-training-shell">
+      <header class="public-committee-training-header">
+        <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+        <div>
+          <span class="eyebrow">CAPACITACIÓN DEL COMITÉ SST</span>
+          <h1 id="publicCommitteeTrainingHeaderTitle">Capacitación</h1>
+          <p id="publicCommitteeTrainingHeaderCode">Código de capacitación</p>
+        </div>
+      </header>
+
+      <main class="public-committee-training-card">
+        <section id="publicCommitteeTrainingIdentity">
+          <div class="public-training-step-title">
+            <span class="public-training-step-number">1</span>
+            <div>
+              <span class="eyebrow">IDENTIFICACIÓN</span>
+              <h2>Ingresa con tu DNI</h2>
+              <p>El acceso está disponible únicamente para integrantes activos del Comité o Subcomité asignado.</p>
+            </div>
+          </div>
+
+          <label class="public-training-dni-label">
+            <span>DNI</span>
+            <div class="public-training-dni-row">
+              <input id="publicCommitteeTrainingDni" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="8 dígitos" />
+              <button id="publicCommitteeTrainingLookupButton" class="primary-btn" type="button">Continuar</button>
+            </div>
+          </label>
+
+          <div id="publicCommitteeTrainingIdentityMessage" class="form-message"></div>
+        </section>
+
+        <section id="publicCommitteeTrainingSignature" class="hidden">
+          <div class="public-training-step-title">
+            <span class="public-training-step-number">2</span>
+            <div>
+              <span class="eyebrow">FIRMA ANTES DE INICIAR</span>
+              <h2>Registra tu participación</h2>
+              <p>La firma se registra antes de habilitar el contenido audiovisual.</p>
+            </div>
+          </div>
+
+          <article class="public-training-participant-card">
+            <strong id="publicCommitteeTrainingParticipantName">—</strong>
+            <span id="publicCommitteeTrainingParticipantMeta">—</span>
+            <span id="publicCommitteeTrainingCommitteeMeta">—</span>
+          </article>
+
+          <label class="public-training-consent">
+            <input id="publicCommitteeTrainingConsent" type="checkbox" />
+            <span id="publicCommitteeTrainingConsentText">Declaro que soy el integrante identificado, que participaré personalmente en esta capacitación y autorizo el registro de la firma manuscrita trazada a continuación como evidencia electrónica de mi participación.</span>
+          </label>
+
+          <div class="public-training-signature-panel">
+            <h3>Firma dentro del recuadro</h3>
+            <p>Firma con el dedo, mouse o lápiz digital.</p>
+            <div class="public-training-signature-canvas-wrap">
+              <canvas id="publicCommitteeTrainingSignatureCanvas" width="900" height="300"></canvas>
+            </div>
+            <div class="public-signature-actions">
+              <button id="clearPublicCommitteeTrainingSignatureButton" class="secondary-btn" type="button">Limpiar firma</button>
+              <button id="savePublicCommitteeTrainingSignatureButton" class="primary-btn" type="button">Registrar firma y continuar</button>
+            </div>
+          </div>
+
+          <div id="publicCommitteeTrainingSignatureMessage" class="form-message"></div>
+        </section>
+
+        <section id="publicCommitteeTrainingContent" class="hidden">
+          <div class="public-training-step-title public-training-content-title">
+            <span class="public-training-step-number">3</span>
+            <div>
+              <span class="eyebrow">CONTENIDO AUDIOVISUAL</span>
+              <h2 id="publicCommitteeTrainingContentTitle">Contenido de la capacitación</h2>
+              <p id="publicCommitteeTrainingContentSubtitle">Completa los videos obligatorios en el orden establecido.</p>
+            </div>
+          </div>
+
+          <div class="public-training-summary">
+            <article>
+              <span>Tu progreso</span>
+              <strong id="publicCommitteeTrainingProgressText">0 / 0</strong>
+            </article>
+            <article>
+              <span>Avance</span>
+              <strong id="publicCommitteeTrainingProgressPercent">0%</strong>
+            </article>
+            <article>
+              <span>Nota mínima</span>
+              <strong id="publicCommitteeTrainingMinGrade">—</strong>
+            </article>
+          </div>
+
+          <div class="public-training-overall-progress">
+            <div id="publicCommitteeTrainingOverallProgressBar"></div>
+          </div>
+
+          <section id="publicCommitteeTrainingPlayerCard" class="public-training-player-card hidden">
+            <div class="public-training-player-head">
+              <div>
+                <span id="publicCommitteeTrainingCurrentOrder" class="eyebrow">VIDEO</span>
+                <h3 id="publicCommitteeTrainingCurrentVideoTitle">—</h3>
+                <p id="publicCommitteeTrainingCurrentVideoDescription"></p>
+              </div>
+              <span id="publicCommitteeTrainingCurrentVideoStatus" class="public-video-status">EN CURSO</span>
+            </div>
+
+            <div id="publicCommitteeTrainingPlayerHost" class="public-training-player-host"></div>
+
+            <div class="public-video-progress-row">
+              <div class="public-video-progress-track">
+                <div id="publicCommitteeTrainingVideoProgressBar"></div>
+              </div>
+              <strong id="publicCommitteeTrainingVideoProgressText">0%</strong>
+            </div>
+
+            <p id="publicCommitteeTrainingSeekNotice" class="public-training-seek-notice">En la primera visualización puedes pausar y retroceder, pero no adelantar más allá de lo ya visto.</p>
+            <div id="publicCommitteeTrainingPlayerMessage" class="form-message"></div>
+          </section>
+
+          <section class="public-training-video-list-section">
+            <h3>Ruta de aprendizaje</h3>
+            <div id="publicCommitteeTrainingVideoList" class="public-training-video-list"></div>
+          </section>
+
+          <section id="publicCommitteeTrainingExamLocked" class="public-training-exam-card locked">
+            <div class="public-training-exam-icon">🔒</div>
+            <div>
+              <span class="eyebrow">EXAMEN FINAL</span>
+              <h3>Completa primero el contenido obligatorio</h3>
+              <p id="publicCommitteeTrainingExamMessage">El examen se habilitará cuando finalices todos los videos obligatorios.</p>
+            </div>
+          </section>
+
+          <section id="publicCommitteeTrainingExamReady" class="public-training-exam-card ready hidden">
+            <div class="public-training-exam-icon">✓</div>
+            <div>
+              <span class="eyebrow">CONTENIDO COMPLETADO</span>
+              <h3>Examen habilitado</h3>
+              <p>Terminaste todos los videos obligatorios. El examen se configurará en la Etapa 16D.3.</p>
+            </div>
+            <button id="publicCommitteeTrainingExamButton" class="primary-btn" type="button" disabled>Continuar al examen</button>
+          </section>
+        </section>
+      </main>
+
+      <footer class="public-exam-footer">
+        <span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span>
+        <span>By RonyC</span>
+      </footer>
+    </div>
+  </section>
+
   <section id="publicMeetingSignatureScreen" class="public-meeting-signature-screen hidden" aria-label="Firma de acta del Comité SST">
     <div class="public-meeting-signature-shell">
       <header class="public-meeting-signature-header">
@@ -2205,6 +2359,23 @@
               </div>
             </form>
 
+            <section id="committeeTrainingShareSection" class="committee-training-share-section hidden">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">↗</span>
+                  <div>
+                    <h4>Link para integrantes</h4>
+                    <p>Disponible cuando la capacitación está en estado LISTA. El integrante ingresa con DNI, firma y continúa con los videos.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="committee-training-share-box">
+                <input id="committeeTrainingPublicLink" readonly />
+                <button id="copyCommitteeTrainingPublicLinkButton" class="secondary-btn" type="button">Copiar</button>
+                <button id="whatsappCommitteeTrainingPublicLinkButton" class="whatsapp-btn" type="button">WhatsApp</button>
+              </div>
+            </section>
+
             <section id="committeeTrainingVideoSection" class="committee-training-video-section hidden">
               <div class="meeting-editor-section-head">
                 <div>
@@ -3004,6 +3175,6 @@
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16d1"></script>
+  <script src="app.js?v=20261012-16d2"></script>
 </body>
 </html>

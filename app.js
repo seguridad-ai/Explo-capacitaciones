@@ -15,6 +15,7 @@ const publicExamScreen = document.getElementById('publicExamScreen');
 const publicPracticeScreen = document.getElementById('publicPracticeScreen');
 const publicEvaluationScreen = document.getElementById('publicEvaluationScreen');
 const publicMeetingSignatureScreen = document.getElementById('publicMeetingSignatureScreen');
+const publicCommitteeTrainingScreen = document.getElementById('publicCommitteeTrainingScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -41,6 +42,7 @@ function showAuthScreen() {
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
   publicMeetingSignatureScreen?.classList.add('hidden');
+  publicCommitteeTrainingScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.remove('hidden');
   authLoading?.classList.add('hidden');
@@ -52,6 +54,7 @@ function showLoading() {
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
   publicMeetingSignatureScreen?.classList.add('hidden');
+  publicCommitteeTrainingScreen?.classList.add('hidden');
   appShell?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.remove('hidden');
@@ -62,6 +65,7 @@ function showApp() {
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
   publicMeetingSignatureScreen?.classList.add('hidden');
+  publicCommitteeTrainingScreen?.classList.add('hidden');
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
@@ -208,6 +212,7 @@ async function initializeAuth() {
   const publicPracticeCodeParam = publicParams.get('practice');
   const publicEvaluationCodeParam = publicParams.get('evaluation');
   const publicMeetingSignatureTokenParam = publicParams.get('meetingSign');
+  const publicCommitteeTrainingTokenParam = publicParams.get('committeeTraining');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
     return;
@@ -226,6 +231,10 @@ async function initializeAuth() {
   }
   if (publicMeetingSignatureTokenParam) {
     await initializePublicCommitteeMeetingSignature(publicMeetingSignatureTokenParam);
+    return;
+  }
+  if (publicCommitteeTrainingTokenParam) {
+    await initializePublicCommitteeTrainingMode(publicCommitteeTrainingTokenParam);
     return;
   }
 
@@ -349,6 +358,22 @@ let committeeTrainingVideos = [];
 let committeeTrainingsLoaded = false;
 let activeCommitteeTrainingId = null;
 let activeCommitteeTrainingVideoId = null;
+
+let publicCommitteeTrainingToken = '';
+let publicCommitteeTrainingDni = '';
+let publicCommitteeTrainingData = null;
+let publicCommitteeTrainingSignatureCtx = null;
+let publicCommitteeTrainingSignatureDrawing = false;
+let publicCommitteeTrainingCurrentVideoId = null;
+let publicCommitteeTrainingCurrentMaxSecond = 0;
+let publicCommitteeTrainingLastSaveAt = 0;
+let publicCommitteeTrainingHtml5Player = null;
+let publicCommitteeTrainingYoutubePlayer = null;
+let publicCommitteeTrainingYoutubeTimer = null;
+let publicCommitteeTrainingExternalTimer = null;
+let publicCommitteeTrainingExternalStartedAt = null;
+let publicCommitteeTrainingCompletionBusy = false;
+let youtubeApiPromise = null;
 
 
 
@@ -3111,6 +3136,44 @@ function updateCommitteeTrainingStats() {
   });
 }
 
+function committeeTrainingPublicUrl(record) {
+  if (!record?.public_token) return '';
+  const url=new URL(window.location.href);
+  url.search='';
+  url.hash='';
+  url.searchParams.set('committeeTraining',record.public_token);
+  return url.toString();
+}
+
+async function copyCommitteeTrainingPublicLink(record=null) {
+  const item=record || committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  const link=committeeTrainingPublicUrl(item);
+  if (!link) return;
+
+  try {
+    await navigator.clipboard.writeText(link);
+    if (activeCommitteeTrainingId===item?.id) {
+      committeeTrainingMessage('Link copiado correctamente.','success');
+    } else {
+      alert('Link copiado correctamente.');
+    }
+  } catch {
+    window.prompt('Copia el link:',link);
+  }
+}
+
+function shareCommitteeTrainingPublicLink(record=null) {
+  const item=record || committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  const link=committeeTrainingPublicUrl(item);
+  if (!link) return;
+  const committee=committeeTrainingCommittee(item);
+  const text=
+    `Capacitación del ${committee?.tipo==='SUBCOMITE'?'Subcomité':'Comité'} SST\n`+
+    `${item.titulo || ''}\n`+
+    `Ingresa con tu DNI, registra tu firma y completa los videos en el orden indicado:\n${link}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
+}
+
 function renderCommitteeTrainingList() {
   const container=document.getElementById('committeeTrainingList');
   if (!container) return;
@@ -3175,6 +3238,7 @@ function renderCommitteeTrainingList() {
         </div>
 
         <div class="committee-training-card-actions">
+          ${canManage && record.estado==='LISTA' ? `<button class="meeting-share-sign-btn" type="button" data-share-committee-training="${record.id}">Compartir</button>` : ''}
           <button class="committee-manage-btn" type="button" data-open-committee-training="${record.id}">
             ${canManage?'Administrar':'Ver contenido'}
           </button>
@@ -3188,6 +3252,13 @@ function renderCommitteeTrainingList() {
     button.addEventListener('click',()=>openCommitteeTrainingModal(
       committeeTrainingRecords.find(x=>x.id===button.dataset.openCommitteeTraining)
     ));
+  });
+
+  container.querySelectorAll('[data-share-committee-training]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const record=committeeTrainingRecords.find(x=>x.id===button.dataset.shareCommitteeTraining);
+      if (record) shareCommitteeTrainingPublicLink(record);
+    });
   });
 
   container.querySelectorAll('[data-delete-committee-training]').forEach(button=>{
@@ -3273,6 +3344,12 @@ function openCommitteeTrainingModal(record=null) {
     });
   committeeSelect.disabled=!!record || !canManage;
   document.getElementById('saveCommitteeTrainingButton')?.classList.toggle('hidden',!canManage);
+
+  const shareSection=document.getElementById('committeeTrainingShareSection');
+  const shareAvailable=!!record && record.estado==='LISTA';
+  shareSection?.classList.toggle('hidden',!shareAvailable);
+  const shareInput=document.getElementById('committeeTrainingPublicLink');
+  if (shareInput) shareInput.value=shareAvailable ? committeeTrainingPublicUrl(record) : '';
 
   const videoSection=document.getElementById('committeeTrainingVideoSection');
   videoSection.classList.toggle('hidden',!record);
@@ -3778,6 +3855,14 @@ async function deleteCommitteeTrainingVideo(id) {
   const remaining=committeeTrainingVideosFor(video.capacitacion_id)
     .filter(x=>x.id!==id);
 
+  // Una capacitación LISTA no puede quedar publicada sin videos.
+  if (remaining.length===0 && training.estado==='LISTA') {
+    const downgrade=await client.from('comite_sst_capacitaciones')
+      .update({estado:'BORRADOR'})
+      .eq('id',training.id);
+    if (downgrade.error) console.warn(downgrade.error);
+  }
+
   for (let i=0;i<remaining.length;i++) {
     if (remaining[i].orden!==i+1) {
       const update=await client.from('comite_sst_capacitacion_videos')
@@ -3912,6 +3997,778 @@ function closeCommitteeTrainingVideoPreview() {
     document.body.classList.add('modal-open');
   } else {
     document.body.classList.remove('modal-open');
+  }
+}
+
+
+// ------------------------------------------------------------
+// ETAPA 16D.2 · LINK PÚBLICO + FIRMA + PROGRESO DE VIDEOS
+// ------------------------------------------------------------
+function publicCommitteeTrainingMessage(message='',type='error',target='publicCommitteeTrainingIdentityMessage') {
+  const el=document.getElementById(target);
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function initializePublicCommitteeTrainingMode(token) {
+  publicCommitteeTrainingToken=String(token || '').trim();
+  publicCommitteeTrainingDni='';
+  publicCommitteeTrainingData=null;
+  publicCommitteeTrainingCurrentVideoId=null;
+  clearPublicCommitteeTrainingPlayer();
+
+  publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.add('hidden');
+  appShell?.classList.add('hidden');
+  authScreen?.classList.add('hidden');
+  authLoading?.classList.add('hidden');
+  publicCommitteeTrainingScreen?.classList.remove('hidden');
+
+  document.getElementById('publicCommitteeTrainingIdentity')?.classList.remove('hidden');
+  document.getElementById('publicCommitteeTrainingSignature')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingContent')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingHeaderTitle').textContent='Capacitación del Comité SST';
+  document.getElementById('publicCommitteeTrainingHeaderCode').textContent='Identificación requerida';
+  document.getElementById('publicCommitteeTrainingDni').value='';
+  publicCommitteeTrainingMessage('');
+  setTimeout(()=>document.getElementById('publicCommitteeTrainingDni')?.focus(),60);
+}
+
+async function fetchPublicCommitteeTrainingData() {
+  const {data,error}=await client.rpc('obtener_capacitacion_comite_publica',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni
+  });
+
+  if (error || !data?.ok) {
+    throw new Error(data?.error || error?.message || 'No fue posible cargar la capacitación.');
+  }
+
+  publicCommitteeTrainingData=data;
+  return data;
+}
+
+async function lookupPublicCommitteeTraining() {
+  const input=document.getElementById('publicCommitteeTrainingDni');
+  const dni=(input?.value || '').replace(/\D/g,'').slice(0,8);
+  if (input) input.value=dni;
+  publicCommitteeTrainingMessage('');
+
+  if (!/^\d{8}$/.test(dni)) {
+    publicCommitteeTrainingMessage('Ingresa un DNI válido de 8 dígitos.');
+    return;
+  }
+
+  const button=document.getElementById('publicCommitteeTrainingLookupButton');
+  const old=button?.textContent || '';
+  if (button) {
+    button.disabled=true;
+    button.textContent='Verificando…';
+  }
+
+  publicCommitteeTrainingDni=dni;
+
+  try {
+    const data=await fetchPublicCommitteeTrainingData();
+    const cap=data.capacitacion || {};
+    const member=data.integrante || {};
+    const committee=data.comite || {};
+
+    document.getElementById('publicCommitteeTrainingHeaderTitle').textContent=cap.titulo || 'Capacitación';
+    document.getElementById('publicCommitteeTrainingHeaderCode').textContent=cap.codigo || 'Capacitación del Comité SST';
+    document.getElementById('publicCommitteeTrainingParticipantName').textContent=
+      [member.apellidos,member.nombres].filter(Boolean).join(' ') || 'Integrante';
+    document.getElementById('publicCommitteeTrainingParticipantMeta').textContent=
+      `DNI ${member.dni || '—'} · ${member.cargo || '—'} · ${member.area || '—'}`;
+    document.getElementById('publicCommitteeTrainingCommitteeMeta').textContent=
+      `${committee.tipo==='SUBCOMITE'?'Subcomité SST':'Comité SST'} · ${committee.nombre || committee.codigo || '—'} · ${member.cargo_comite || 'Integrante'}`;
+
+    document.getElementById('publicCommitteeTrainingIdentity')?.classList.add('hidden');
+
+    if (data.participacion?.firmado) {
+      showPublicCommitteeTrainingContent();
+    } else {
+      document.getElementById('publicCommitteeTrainingSignature')?.classList.remove('hidden');
+      document.getElementById('publicCommitteeTrainingContent')?.classList.add('hidden');
+      document.getElementById('publicCommitteeTrainingConsent').checked=false;
+      setupPublicCommitteeTrainingSignatureCanvas();
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+  } catch(err) {
+    console.error(err);
+    publicCommitteeTrainingMessage(err?.message || 'No fue posible validar tu participación.');
+  } finally {
+    if (button) {
+      button.disabled=false;
+      button.textContent=old;
+    }
+  }
+}
+
+function setupPublicCommitteeTrainingSignatureCanvas() {
+  const canvas=document.getElementById('publicCommitteeTrainingSignatureCanvas');
+  if (!canvas) return;
+
+  const ctx=canvas.getContext('2d');
+  publicCommitteeTrainingSignatureCtx=ctx;
+  publicCommitteeTrainingSignatureDrawing=false;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.lineWidth=4;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.strokeStyle='#17263c';
+
+  const point=(event)=>{
+    const rect=canvas.getBoundingClientRect();
+    const source=event.touches?.[0] || event;
+    return {
+      x:(source.clientX-rect.left)*(canvas.width/rect.width),
+      y:(source.clientY-rect.top)*(canvas.height/rect.height)
+    };
+  };
+
+  canvas.onpointerdown=(event)=>{
+    publicCommitteeTrainingSignatureDrawing=true;
+    const p=point(event);
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y);
+    canvas.setPointerCapture?.(event.pointerId);
+  };
+
+  canvas.onpointermove=(event)=>{
+    if (!publicCommitteeTrainingSignatureDrawing) return;
+    const p=point(event);
+    ctx.lineTo(p.x,p.y);
+    ctx.stroke();
+  };
+
+  canvas.onpointerup=()=>{publicCommitteeTrainingSignatureDrawing=false;};
+  canvas.onpointercancel=()=>{publicCommitteeTrainingSignatureDrawing=false;};
+  canvas.onpointerleave=()=>{publicCommitteeTrainingSignatureDrawing=false;};
+}
+
+function publicCommitteeTrainingSignatureBlank() {
+  const canvas=document.getElementById('publicCommitteeTrainingSignatureCanvas');
+  if (!canvas) return true;
+  const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+  for (let i=3;i<pixels.length;i+=4) {
+    if (pixels[i]!==0) return false;
+  }
+  return true;
+}
+
+async function savePublicCommitteeTrainingSignature() {
+  publicCommitteeTrainingMessage('','error','publicCommitteeTrainingSignatureMessage');
+
+  const consent=document.getElementById('publicCommitteeTrainingConsent')?.checked;
+  if (!consent) {
+    publicCommitteeTrainingMessage(
+      'Marca la casilla de conformidad antes de registrar tu firma.',
+      'error',
+      'publicCommitteeTrainingSignatureMessage'
+    );
+    return;
+  }
+
+  if (publicCommitteeTrainingSignatureBlank()) {
+    publicCommitteeTrainingMessage(
+      'Registra tu firma dentro del recuadro.',
+      'error',
+      'publicCommitteeTrainingSignatureMessage'
+    );
+    return;
+  }
+
+  const canvas=document.getElementById('publicCommitteeTrainingSignatureCanvas');
+  const firma=canvas.toDataURL('image/png');
+  const consentText=document.getElementById('publicCommitteeTrainingConsentText')?.textContent?.trim() || '';
+  const button=document.getElementById('savePublicCommitteeTrainingSignatureButton');
+  const old=button?.textContent || '';
+
+  if (button) {
+    button.disabled=true;
+    button.textContent='Registrando…';
+  }
+
+  const {data,error}=await client.rpc('registrar_firma_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni,
+    p_firma:firma,
+    p_consentimiento:true,
+    p_consentimiento_texto:consentText,
+    p_user_agent:navigator.userAgent || ''
+  });
+
+  if (button) {
+    button.disabled=false;
+    button.textContent=old;
+  }
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    publicCommitteeTrainingMessage(
+      data?.error || error?.message || 'No fue posible registrar tu firma.',
+      'error',
+      'publicCommitteeTrainingSignatureMessage'
+    );
+    return;
+  }
+
+  try {
+    await fetchPublicCommitteeTrainingData();
+    document.getElementById('publicCommitteeTrainingSignature')?.classList.add('hidden');
+    showPublicCommitteeTrainingContent();
+  } catch(err) {
+    publicCommitteeTrainingMessage(
+      err?.message || 'La firma fue registrada, pero no fue posible cargar el contenido.',
+      'error',
+      'publicCommitteeTrainingSignatureMessage'
+    );
+  }
+}
+
+function publicCommitteeTrainingVideoLocked(video) {
+  const videos=publicCommitteeTrainingData?.videos || [];
+  return videos.some(prev=>
+    Number(prev.orden)<Number(video.orden) &&
+    prev.obligatorio &&
+    !prev.completado
+  );
+}
+
+function publicCommitteeTrainingProgressSummary() {
+  const videos=publicCommitteeTrainingData?.videos || [];
+  const required=videos.filter(v=>v.obligatorio);
+  const base=required.length ? required : videos;
+  const completed=base.filter(v=>v.completado).length;
+  const percent=base.length ? Math.round((completed/base.length)*100) : 100;
+  return {total:base.length,completed,percent};
+}
+
+function renderPublicCommitteeTrainingSummary() {
+  const data=publicCommitteeTrainingData;
+  if (!data) return;
+
+  const summary=publicCommitteeTrainingProgressSummary();
+  document.getElementById('publicCommitteeTrainingProgressText').textContent=`${summary.completed} / ${summary.total}`;
+  document.getElementById('publicCommitteeTrainingProgressPercent').textContent=`${summary.percent}%`;
+  document.getElementById('publicCommitteeTrainingMinGrade').textContent=String(data.capacitacion?.nota_minima ?? '—');
+  const bar=document.getElementById('publicCommitteeTrainingOverallProgressBar');
+  if (bar) bar.style.width=`${summary.percent}%`;
+
+  const contentDone=summary.total===0 || summary.completed>=summary.total;
+  document.getElementById('publicCommitteeTrainingExamLocked')?.classList.toggle('hidden',contentDone);
+  document.getElementById('publicCommitteeTrainingExamReady')?.classList.toggle('hidden',!contentDone);
+
+  if (!contentDone) {
+    document.getElementById('publicCommitteeTrainingExamMessage').textContent=
+      `Completa ${summary.total-summary.completed} contenido(s) obligatorio(s) para habilitar el examen.`;
+  }
+}
+
+function renderPublicCommitteeTrainingVideoList() {
+  const container=document.getElementById('publicCommitteeTrainingVideoList');
+  if (!container || !publicCommitteeTrainingData) return;
+
+  const videos=publicCommitteeTrainingData.videos || [];
+  if (!videos.length) {
+    container.innerHTML='<div class="training-library-empty">Esta capacitación todavía no tiene videos disponibles.</div>';
+    return;
+  }
+
+  container.innerHTML=videos.map(video=>{
+    const locked=publicCommitteeTrainingVideoLocked(video);
+    const active=publicCommitteeTrainingCurrentVideoId===video.id;
+    const completed=!!video.completado;
+    const percent=Math.round(Number(video.porcentaje || 0));
+
+    return `
+      <button
+        type="button"
+        class="public-training-video-item ${locked?'locked':''} ${completed?'completed':''} ${active?'active':''}"
+        data-public-training-video="${video.id}"
+        ${locked?'disabled':''}
+      >
+        <span class="public-training-video-order">${completed?'✓':locked?'🔒':video.orden}</span>
+        <span class="public-training-video-info">
+          <strong>${escapeHtml(video.titulo || `Video ${video.orden}`)}</strong>
+          <small>${escapeHtml(committeeTrainingSourceLabel(video.tipo_fuente))}${video.duracion_minutos ? ` · ${Number(video.duracion_minutos)} min` : ''}${video.obligatorio ? ' · Obligatorio' : ' · Opcional'}</small>
+        </span>
+        <span class="public-training-video-percent">${completed?'100%':`${percent}%`}</span>
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-public-training-video]').forEach(button=>{
+    button.addEventListener('click',()=>loadPublicCommitteeTrainingVideo(button.dataset.publicTrainingVideo));
+  });
+}
+
+function choosePublicCommitteeTrainingVideo() {
+  const videos=publicCommitteeTrainingData?.videos || [];
+  if (!videos.length) return null;
+
+  const current=videos.find(v=>v.id===publicCommitteeTrainingCurrentVideoId);
+  if (current && !publicCommitteeTrainingVideoLocked(current)) return current;
+
+  return videos.find(v=>!v.completado && !publicCommitteeTrainingVideoLocked(v))
+    || videos.find(v=>!publicCommitteeTrainingVideoLocked(v))
+    || null;
+}
+
+function showPublicCommitteeTrainingContent() {
+  if (!publicCommitteeTrainingData) return;
+
+  const cap=publicCommitteeTrainingData.capacitacion || {};
+  const member=publicCommitteeTrainingData.integrante || {};
+
+  document.getElementById('publicCommitteeTrainingIdentity')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingSignature')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingContent')?.classList.remove('hidden');
+  document.getElementById('publicCommitteeTrainingContentTitle').textContent=cap.titulo || 'Contenido de la capacitación';
+  document.getElementById('publicCommitteeTrainingContentSubtitle').textContent=
+    `${[member.apellidos,member.nombres].filter(Boolean).join(' ')} · Completa los videos obligatorios en el orden establecido.`;
+
+  renderPublicCommitteeTrainingSummary();
+  renderPublicCommitteeTrainingVideoList();
+
+  const selected=choosePublicCommitteeTrainingVideo();
+  if (selected) loadPublicCommitteeTrainingVideo(selected.id);
+  else document.getElementById('publicCommitteeTrainingPlayerCard')?.classList.add('hidden');
+
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function clearPublicCommitteeTrainingPlayer() {
+  if (publicCommitteeTrainingYoutubeTimer) {
+    clearInterval(publicCommitteeTrainingYoutubeTimer);
+    publicCommitteeTrainingYoutubeTimer=null;
+  }
+  if (publicCommitteeTrainingExternalTimer) {
+    clearInterval(publicCommitteeTrainingExternalTimer);
+    publicCommitteeTrainingExternalTimer=null;
+  }
+  publicCommitteeTrainingExternalStartedAt=null;
+
+  if (publicCommitteeTrainingYoutubePlayer?.destroy) {
+    try { publicCommitteeTrainingYoutubePlayer.destroy(); } catch {}
+  }
+  publicCommitteeTrainingYoutubePlayer=null;
+
+  if (publicCommitteeTrainingHtml5Player) {
+    try { publicCommitteeTrainingHtml5Player.pause(); } catch {}
+  }
+  publicCommitteeTrainingHtml5Player=null;
+
+  const host=document.getElementById('publicCommitteeTrainingPlayerHost');
+  if (host) host.innerHTML='';
+}
+
+function updatePublicCommitteeTrainingVideoProgressUi(percent) {
+  const clean=Math.max(0,Math.min(100,Number(percent || 0)));
+  const bar=document.getElementById('publicCommitteeTrainingVideoProgressBar');
+  const text=document.getElementById('publicCommitteeTrainingVideoProgressText');
+  if (bar) bar.style.width=`${clean}%`;
+  if (text) text.textContent=`${Math.round(clean)}%`;
+}
+
+async function savePublicCommitteeTrainingProgress(video,current,duration,completed=false,force=false) {
+  if (!video || !publicCommitteeTrainingData) return null;
+
+  const now=Date.now();
+  if (!force && !completed && now-publicCommitteeTrainingLastSaveAt<9000) return null;
+  if (publicCommitteeTrainingCompletionBusy && completed) return null;
+
+  const safeCurrent=Math.max(0,Number(current || 0));
+  const safeDuration=Math.max(0,Number(duration || 0));
+  publicCommitteeTrainingCurrentMaxSecond=Math.max(publicCommitteeTrainingCurrentMaxSecond,safeCurrent);
+  const percentage=safeDuration>0
+    ? Math.min(100,(publicCommitteeTrainingCurrentMaxSecond/safeDuration)*100)
+    : Math.max(Number(video.porcentaje || 0),completed?100:0);
+
+  if (completed) publicCommitteeTrainingCompletionBusy=true;
+  publicCommitteeTrainingLastSaveAt=now;
+
+  const {data,error}=await client.rpc('actualizar_progreso_video_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni,
+    p_video_id:video.id,
+    p_ultimo_segundo:safeCurrent,
+    p_max_segundo:publicCommitteeTrainingCurrentMaxSecond,
+    p_porcentaje:completed ? 100 : Math.min(100,percentage),
+    p_completado:!!completed
+  });
+
+  if (completed) publicCommitteeTrainingCompletionBusy=false;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    if (data?.locked) {
+      publicCommitteeTrainingMessage(
+        data.error || 'Completa primero el video anterior.',
+        'error',
+        'publicCommitteeTrainingPlayerMessage'
+      );
+    }
+    return null;
+  }
+
+  video.ultimo_segundo=Number(data.ultimo_segundo || safeCurrent);
+  video.max_segundo=Number(data.max_segundo || publicCommitteeTrainingCurrentMaxSecond);
+  video.porcentaje=Number(data.porcentaje || percentage);
+  video.completado=!!data.completado;
+  video.completado_at=data.completado_at || video.completado_at;
+
+  updatePublicCommitteeTrainingVideoProgressUi(video.completado ? 100 : video.porcentaje);
+
+  if (video.completado) {
+    const status=document.getElementById('publicCommitteeTrainingCurrentVideoStatus');
+    if (status) {
+      status.textContent='COMPLETADO';
+      status.className='public-video-status completed';
+    }
+    document.getElementById('publicCommitteeTrainingSeekNotice')?.classList.add('hidden');
+
+    // Refresca los datos para que el servidor entregue la URL del siguiente video recién desbloqueado.
+    try {
+      await fetchPublicCommitteeTrainingData();
+    } catch(err) {
+      console.warn('No fue posible refrescar la ruta de aprendizaje.',err);
+    }
+  }
+
+  renderPublicCommitteeTrainingVideoList();
+  renderPublicCommitteeTrainingSummary();
+
+  if (video.completado) {
+    const next=(publicCommitteeTrainingData?.videos || [])
+      .find(v=>!v.completado && !publicCommitteeTrainingVideoLocked(v));
+    if (next && next.id!==video.id) {
+      setTimeout(()=>loadPublicCommitteeTrainingVideo(next.id),900);
+    }
+  }
+
+  return data;
+}
+
+function loadYouTubeIframeApiForTraining() {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApiPromise) return youtubeApiPromise;
+
+  youtubeApiPromise=new Promise((resolve,reject)=>{
+    const existing=document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    const previous=window.onYouTubeIframeAPIReady;
+    let done=false;
+
+    const finish=()=>{
+      if (done) return;
+      done=true;
+      try { if (typeof previous==='function') previous(); } catch {}
+      resolve(window.YT);
+    };
+
+    window.onYouTubeIframeAPIReady=finish;
+
+    if (!existing) {
+      const script=document.createElement('script');
+      script.src='https://www.youtube.com/iframe_api';
+      script.async=true;
+      script.onerror=()=>reject(new Error('No fue posible cargar el reproductor de YouTube.'));
+      document.head.appendChild(script);
+    }
+
+    const started=Date.now();
+    const timer=setInterval(()=>{
+      if (window.YT?.Player) {
+        clearInterval(timer);
+        finish();
+      } else if (Date.now()-started>15000) {
+        clearInterval(timer);
+        reject(new Error('YouTube tardó demasiado en responder.'));
+      }
+    },200);
+  });
+
+  return youtubeApiPromise;
+}
+
+async function setupPublicCommitteeTrainingYoutube(video) {
+  const youtube=normalizeYoutubeUrl(video.url);
+  if (!youtube) throw new Error('El enlace de YouTube no es válido.');
+  await loadYouTubeIframeApiForTraining();
+
+  const host=document.getElementById('publicCommitteeTrainingPlayerHost');
+  host.innerHTML='<div id="publicCommitteeTrainingYoutubePlayer"></div>';
+  publicCommitteeTrainingCurrentMaxSecond=Math.max(Number(video.max_segundo || 0),Number(video.ultimo_segundo || 0));
+
+  publicCommitteeTrainingYoutubePlayer=new YT.Player('publicCommitteeTrainingYoutubePlayer',{
+    videoId:youtube.id,
+    width:'100%',
+    height:'100%',
+    playerVars:{
+      controls:1,
+      rel:0,
+      modestbranding:1,
+      playsinline:1
+    },
+    events:{
+      onReady:(event)=>{
+        const duration=Number(event.target.getDuration() || 0);
+        const resume=Math.min(Number(video.ultimo_segundo || 0),Math.max(0,duration-1));
+        if (resume>1) event.target.seekTo(resume,true);
+        updatePublicCommitteeTrainingVideoProgressUi(video.completado?100:Number(video.porcentaje || 0));
+
+        publicCommitteeTrainingYoutubeTimer=setInterval(()=>{
+          const player=publicCommitteeTrainingYoutubePlayer;
+          if (!player?.getCurrentTime) return;
+          const current=Number(player.getCurrentTime() || 0);
+          const total=Number(player.getDuration() || duration || 0);
+          const state=player.getPlayerState?.();
+
+          if (!video.completado) {
+            if (current>publicCommitteeTrainingCurrentMaxSecond+2.5) {
+              player.seekTo(Math.max(0,publicCommitteeTrainingCurrentMaxSecond),true);
+              return;
+            }
+            if (state===YT.PlayerState.PLAYING && current<=publicCommitteeTrainingCurrentMaxSecond+2.5) {
+              publicCommitteeTrainingCurrentMaxSecond=Math.max(publicCommitteeTrainingCurrentMaxSecond,current);
+            }
+          }
+
+          const percent=video.completado ? 100 : (total>0 ? (publicCommitteeTrainingCurrentMaxSecond/total)*100 : 0);
+          updatePublicCommitteeTrainingVideoProgressUi(percent);
+
+          if (!video.completado && total>0 && percent>=98) {
+            savePublicCommitteeTrainingProgress(video,current,total,true,true);
+          } else if (state===YT.PlayerState.PLAYING) {
+            savePublicCommitteeTrainingProgress(video,current,total,false,false);
+          }
+        },1000);
+      },
+      onStateChange:(event)=>{
+        const player=event.target;
+        const current=Number(player.getCurrentTime?.() || 0);
+        const duration=Number(player.getDuration?.() || 0);
+        if (event.data===YT.PlayerState.ENDED) {
+          publicCommitteeTrainingCurrentMaxSecond=Math.max(publicCommitteeTrainingCurrentMaxSecond,duration,current);
+          savePublicCommitteeTrainingProgress(video,duration || current,duration || current,true,true);
+        } else if (event.data===YT.PlayerState.PAUSED) {
+          savePublicCommitteeTrainingProgress(video,current,duration,false,true);
+        }
+      },
+      onError:()=>{
+        publicCommitteeTrainingMessage(
+          'YouTube no pudo reproducir este video. Revisa el enlace o intenta nuevamente.',
+          'error',
+          'publicCommitteeTrainingPlayerMessage'
+        );
+      }
+    }
+  });
+}
+
+function setupPublicCommitteeTrainingHtml5(video,sourceUrl) {
+  const host=document.getElementById('publicCommitteeTrainingPlayerHost');
+  host.innerHTML='';
+
+  const media=document.createElement('video');
+  media.className='public-training-html5-video';
+  media.controls=true;
+  media.playsInline=true;
+  media.preload='metadata';
+  media.src=sourceUrl;
+  host.appendChild(media);
+  publicCommitteeTrainingHtml5Player=media;
+  publicCommitteeTrainingCurrentMaxSecond=Math.max(Number(video.max_segundo || 0),Number(video.ultimo_segundo || 0));
+
+  let restoring=false;
+
+  media.addEventListener('loadedmetadata',()=>{
+    const duration=Number(media.duration || 0);
+    const resume=Math.min(Number(video.ultimo_segundo || 0),Math.max(0,duration-1));
+    if (resume>1) {
+      restoring=true;
+      media.currentTime=resume;
+      setTimeout(()=>{restoring=false;},250);
+    }
+    updatePublicCommitteeTrainingVideoProgressUi(video.completado?100:Number(video.porcentaje || 0));
+  });
+
+  media.addEventListener('seeking',()=>{
+    if (video.completado || restoring) return;
+    if (media.currentTime>publicCommitteeTrainingCurrentMaxSecond+2.5) {
+      restoring=true;
+      media.currentTime=Math.max(0,publicCommitteeTrainingCurrentMaxSecond);
+      setTimeout(()=>{restoring=false;},200);
+    }
+  });
+
+  media.addEventListener('timeupdate',()=>{
+    const current=Number(media.currentTime || 0);
+    const duration=Number(media.duration || 0);
+
+    if (!video.completado && !media.seeking && current<=publicCommitteeTrainingCurrentMaxSecond+2.5) {
+      publicCommitteeTrainingCurrentMaxSecond=Math.max(publicCommitteeTrainingCurrentMaxSecond,current);
+    }
+
+    const percent=video.completado ? 100 : (duration>0 ? (publicCommitteeTrainingCurrentMaxSecond/duration)*100 : 0);
+    updatePublicCommitteeTrainingVideoProgressUi(percent);
+
+    if (!video.completado && duration>0 && percent>=98) {
+      savePublicCommitteeTrainingProgress(video,current,duration,true,true);
+    } else if (!media.paused) {
+      savePublicCommitteeTrainingProgress(video,current,duration,false,false);
+    }
+  });
+
+  media.addEventListener('pause',()=>{
+    if (!media.ended) savePublicCommitteeTrainingProgress(video,media.currentTime,media.duration,false,true);
+  });
+
+  media.addEventListener('ended',()=>{
+    const duration=Number(media.duration || media.currentTime || 0);
+    publicCommitteeTrainingCurrentMaxSecond=Math.max(publicCommitteeTrainingCurrentMaxSecond,duration);
+    savePublicCommitteeTrainingProgress(video,duration,duration,true,true);
+  });
+
+  media.addEventListener('error',()=>{
+    publicCommitteeTrainingMessage(
+      'No fue posible reproducir el video. Verifica tu conexión o el archivo.',
+      'error',
+      'publicCommitteeTrainingPlayerMessage'
+    );
+  });
+}
+
+async function setupPublicCommitteeTrainingUploadedMp4(video) {
+  const {data,error}=await client.functions.invoke('committee-training-video',{
+    body:{
+      token:publicCommitteeTrainingToken,
+      dni:publicCommitteeTrainingDni,
+      video_id:video.id
+    }
+  });
+
+  if (error || !data?.ok || !data?.signed_url) {
+    console.error(error,data);
+    throw new Error(
+      data?.error || error?.message ||
+      'No fue posible abrir el MP4. Verifica que la Edge Function committee-training-video esté desplegada.'
+    );
+  }
+
+  setupPublicCommitteeTrainingHtml5(video,data.signed_url);
+}
+
+function setupPublicCommitteeTrainingExternal(video) {
+  const url=validHttpUrl(video.url);
+  if (!url) throw new Error('El enlace externo no es válido.');
+
+  if (/\.mp4(?:$|\?)/i.test(url)) {
+    setupPublicCommitteeTrainingHtml5(video,url);
+    return;
+  }
+
+  const host=document.getElementById('publicCommitteeTrainingPlayerHost');
+  const requiredSeconds=Math.max(60,Math.round(Number(video.duracion_minutos || 1)*60));
+  host.innerHTML=`
+    <div class="public-training-external-card">
+      <span class="public-training-external-icon">↗</span>
+      <strong>Contenido alojado en un sitio externo</strong>
+      <p>El control exacto de reproducción no es técnicamente posible fuera de la plataforma. Para mantener un control mínimo, primero abre el contenido y permanece el tiempo estimado antes de confirmar.</p>
+      <button id="publicTrainingOpenExternalButton" class="primary-btn" type="button">Abrir contenido</button>
+      <div id="publicTrainingExternalCountdown" class="public-training-external-countdown">Duración mínima: ${Math.ceil(requiredSeconds/60)} min</div>
+      <button id="publicTrainingCompleteExternalButton" class="secondary-btn hidden" type="button">Confirmar contenido revisado</button>
+    </div>
+  `;
+
+  document.getElementById('publicTrainingOpenExternalButton')?.addEventListener('click',()=>{
+    window.open(url,'_blank','noopener');
+    if (publicCommitteeTrainingExternalStartedAt) return;
+    publicCommitteeTrainingExternalStartedAt=Date.now();
+
+    const countdown=document.getElementById('publicTrainingExternalCountdown');
+    const completeButton=document.getElementById('publicTrainingCompleteExternalButton');
+
+    publicCommitteeTrainingExternalTimer=setInterval(()=>{
+      const elapsed=Math.floor((Date.now()-publicCommitteeTrainingExternalStartedAt)/1000);
+      const remaining=Math.max(0,requiredSeconds-elapsed);
+      const percent=Math.min(99,(elapsed/requiredSeconds)*100);
+      updatePublicCommitteeTrainingVideoProgressUi(percent);
+      if (countdown) {
+        const min=Math.floor(remaining/60);
+        const sec=String(remaining%60).padStart(2,'0');
+        countdown.textContent=remaining>0 ? `Tiempo mínimo restante: ${min}:${sec}` : 'Ya puedes confirmar la revisión.';
+      }
+      if (remaining<=0) {
+        clearInterval(publicCommitteeTrainingExternalTimer);
+        publicCommitteeTrainingExternalTimer=null;
+        completeButton?.classList.remove('hidden');
+      }
+    },1000);
+  });
+
+  document.getElementById('publicTrainingCompleteExternalButton')?.addEventListener('click',()=>{
+    publicCommitteeTrainingCurrentMaxSecond=requiredSeconds;
+    savePublicCommitteeTrainingProgress(video,requiredSeconds,requiredSeconds,true,true);
+  });
+}
+
+async function loadPublicCommitteeTrainingVideo(videoId) {
+  if (!publicCommitteeTrainingData) return;
+  const video=(publicCommitteeTrainingData.videos || []).find(x=>x.id===videoId);
+  if (!video) return;
+
+  if (publicCommitteeTrainingVideoLocked(video)) {
+    publicCommitteeTrainingMessage(
+      'Este video está bloqueado. Completa primero los contenidos obligatorios anteriores.',
+      'error',
+      'publicCommitteeTrainingPlayerMessage'
+    );
+    return;
+  }
+
+  clearPublicCommitteeTrainingPlayer();
+  publicCommitteeTrainingCurrentVideoId=video.id;
+  publicCommitteeTrainingCurrentMaxSecond=Math.max(Number(video.max_segundo || 0),Number(video.ultimo_segundo || 0));
+  publicCommitteeTrainingLastSaveAt=0;
+  publicCommitteeTrainingCompletionBusy=false;
+
+  document.getElementById('publicCommitteeTrainingPlayerCard')?.classList.remove('hidden');
+  document.getElementById('publicCommitteeTrainingCurrentOrder').textContent=`VIDEO ${video.orden}`;
+  document.getElementById('publicCommitteeTrainingCurrentVideoTitle').textContent=video.titulo || `Video ${video.orden}`;
+  document.getElementById('publicCommitteeTrainingCurrentVideoDescription').textContent=video.descripcion || '';
+  const status=document.getElementById('publicCommitteeTrainingCurrentVideoStatus');
+  status.textContent=video.completado?'COMPLETADO':'EN CURSO';
+  status.className=`public-video-status ${video.completado?'completed':''}`;
+  document.getElementById('publicCommitteeTrainingSeekNotice')?.classList.toggle('hidden',!!video.completado);
+  publicCommitteeTrainingMessage('','error','publicCommitteeTrainingPlayerMessage');
+  updatePublicCommitteeTrainingVideoProgressUi(video.completado?100:Number(video.porcentaje || 0));
+  renderPublicCommitteeTrainingVideoList();
+
+  const host=document.getElementById('publicCommitteeTrainingPlayerHost');
+  if (host) host.innerHTML='<div class="public-training-player-loading">Cargando video…</div>';
+
+  try {
+    if (video.tipo_fuente==='YOUTUBE') {
+      await setupPublicCommitteeTrainingYoutube(video);
+    } else if (video.tipo_fuente==='MP4_UPLOAD') {
+      await setupPublicCommitteeTrainingUploadedMp4(video);
+    } else {
+      setupPublicCommitteeTrainingExternal(video);
+    }
+  } catch(err) {
+    console.error(err);
+    if (host) host.innerHTML='';
+    publicCommitteeTrainingMessage(
+      err?.message || 'No fue posible preparar este video.',
+      'error',
+      'publicCommitteeTrainingPlayerMessage'
+    );
   }
 }
 
@@ -4801,6 +5658,8 @@ document.getElementById('refreshCommitteeTrainingsButton')?.addEventListener('cl
 });
 
 document.getElementById('committeeTrainingForm')?.addEventListener('submit',saveCommitteeTraining);
+document.getElementById('copyCommitteeTrainingPublicLinkButton')?.addEventListener('click',()=>copyCommitteeTrainingPublicLink());
+document.getElementById('whatsappCommitteeTrainingPublicLinkButton')?.addEventListener('click',()=>shareCommitteeTrainingPublicLink());
 document.getElementById('closeCommitteeTrainingModal')?.addEventListener('click',closeCommitteeTrainingModal);
 document.getElementById('cancelCommitteeTrainingModal')?.addEventListener('click',closeCommitteeTrainingModal);
 document.getElementById('committeeTrainingModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingModal);
@@ -12052,6 +12911,23 @@ document.getElementById('publicMeetingSignatureDni')?.addEventListener('keydown'
 document.getElementById('publicMeetingSignatureLookupButton')?.addEventListener('click',lookupPublicCommitteeMeetingSignature);
 document.getElementById('clearPublicMeetingSignatureButton')?.addEventListener('click',setupPublicCommitteeMeetingSignatureCanvas);
 document.getElementById('savePublicMeetingSignatureButton')?.addEventListener('click',submitPublicCommitteeMeetingSignature);
+
+
+document.getElementById('publicCommitteeTrainingDni')?.addEventListener('input',event=>{
+  event.target.value=event.target.value.replace(/\D/g,'').slice(0,8);
+});
+document.getElementById('publicCommitteeTrainingDni')?.addEventListener('keydown',event=>{
+  if (event.key==='Enter') {
+    event.preventDefault();
+    lookupPublicCommitteeTraining();
+  }
+});
+document.getElementById('publicCommitteeTrainingLookupButton')?.addEventListener('click',lookupPublicCommitteeTraining);
+document.getElementById('clearPublicCommitteeTrainingSignatureButton')?.addEventListener('click',setupPublicCommitteeTrainingSignatureCanvas);
+document.getElementById('savePublicCommitteeTrainingSignatureButton')?.addEventListener('click',savePublicCommitteeTrainingSignature);
+document.getElementById('publicCommitteeTrainingExamButton')?.addEventListener('click',()=>{
+  alert('El examen final se incorporará en la Etapa 16D.3.');
+});
 
 
 initializeAuth();

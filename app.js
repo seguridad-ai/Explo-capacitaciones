@@ -1288,8 +1288,8 @@ function renderCommitteeMeetingList() {
           <button class="committee-manage-btn" type="button" data-committee-meeting-open="${record.id}">${canManage?'Desarrollar':'Ver reunión'}</button>
           <button class="meeting-pdf-outline" type="button" data-committee-meeting-pdf="${record.id}">Acta PDF</button>
           ${canManage && record.estado==='EN_FIRMA' ? `<button class="meeting-share-sign-btn" type="button" data-committee-meeting-share-sign="${record.id}">Compartir firma</button>` : ''}
-          ${canManage && !['EN_FIRMA','CERRADA'].includes(record.estado) ? `<button class="secondary-btn" type="button" data-committee-meeting-edit="${record.id}">Programación</button>` : ''}
-          ${canManage && !['EN_FIRMA','CERRADA'].includes(record.estado) ? `<button class="induction-delete-btn" type="button" data-committee-meeting-delete="${record.id}">Eliminar</button>` : ''}
+          ${canManage ? `<button class="secondary-btn" type="button" data-committee-meeting-edit="${record.id}">Editar datos</button>` : ''}
+          ${canManage ? `<button class="induction-delete-btn" type="button" data-committee-meeting-delete="${record.id}">Eliminar</button>` : ''}
         </div>
       </article>
     `;
@@ -1378,8 +1378,9 @@ function openCommitteeMeetingProgramModal(record=null) {
 
   document.getElementById('committeeMeetingCommittee').value=record?.comite_id || '';
   document.getElementById('committeeMeetingCommittee').disabled=!!record;
+  document.getElementById('committeeMeetingActNumber').value=record?.numero_acta || '';
   document.getElementById('committeeMeetingType').value=record?.tipo_reunion || 'ORDINARIA';
-  document.getElementById('committeeMeetingStatus').value=record?.estado==='CERRADA' ? 'PROGRAMADA' : (record?.estado || 'PROGRAMADA');
+  document.getElementById('committeeMeetingStatus').value=record?.estado || 'PROGRAMADA';
 
   const today=new Date().toISOString().slice(0,10);
   document.getElementById('committeeMeetingDate').value=record?.fecha || today;
@@ -1412,6 +1413,7 @@ async function saveCommitteeMeetingProgram(event) {
 
   const id=document.getElementById('committeeMeetingProgramId').value || null;
   const comite_id=document.getElementById('committeeMeetingCommittee').value || null;
+  const numero_acta=document.getElementById('committeeMeetingActNumber').value.trim();
   const tipo_reunion=document.getElementById('committeeMeetingType').value;
   const estado=document.getElementById('committeeMeetingStatus').value;
   const fecha=document.getElementById('committeeMeetingDate').value;
@@ -1422,8 +1424,18 @@ async function saveCommitteeMeetingProgram(event) {
   const mes_resultados=month ? `${month}-01` : null;
   const observaciones=document.getElementById('committeeMeetingProgramNotes').value.trim() || null;
 
-  if (!comite_id || !fecha || !hora_inicio || !lugar || !mes_resultados) {
-    committeeMeetingProgramMessage('Completa Comité/Subcomité, fecha, hora de inicio, lugar y mes de resultados.');
+  if (!comite_id || !numero_acta || !fecha || !hora_inicio || !lugar || !mes_resultados) {
+    committeeMeetingProgramMessage('Completa número de acta, Comité/Subcomité, fecha, hora de inicio, lugar y mes de resultados.');
+    return;
+  }
+
+  const duplicateAct=committeeMeetingRecords.find(x=>
+    x.id!==id &&
+    x.comite_id===comite_id &&
+    String(x.numero_acta || '').trim().toLowerCase()===numero_acta.toLowerCase()
+  );
+  if (duplicateAct) {
+    committeeMeetingProgramMessage(`Ya existe el Acta N° ${numero_acta} para esta conformación. Coloca otro número.`);
     return;
   }
 
@@ -1434,7 +1446,7 @@ async function saveCommitteeMeetingProgram(event) {
   }
 
   const payload={
-    comite_id,tipo_reunion,fecha,hora_inicio,hora_fin,lugar,mes_resultados,
+    comite_id,numero_acta,tipo_reunion,fecha,hora_inicio,hora_fin,lugar,mes_resultados,
     observaciones,estado
   };
   if (!id) payload.created_by=currentProfile?.id || null;
@@ -1816,8 +1828,9 @@ async function openCommitteeMeetingEditor(id) {
   renderCommitteeMeetingEvidence(record);
   fillCommitteeMeetingMetrics(record);
 
-  const contentLocked=['EN_FIRMA','CERRADA'].includes(record.estado);
-  const canEditContent=canManage && !contentLocked;
+  // Etapa 16B.2: el administrador puede editar el acta aun EN_FIRMA o CERRADA.
+  // Las firmas ya registradas se conservan.
+  const canEditContent=canManage;
 
   document.getElementById('saveCommitteeMeetingEditorButton').classList.toggle('hidden',!canEditContent);
   document.getElementById('closeCommitteeMeetingButton').classList.toggle('hidden',!canManage || record.estado==='CERRADA');
@@ -1833,7 +1846,18 @@ async function openCommitteeMeetingEditor(id) {
 
   renderCommitteeMeetingSigningAdmin(record,canManage);
 
-  committeeMeetingEditorMessage('');
+  const alreadySigned=committeeMeetingAttendees.filter(
+    x=>x.reunion_id===record.id && x.firmado_at && x.consentimiento_firma
+  ).length;
+
+  if (alreadySigned>0 && canManage) {
+    committeeMeetingEditorMessage(
+      `Esta acta tiene ${alreadySigned} firma(s) registrada(s). Puedes editarla; las firmas existentes se conservarán.`,
+      'success'
+    );
+  } else {
+    committeeMeetingEditorMessage('');
+  }
   const modal=document.getElementById('committeeMeetingEditorModal');
   modal.classList.remove('hidden');
   modal.setAttribute('aria-hidden','false');
@@ -2105,7 +2129,16 @@ async function deleteCommitteeMeetingEvidence(id) {
 async function deleteCommitteeMeeting(id) {
   const record=committeeMeetingRecords.find(x=>x.id===id);
   if (!record || !committeeMeetingCanManage(record)) return;
-  if (!confirm(`¿Eliminar definitivamente el Acta N° ${record.numero_acta || ''} y todos sus datos?`)) return;
+
+  const signedCount=committeeMeetingAttendees.filter(
+    x=>x.reunion_id===id && x.firmado_at && x.consentimiento_firma
+  ).length;
+
+  const warning=signedCount>0
+    ? `Esta acta tiene ${signedCount} firma(s) registrada(s). Al eliminarla también se eliminarán participantes, firmas, acuerdos y evidencias asociadas.\n\n¿Eliminar definitivamente el Acta N° ${record.numero_acta || ''}?`
+    : `¿Eliminar definitivamente el Acta N° ${record.numero_acta || ''} y todos sus datos?`;
+
+  if (!confirm(warning)) return;
 
   const evidences=committeeMeetingEvidences.filter(x=>x.reunion_id===id);
   if (evidences.length) {
@@ -2181,8 +2214,8 @@ async function enableCommitteeMeetingSignatures() {
   }
 
   if (!confirm(
-    'Al habilitar las firmas se considera que el contenido del acta está finalizado. '+
-    'El editor quedará bloqueado mientras los integrantes registran su conformidad. ¿Continuar?'
+    'Se habilitará el enlace para que los integrantes registren su conformidad y firma. '+
+    'El acta seguirá siendo editable por el administrador. ¿Continuar?'
   )) return;
 
   const saved=await persistCommitteeMeetingEditor(false,true);
@@ -2889,7 +2922,7 @@ async function downloadCurrentCommitteeMeetingMinutes() {
   if (!activeCommitteeMeetingId) return;
   const button=document.getElementById('downloadCommitteeMeetingMinutesButton');
   const current=committeeMeetingRecords.find(x=>x.id===activeCommitteeMeetingId);
-  if (committeeMeetingCanManage(current) && !['EN_FIRMA','CERRADA'].includes(current?.estado)) {
+  if (committeeMeetingCanManage(current)) {
     const ok=await persistCommitteeMeetingEditor(false,true);
     if (!ok) return;
   }

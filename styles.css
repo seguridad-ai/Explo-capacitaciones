@@ -2454,3 +2454,12 @@ body.modal-open{
     height:190px;
   }
 }
+
+/* ETAPA 16B.2 */
+.committee-meeting-program-grid .field-help{
+  display:block;
+  margin-top:5px;
+  color:#7a8799;
+  font-size:8px;
+  line-height:1.35;
+}

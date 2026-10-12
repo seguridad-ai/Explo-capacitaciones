@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16b1" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16b2" />
 </head>
 <body>
   <section id="publicMeetingSignatureScreen" class="public-meeting-signature-screen hidden" aria-label="Firma de acta del Comité SST">
@@ -1995,6 +1995,12 @@
                 </label>
 
                 <label>
+                  <span>Número de acta *</span>
+                  <input id="committeeMeetingActNumber" maxlength="60" placeholder="Ej. 10-2026-CSST" />
+                  <small class="field-help">Coloca el número real que corresponde. Ej.: 10-2026-CSST.</small>
+                </label>
+
+                <label>
                   <span>Tipo de reunión *</span>
                   <select id="committeeMeetingType">
                     <option value="ORDINARIA">Ordinaria</option>
@@ -2007,6 +2013,8 @@
                   <select id="committeeMeetingStatus">
                     <option value="PROGRAMADA">PROGRAMADA</option>
                     <option value="BORRADOR">BORRADOR</option>
+                    <option value="EN_FIRMA">EN FIRMA</option>
+                    <option value="CERRADA">CERRADA</option>
                   </select>
                 </label>
 
@@ -2547,6 +2555,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16b1"></script>
+  <script src="app.js?v=20261012-16b2"></script>
 </body>
 </html>

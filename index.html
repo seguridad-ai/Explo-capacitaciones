@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16d2" />
+  <link rel="stylesheet" href="styles.css?v=20261012-16d3" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -152,10 +152,80 @@
             <div>
               <span class="eyebrow">CONTENIDO COMPLETADO</span>
               <h3>Examen habilitado</h3>
-              <p>Terminaste todos los videos obligatorios. El examen se configurará en la Etapa 16D.3.</p>
+              <p id="publicCommitteeTrainingExamReadyText">Terminaste todos los videos obligatorios. Ya puedes iniciar la evaluación final.</p>
             </div>
-            <button id="publicCommitteeTrainingExamButton" class="primary-btn" type="button" disabled>Continuar al examen</button>
+            <button id="publicCommitteeTrainingExamButton" class="primary-btn" type="button">Iniciar examen</button>
           </section>
+        </section>
+
+        <section id="publicCommitteeTrainingExamView" class="public-committee-training-exam-view hidden">
+          <div class="public-training-step-title">
+            <span class="public-training-step-number">4</span>
+            <div>
+              <span class="eyebrow">EVALUACIÓN FINAL</span>
+              <h2 id="publicCommitteeTrainingExamTitle">Examen de capacitación</h2>
+              <p>Responde todas las preguntas y envía la evaluación al finalizar.</p>
+            </div>
+          </div>
+
+          <div class="public-training-exam-meta">
+            <article><span>Participante</span><strong id="publicCommitteeTrainingExamParticipant">—</strong></article>
+            <article><span>Intento</span><strong id="publicCommitteeTrainingExamAttempt">—</strong></article>
+            <article><span>Nota mínima</span><strong id="publicCommitteeTrainingExamPassingGrade">—</strong></article>
+            <article id="publicCommitteeTrainingExamTimerBox"><span>Tiempo restante</span><strong id="publicCommitteeTrainingExamTimer">—</strong></article>
+          </div>
+
+          <div id="publicCommitteeTrainingExamQuestions" class="public-committee-training-exam-questions"></div>
+          <div id="publicCommitteeTrainingExamSubmitMessage" class="form-message"></div>
+
+          <div class="public-training-exam-submit-row">
+            <button id="publicCommitteeTrainingExamSubmitButton" class="primary-btn" type="button">Finalizar evaluación</button>
+          </div>
+        </section>
+
+        <section id="publicCommitteeTrainingResultView" class="public-committee-training-result-view hidden">
+          <div id="publicCommitteeTrainingResultIcon" class="public-result-icon">✓</div>
+          <span class="eyebrow">RESULTADO</span>
+          <h2 id="publicCommitteeTrainingResultTitle">APROBADO</h2>
+          <div id="publicCommitteeTrainingResultGrade" class="public-training-result-grade">20.0 <small>/ 20</small></div>
+          <p id="publicCommitteeTrainingResultCorrect">—</p>
+
+          <section id="publicCommitteeTrainingReinforceCard" class="public-training-reinforce-card hidden">
+            <h3>⚠ Temas que debes reforzar</h3>
+            <div id="publicCommitteeTrainingReinforceList"></div>
+          </section>
+
+          <div class="public-training-result-actions">
+            <button id="publicCommitteeTrainingReviewButton" class="primary-btn" type="button">Revisar mis respuestas</button>
+            <button id="publicCommitteeTrainingRetryButton" class="secondary-btn hidden" type="button">Realizar otro intento</button>
+            <button id="publicCommitteeTrainingReturnContentButton" class="secondary-btn" type="button">Volver al contenido</button>
+          </div>
+        </section>
+
+        <section id="publicCommitteeTrainingReviewView" class="public-committee-training-review-view hidden">
+          <div class="public-training-step-title">
+            <span class="public-training-step-number">✓</span>
+            <div>
+              <span class="eyebrow">RETROALIMENTACIÓN</span>
+              <h2>Repasa tus respuestas</h2>
+              <p>Revisa qué respondiste, la respuesta correcta y la explicación educativa configurada por el evaluador.</p>
+            </div>
+          </div>
+
+          <div id="publicCommitteeTrainingReviewQuestions" class="public-committee-training-review-questions"></div>
+
+          <div class="public-committee-training-topic-review-grid">
+            <section>
+              <h3>✓ Temas dominados</h3>
+              <div id="publicCommitteeTrainingMasteredList"></div>
+            </section>
+            <section>
+              <h3>⚠ Temas a reforzar</h3>
+              <div id="publicCommitteeTrainingReviewReinforceList"></div>
+            </section>
+          </div>
+
+          <button id="publicCommitteeTrainingReviewBackButton" class="secondary-btn" type="button">Volver al resultado</button>
         </section>
       </main>
 
@@ -2332,6 +2402,19 @@
                   </select>
                 </label>
 
+                <label>
+                  <span>Tiempo máximo del examen (minutos)</span>
+                  <input id="committeeTrainingExamTime" type="number" min="1" max="600" placeholder="Sin límite" />
+                </label>
+
+                <div class="form-span-2 committee-training-exam-options">
+                  <label><input id="committeeTrainingShuffleQuestions" type="checkbox" checked /><span>Ordenar preguntas aleatoriamente</span></label>
+                  <label><input id="committeeTrainingShuffleOptions" type="checkbox" checked /><span>Ordenar alternativas aleatoriamente</span></label>
+                  <label><input id="committeeTrainingShowCorrectFinal" type="checkbox" checked /><span>Mostrar respuestas correctas al finalizar</span></label>
+                  <label><input id="committeeTrainingShowExplanation" type="checkbox" checked /><span>Mostrar explicación educativa al revisar</span></label>
+                  <label><input id="committeeTrainingRetryFailed" type="checkbox" checked /><span>Permitir reintento solo mientras no haya aprobado</span></label>
+                </div>
+
                 <label class="form-span-2">
                   <span>Objetivo</span>
                   <textarea id="committeeTrainingObjective" rows="3" maxlength="1500" placeholder="Objetivo de aprendizaje de la capacitación"></textarea>
@@ -2397,6 +2480,31 @@
               </div>
 
               <div id="committeeTrainingVideoList" class="committee-training-video-list"></div>
+            </section>
+
+            <section id="committeeTrainingExamSection" class="committee-training-exam-admin-section hidden">
+              <div class="meeting-editor-section-head">
+                <div>
+                  <span class="meeting-section-number">?</span>
+                  <div>
+                    <h4>Examen final</h4>
+                    <p>Agrega preguntas con puntaje, tema y explicación educativa. El participante accede únicamente después de completar los videos obligatorios.</p>
+                  </div>
+                </div>
+                <div class="committee-training-exam-head-actions">
+                  <button id="committeeTrainingResultsButton" class="secondary-btn" type="button">Ver resultados</button>
+                  <button id="addCommitteeTrainingQuestionButton" class="primary-btn" type="button">+ Agregar pregunta</button>
+                </div>
+              </div>
+
+              <div class="committee-training-exam-summary">
+                <article><span>Preguntas</span><strong id="committeeTrainingQuestionCount">0</strong></article>
+                <article><span>Puntaje total</span><strong id="committeeTrainingQuestionPoints">0</strong></article>
+                <article><span>Nota mínima</span><strong id="committeeTrainingExamPassing">16</strong></article>
+                <article><span>Intentos</span><strong id="committeeTrainingExamAttempts">2</strong></article>
+              </div>
+
+              <div id="committeeTrainingQuestionList" class="committee-training-question-list"></div>
             </section>
 
             <div class="modal-actions">
@@ -2469,6 +2577,122 @@
                 <button id="saveCommitteeTrainingVideoButton" class="primary-btn" type="submit">Guardar video</button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <div id="committeeTrainingQuestionModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-training-question-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">PREGUNTA DEL EXAMEN</span>
+                <h3 id="committeeTrainingQuestionModalTitle">Nueva pregunta</h3>
+                <p class="modal-subtitle">Define puntaje, tema, respuesta correcta y explicación educativa.</p>
+              </div>
+              <button id="closeCommitteeTrainingQuestionModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <input id="committeeTrainingQuestionId" type="hidden" />
+            <input id="committeeTrainingQuestionImagePath" type="hidden" />
+            <input id="committeeTrainingQuestionImageUrl" type="hidden" />
+
+            <div class="form-grid committee-training-question-form-grid">
+              <label class="form-span-2">
+                <span>Pregunta *</span>
+                <textarea id="committeeTrainingQuestionText" rows="3" maxlength="3000" placeholder="Escribe el enunciado"></textarea>
+              </label>
+
+              <label>
+                <span>Tipo de pregunta *</span>
+                <select id="committeeTrainingQuestionType">
+                  <option value="SINGLE">Opción múltiple</option>
+                  <option value="TRUE_FALSE">Verdadero / Falso</option>
+                  <option value="MULTIPLE">Varias respuestas</option>
+                  <option value="FREE_TEXT">Respuesta libre</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Nivel / tema *</span>
+                <input id="committeeTrainingQuestionTopic" maxlength="180" placeholder="Ej. Funciones del CSST" />
+              </label>
+
+              <label>
+                <span>Peso / puntos *</span>
+                <input id="committeeTrainingQuestionWeight" type="number" min="0.1" step="0.1" value="1" />
+              </label>
+
+              <label>
+                <span>Imagen opcional</span>
+                <input id="committeeTrainingQuestionImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+              </label>
+
+              <div id="committeeTrainingQuestionImagePreview" class="form-span-2 committee-question-image-preview hidden"></div>
+
+              <label class="form-span-2">
+                <span>Explicación educativa</span>
+                <textarea id="committeeTrainingQuestionExplanation" rows="3" maxlength="2500" placeholder="Mensaje que verá el participante al revisar sus respuestas"></textarea>
+              </label>
+            </div>
+
+            <section class="committee-question-answer-section">
+              <div class="committee-question-answer-head">
+                <strong>Respuesta correcta</strong>
+                <small id="committeeTrainingQuestionAnswerHelp">Marca una alternativa correcta.</small>
+              </div>
+              <div id="committeeTrainingQuestionOptionsEditor"></div>
+              <label id="committeeTrainingFreeTextField" class="hidden">
+                <span>Respuestas aceptadas</span>
+                <textarea id="committeeTrainingFreeTextAnswers" rows="4" placeholder="Una respuesta aceptada por línea"></textarea>
+                <small>La comparación no distingue entre mayúsculas y minúsculas.</small>
+              </label>
+            </section>
+
+            <div id="committeeTrainingQuestionMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="cancelCommitteeTrainingQuestionModal" class="secondary-btn" type="button">Cancelar</button>
+              <button id="saveCommitteeTrainingQuestionButton" class="primary-btn" type="button">Guardar pregunta</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="committeeTrainingResultsModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card committee-training-results-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">RESULTADOS DE LA CAPACITACIÓN</span>
+                <h3 id="committeeTrainingResultsTitle">Resultados</h3>
+                <p id="committeeTrainingResultsSubtitle" class="modal-subtitle">Participación, notas y brechas de aprendizaje.</p>
+              </div>
+              <button id="closeCommitteeTrainingResultsModal" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="committee-training-results-stats">
+              <article><span>Intentos</span><strong id="committeeTrainingResultsAttempts">0</strong></article>
+              <article><span>Participantes</span><strong id="committeeTrainingResultsParticipants">0</strong></article>
+              <article><span>Aprobación</span><strong id="committeeTrainingResultsApproval">0%</strong></article>
+              <article><span>Promedio</span><strong id="committeeTrainingResultsAverage">0.0</strong></article>
+            </div>
+
+            <div class="committee-training-results-layout">
+              <section>
+                <h4>Resultados individuales</h4>
+                <div class="committee-training-results-table-wrap">
+                  <table class="data-table committee-training-results-table">
+                    <thead><tr><th>Participante</th><th>Intento</th><th>Nota</th><th>Resultado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+                    <tbody id="committeeTrainingResultsBody"><tr><td colspan="6" class="table-empty">Sin resultados.</td></tr></tbody>
+                  </table>
+                </div>
+                <div id="committeeTrainingAttemptDetail" class="committee-training-attempt-detail hidden"></div>
+              </section>
+
+              <aside>
+                <h4>Temas a reforzar</h4>
+                <div id="committeeTrainingGapAnalysis" class="committee-training-gap-analysis"></div>
+              </aside>
+            </div>
           </div>
         </div>
 
@@ -3175,6 +3399,6 @@
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16d2"></script>
+  <script src="app.js?v=20261012-16d3"></script>
 </body>
 </html>

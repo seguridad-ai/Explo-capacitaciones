@@ -358,6 +358,12 @@ let committeeTrainingVideos = [];
 let committeeTrainingsLoaded = false;
 let activeCommitteeTrainingId = null;
 let activeCommitteeTrainingVideoId = null;
+let committeeTrainingQuestionRecords = [];
+let committeeTrainingQuestionDetails = [];
+let committeeTrainingParticipants = [];
+let committeeTrainingAttempts = [];
+let activeCommitteeTrainingQuestionId = null;
+let committeeTrainingQuestionRemovedImagePath = null;
 
 let publicCommitteeTrainingToken = '';
 let publicCommitteeTrainingDni = '';
@@ -373,6 +379,12 @@ let publicCommitteeTrainingYoutubeTimer = null;
 let publicCommitteeTrainingExternalTimer = null;
 let publicCommitteeTrainingExternalStartedAt = null;
 let publicCommitteeTrainingCompletionBusy = false;
+let publicCommitteeTrainingExamState = null;
+let publicCommitteeTrainingExamRun = null;
+let publicCommitteeTrainingLastExamResult = null;
+let publicCommitteeTrainingLastExamAttemptId = null;
+let publicCommitteeTrainingExamTimerInterval = null;
+let publicCommitteeTrainingExamDeadline = null;
 let youtubeApiPromise = null;
 
 
@@ -3209,6 +3221,8 @@ function renderCommitteeTrainingList() {
     const videos=committeeTrainingVideosFor(record.id);
     const totalMinutes=committeeTrainingTotalMinutes(record.id);
     const canManage=committeeTrainingCanManage(record);
+    const questions=committeeTrainingQuestionRecords.filter(x=>x.capacitacion_id===record.id);
+    const attempts=committeeTrainingAttempts.filter(x=>x.capacitacion_id===record.id);
     const sources=[...new Set(videos.map(x=>committeeTrainingSourceLabel(x.tipo_fuente)))];
 
     return `
@@ -3230,6 +3244,8 @@ function renderCommitteeTrainingList() {
             <span>Expositor: ${escapeHtml(record.expositor || '—')}</span>
             <span>${Number(record.duracion_horas || 0)} h</span>
             <span>${videos.length} video(s)</span>
+            <span>${questions.length} pregunta(s)</span>
+            <span>${attempts.length} resultado(s)</span>
             ${totalMinutes ? `<span>${Math.round(totalMinutes)} min de video</span>` : ''}
             ${sources.length ? `<span>${escapeHtml(sources.join(' · '))}</span>` : ''}
             <span>Nota mín.: ${Number(record.nota_minima || 0)}</span>
@@ -3238,7 +3254,8 @@ function renderCommitteeTrainingList() {
         </div>
 
         <div class="committee-training-card-actions">
-          ${canManage && record.estado==='LISTA' ? `<button class="meeting-share-sign-btn" type="button" data-share-committee-training="${record.id}">Compartir</button>` : ''}
+          ${canManage && record.estado==='LISTA' && videos.length>0 && questions.length>0 ? `<button class="meeting-share-sign-btn" type="button" data-share-committee-training="${record.id}">Compartir</button>` : ''}
+          <button class="evaluation-results-btn" type="button" data-results-committee-training="${record.id}">Resultados</button>
           <button class="committee-manage-btn" type="button" data-open-committee-training="${record.id}">
             ${canManage?'Administrar':'Ver contenido'}
           </button>
@@ -3261,6 +3278,10 @@ function renderCommitteeTrainingList() {
     });
   });
 
+  container.querySelectorAll('[data-results-committee-training]').forEach(button=>{
+    button.addEventListener('click',()=>openCommitteeTrainingResultsModal(button.dataset.resultsCommitteeTraining));
+  });
+
   container.querySelectorAll('[data-delete-committee-training]').forEach(button=>{
     button.addEventListener('click',()=>deleteCommitteeTraining(button.dataset.deleteCommitteeTraining));
   });
@@ -3277,7 +3298,7 @@ async function loadCommitteeTrainingsModule(force=false) {
     return;
   }
 
-  const [trainings,videos]=await Promise.all([
+  const [trainings,videos,questions,participants,attempts]=await Promise.all([
     client.from('comite_sst_capacitaciones')
       .select('*,comites_sst(id,codigo,tipo,nombre,sede_id,proyecto_id,estado)')
       .order('fecha',{ascending:false})
@@ -3285,20 +3306,36 @@ async function loadCommitteeTrainingsModule(force=false) {
     client.from('comite_sst_capacitacion_videos')
       .select('*')
       .order('capacitacion_id',{ascending:true})
-      .order('orden',{ascending:true})
+      .order('orden',{ascending:true}),
+    client.from('comite_sst_capacitacion_preguntas')
+      .select('id,capacitacion_id,orden,nivel_tema,peso,activo')
+      .eq('activo',true)
+      .order('capacitacion_id',{ascending:true})
+      .order('orden',{ascending:true}),
+    client.from('comite_sst_capacitacion_participantes')
+      .select('id,capacitacion_id,trabajador_id,firma_electronica,estado,contenido_completado_at,trabajadores(id,dni,nombres,apellidos,cargo,area)')
+      .order('created_at',{ascending:false}),
+    client.from('comite_sst_capacitacion_intentos')
+      .select('*')
+      .not('finalizado_at','is',null)
+      .order('finalizado_at',{ascending:false})
   ]);
 
-  if (trainings.error || videos.error) {
-    console.error(trainings.error,videos.error);
+  if (trainings.error || videos.error || questions.error || participants.error || attempts.error) {
+    console.error(trainings.error,videos.error,questions.error,participants.error,attempts.error);
     committeeMessage(
-      trainings.error?.message || videos.error?.message ||
-      'No fue posible cargar las capacitaciones del Comité SST.'
+      trainings.error?.message || videos.error?.message || questions.error?.message ||
+      participants.error?.message || attempts.error?.message ||
+      'No fue posible cargar las capacitaciones del Comité SST. Ejecuta el SQL de la Etapa 16D.3.'
     );
     return;
   }
 
   committeeTrainingRecords=trainings.data || [];
   committeeTrainingVideos=videos.data || [];
+  committeeTrainingQuestionRecords=questions.data || [];
+  committeeTrainingParticipants=participants.data || [];
+  committeeTrainingAttempts=attempts.data || [];
   committeeTrainingsLoaded=true;
 
   populateCommitteeTrainingSelectors();
@@ -3306,7 +3343,7 @@ async function loadCommitteeTrainingsModule(force=false) {
   renderCommitteeTrainingList();
 }
 
-function openCommitteeTrainingModal(record=null) {
+async function openCommitteeTrainingModal(record=null) {
   committeeTrainingMessage('');
   activeCommitteeTrainingId=record?.id || null;
 
@@ -3331,6 +3368,12 @@ function openCommitteeTrainingModal(record=null) {
   document.getElementById('committeeTrainingHours').value=record?.duracion_horas ?? 1;
   document.getElementById('committeeTrainingMinGrade').value=record?.nota_minima ?? 16;
   document.getElementById('committeeTrainingAttempts').value=String(record?.max_intentos ?? 2);
+  document.getElementById('committeeTrainingExamTime').value=record?.tiempo_examen_min ?? '';
+  document.getElementById('committeeTrainingShuffleQuestions').checked=record?.mezclar_preguntas ?? true;
+  document.getElementById('committeeTrainingShuffleOptions').checked=record?.mezclar_opciones ?? true;
+  document.getElementById('committeeTrainingShowCorrectFinal').checked=record?.mostrar_correctas_final ?? true;
+  document.getElementById('committeeTrainingShowExplanation').checked=record?.mostrar_explicacion ?? true;
+  document.getElementById('committeeTrainingRetryFailed').checked=record?.reintento_solo_desaprobado ?? true;
   document.getElementById('committeeTrainingObjective').value=record?.objetivo || '';
   document.getElementById('committeeTrainingDescription').value=record?.descripcion || '';
   document.getElementById('committeeTrainingStatus').value=record?.estado || 'BORRADOR';
@@ -3346,7 +3389,9 @@ function openCommitteeTrainingModal(record=null) {
   document.getElementById('saveCommitteeTrainingButton')?.classList.toggle('hidden',!canManage);
 
   const shareSection=document.getElementById('committeeTrainingShareSection');
-  const shareAvailable=!!record && record.estado==='LISTA';
+  const shareAvailable=!!record && record.estado==='LISTA'
+    && committeeTrainingVideosFor(record.id).length>0
+    && committeeTrainingQuestionRecords.filter(x=>x.capacitacion_id===record.id).length>0;
   shareSection?.classList.toggle('hidden',!shareAvailable);
   const shareInput=document.getElementById('committeeTrainingPublicLink');
   if (shareInput) shareInput.value=shareAvailable ? committeeTrainingPublicUrl(record) : '';
@@ -3356,6 +3401,16 @@ function openCommitteeTrainingModal(record=null) {
   document.getElementById('addCommitteeTrainingVideoButton')?.classList.toggle('hidden',!record || !canManage);
 
   if (record) renderCommitteeTrainingVideoList(record.id);
+
+  const examSection=document.getElementById('committeeTrainingExamSection');
+  examSection?.classList.toggle('hidden',!record);
+  const examHasResults=!!record && committeeTrainingAttempts.some(x=>x.capacitacion_id===record.id && x.finalizado_at);
+  document.getElementById('addCommitteeTrainingQuestionButton')?.classList.toggle('hidden',!record || !canManage || examHasResults);
+  ['committeeTrainingExamTime','committeeTrainingMinGrade','committeeTrainingAttempts','committeeTrainingShuffleQuestions','committeeTrainingShuffleOptions','committeeTrainingShowCorrectFinal','committeeTrainingShowExplanation','committeeTrainingRetryFailed'].forEach(id=>{
+    const el=document.getElementById(id);
+    if (el && examHasResults) el.disabled=true;
+  });
+  if (record) await loadCommitteeTrainingQuestions(record.id);
 
   const modal=document.getElementById('committeeTrainingModal');
   modal.classList.remove('hidden');
@@ -3384,6 +3439,13 @@ async function saveCommitteeTraining(event) {
   const duracion_horas=Number(document.getElementById('committeeTrainingHours').value || 0);
   const nota_minima=Number(document.getElementById('committeeTrainingMinGrade').value || 0);
   const max_intentos=Number(document.getElementById('committeeTrainingAttempts').value || 1);
+  const examTimeRaw=document.getElementById('committeeTrainingExamTime').value;
+  const tiempo_examen_min=examTimeRaw ? Number(examTimeRaw) : null;
+  const mezclar_preguntas=document.getElementById('committeeTrainingShuffleQuestions').checked;
+  const mezclar_opciones=document.getElementById('committeeTrainingShuffleOptions').checked;
+  const mostrar_correctas_final=document.getElementById('committeeTrainingShowCorrectFinal').checked;
+  const mostrar_explicacion=document.getElementById('committeeTrainingShowExplanation').checked;
+  const reintento_solo_desaprobado=document.getElementById('committeeTrainingRetryFailed').checked;
   const objetivo=document.getElementById('committeeTrainingObjective').value.trim() || null;
   const descripcion=document.getElementById('committeeTrainingDescription').value.trim() || null;
   const estado=document.getElementById('committeeTrainingStatus').value;
@@ -3405,11 +3467,12 @@ async function saveCommitteeTraining(event) {
   }
 
   const existingVideos=id ? committeeTrainingVideosFor(id) : [];
-  if (estado==='LISTA' && existingVideos.length===0) {
+  const existingQuestions=id ? committeeTrainingQuestionRecords.filter(x=>x.capacitacion_id===id) : [];
+  if (estado==='LISTA' && (existingVideos.length===0 || existingQuestions.length===0)) {
     committeeTrainingMessage(
       id
-        ? 'Para marcar la capacitación como LISTA agrega al menos un video.'
-        : 'Primero guárdala como BORRADOR, agrega los videos y después cambia el estado a LISTA.'
+        ? 'Para marcar la capacitación como LISTA agrega al menos un video y una pregunta de examen.'
+        : 'Primero guárdala como BORRADOR, agrega los videos y las preguntas, y después cambia el estado a LISTA.'
     );
     return;
   }
@@ -3423,6 +3486,12 @@ async function saveCommitteeTraining(event) {
     duracion_horas,
     nota_minima,
     max_intentos,
+    tiempo_examen_min,
+    mezclar_preguntas,
+    mezclar_opciones,
+    mostrar_correctas_final,
+    mostrar_explicacion,
+    reintento_solo_desaprobado,
     objetivo,
     descripcion,
     estado
@@ -3895,6 +3964,11 @@ async function deleteCommitteeTraining(id) {
     .filter(x=>x.tipo_fuente==='MP4_UPLOAD' && x.storage_path)
     .map(x=>x.storage_path);
 
+  const questionImages=await client.from('comite_sst_capacitacion_preguntas')
+    .select('imagen_path')
+    .eq('capacitacion_id',id);
+  const questionImagePaths=(questionImages.data || []).map(x=>x.imagen_path).filter(Boolean);
+
   const {error}=await client.from('comite_sst_capacitaciones').delete().eq('id',id);
   if (error) {
     committeeMessage(error.message || 'No fue posible eliminar la capacitación.');
@@ -3904,6 +3978,10 @@ async function deleteCommitteeTraining(id) {
   if (paths.length) {
     const remove=await client.storage.from('comite-sst-capacitaciones').remove(paths);
     if (remove.error) console.warn(remove.error);
+  }
+  if (questionImagePaths.length) {
+    const removeImages=await client.storage.from('comite-sst-preguntas').remove(questionImagePaths);
+    if (removeImages.error) console.warn(removeImages.error);
   }
 
   committeeTrainingsLoaded=false;
@@ -4001,6 +4079,936 @@ function closeCommitteeTrainingVideoPreview() {
 }
 
 
+
+// ============================================================
+// ETAPA 16D.3 · EXAMEN FINAL + RESULTADOS + RETROALIMENTACIÓN
+// ============================================================
+
+function committeeTrainingQuestionMessage(message='',type='error') {
+  const el=document.getElementById('committeeTrainingQuestionMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function committeeTrainingQuestionTypeLabel(type) {
+  return {
+    SINGLE:'Opción múltiple',
+    TRUE_FALSE:'Verdadero / Falso',
+    MULTIPLE:'Varias respuestas',
+    FREE_TEXT:'Respuesta libre'
+  }[type] || type || '—';
+}
+
+async function loadCommitteeTrainingQuestions(trainingId) {
+  const container=document.getElementById('committeeTrainingQuestionList');
+  if (container) container.innerHTML='<div class="training-library-empty">Cargando preguntas…</div>';
+
+  const {data,error}=await client.rpc('listar_preguntas_capacitacion_comite',{
+    p_capacitacion_id:trainingId
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    committeeTrainingQuestionDetails=[];
+    if (container) container.innerHTML=`<div class="training-library-empty">${escapeHtml(data?.error || error?.message || 'No fue posible cargar las preguntas.')}</div>`;
+    return [];
+  }
+
+  committeeTrainingQuestionDetails=data.preguntas || [];
+  renderCommitteeTrainingQuestions(trainingId);
+  return committeeTrainingQuestionDetails;
+}
+
+function renderCommitteeTrainingQuestions(trainingId) {
+  const container=document.getElementById('committeeTrainingQuestionList');
+  if (!container) return;
+
+  const training=committeeTrainingRecords.find(x=>x.id===trainingId);
+  const canManage=committeeTrainingCanManage(training);
+  const examLocked=committeeTrainingAttempts.some(x=>x.capacitacion_id===trainingId && x.finalizado_at);
+  const questions=committeeTrainingQuestionDetails || [];
+  const totalPoints=questions.reduce((sum,q)=>sum+Number(q.peso || 0),0);
+
+  document.getElementById('committeeTrainingQuestionCount').textContent=String(questions.length);
+  document.getElementById('committeeTrainingQuestionPoints').textContent=String(Number(totalPoints.toFixed(2)));
+  document.getElementById('committeeTrainingExamPassing').textContent=String(Number(training?.nota_minima ?? 16));
+  document.getElementById('committeeTrainingExamAttempts').textContent=String(Number(training?.max_intentos ?? 1));
+
+  if (!questions.length) {
+    container.innerHTML=`
+      <div class="committee-question-empty">
+        <span>?</span>
+        <strong>El examen todavía no tiene preguntas</strong>
+        <p>Agrega preguntas para que el examen pueda habilitarse al finalizar los videos.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML=questions.map((q,index)=>{
+    const correct=q.tipo==='FREE_TEXT'
+      ? (q.respuestas_aceptadas || []).join(' / ')
+      : (q.opciones || []).filter(o=>o.es_correcta).map(o=>o.texto).join(' / ');
+
+    return `
+      <article class="committee-question-card">
+        <div class="committee-question-number">${index+1}</div>
+        <div class="committee-question-main">
+          <div class="committee-question-title-row">
+            <strong>${escapeHtml(q.enunciado || '')}</strong>
+            <span class="committee-question-points">${Number(q.peso || 0)} pts</span>
+          </div>
+          <div class="committee-question-meta">
+            <span>${escapeHtml(committeeTrainingQuestionTypeLabel(q.tipo))}</span>
+            <span>${escapeHtml(q.nivel_tema || 'General')}</span>
+          </div>
+          ${q.imagen_url ? `<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de la pregunta" class="committee-question-thumb" />` : ''}
+          <div class="committee-question-correct"><b>Correcta:</b> ${escapeHtml(correct || '—')}</div>
+          ${q.explicacion ? `<p class="committee-question-explanation"><b>Explicación:</b> ${escapeHtml(q.explicacion)}</p>` : ''}
+        </div>
+        ${canManage && !examLocked ? `<div class="committee-question-actions"><button class="secondary-btn small-btn" type="button" data-edit-committee-question="${q.id}">Editar</button><button class="induction-delete-btn small-btn" type="button" data-delete-committee-question="${q.id}">Eliminar</button></div>` : (examLocked ? '<span class="committee-exam-locked-note">Examen bloqueado por resultados existentes</span>' : '')}
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-edit-committee-question]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const question=committeeTrainingQuestionDetails.find(x=>x.id===button.dataset.editCommitteeQuestion);
+      openCommitteeTrainingQuestionModal(question);
+    });
+  });
+
+  container.querySelectorAll('[data-delete-committee-question]').forEach(button=>{
+    button.addEventListener('click',()=>deleteCommitteeTrainingQuestion(button.dataset.deleteCommitteeQuestion));
+  });
+}
+
+function committeeTrainingDefaultOptions(type) {
+  if (type==='TRUE_FALSE') {
+    return [
+      {texto:'Verdadero',es_correcta:true},
+      {texto:'Falso',es_correcta:false}
+    ];
+  }
+  return [
+    {texto:'',es_correcta:true},
+    {texto:'',es_correcta:false},
+    {texto:'',es_correcta:false},
+    {texto:'',es_correcta:false}
+  ];
+}
+
+function collectCommitteeTrainingQuestionOptionDrafts() {
+  return [...document.querySelectorAll('[data-committee-question-option-row]')].map(row=>({
+    texto:row.querySelector('.committee-question-option-text')?.value || '',
+    es_correcta:!!row.querySelector('.committee-question-option-correct')?.checked
+  }));
+}
+
+function renderCommitteeTrainingQuestionOptions(type='SINGLE',question=null,overrideOptions=null) {
+  const editor=document.getElementById('committeeTrainingQuestionOptionsEditor');
+  const freeField=document.getElementById('committeeTrainingFreeTextField');
+  const help=document.getElementById('committeeTrainingQuestionAnswerHelp');
+  if (!editor || !freeField) return;
+
+  const isFree=type==='FREE_TEXT';
+  freeField.classList.toggle('hidden',!isFree);
+  editor.classList.toggle('hidden',isFree);
+
+  if (isFree) {
+    help.textContent='Escribe una o más respuestas aceptadas, una por línea.';
+    const accepted=question?.respuestas_aceptadas || [];
+    document.getElementById('committeeTrainingFreeTextAnswers').value=accepted.join('\n');
+    editor.innerHTML='';
+    return;
+  }
+
+  let options=overrideOptions || question?.opciones || committeeTrainingDefaultOptions(type);
+  if (type==='TRUE_FALSE') {
+    const correctText=(options.find(x=>x.es_correcta)?.texto || 'Verdadero').toLowerCase();
+    options=[
+      {texto:'Verdadero',es_correcta:correctText==='verdadero'},
+      {texto:'Falso',es_correcta:correctText==='falso'}
+    ];
+  }
+
+  help.textContent=type==='MULTIPLE'
+    ? 'Marca todas las alternativas correctas.'
+    : 'Marca una sola alternativa correcta.';
+
+  const inputType=type==='MULTIPLE'?'checkbox':'radio';
+  editor.innerHTML=`
+    <div class="committee-question-option-list">
+      ${options.map((option,index)=>`
+        <div class="committee-question-option-row" data-committee-question-option-row>
+          <input class="committee-question-option-correct" type="${inputType}" ${inputType==='radio'?'name="committee-question-correct"':''} ${option.es_correcta?'checked':''} aria-label="Respuesta correcta" />
+          <span class="committee-question-option-letter">${String.fromCharCode(65+index)}</span>
+          <input class="committee-question-option-text" value="${escapeHtml(option.texto || '')}" placeholder="Alternativa ${String.fromCharCode(65+index)}" ${type==='TRUE_FALSE'?'readonly':''} />
+          ${type!=='TRUE_FALSE' && options.length>2 ? `<button class="committee-question-remove-option" type="button" data-remove-committee-question-option="${index}">×</button>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    ${type!=='TRUE_FALSE' ? '<button id="addCommitteeTrainingQuestionOptionButton" class="secondary-btn small-btn" type="button">+ Agregar alternativa</button>' : ''}
+  `;
+
+  editor.querySelectorAll('[data-remove-committee-question-option]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const current=collectCommitteeTrainingQuestionOptionDrafts();
+      current.splice(Number(button.dataset.removeCommitteeQuestionOption),1);
+      renderCommitteeTrainingQuestionOptions(type,null,current);
+    });
+  });
+
+  document.getElementById('addCommitteeTrainingQuestionOptionButton')?.addEventListener('click',()=>{
+    const current=collectCommitteeTrainingQuestionOptionDrafts();
+    if (current.length>=8) {
+      committeeTrainingQuestionMessage('Se permite un máximo de 8 alternativas.');
+      return;
+    }
+    current.push({texto:'',es_correcta:false});
+    renderCommitteeTrainingQuestionOptions(type,null,current);
+  });
+}
+
+function renderCommitteeTrainingQuestionImagePreview(url='',path='') {
+  const box=document.getElementById('committeeTrainingQuestionImagePreview');
+  if (!box) return;
+  box.classList.toggle('hidden',!url);
+  box.innerHTML=url ? `
+    <div class="committee-question-image-preview-card">
+      <img src="${escapeHtml(url)}" alt="Imagen actual de la pregunta" />
+      <button id="removeCommitteeTrainingQuestionImageButton" class="induction-delete-btn small-btn" type="button">Quitar imagen</button>
+    </div>
+  ` : '';
+
+  document.getElementById('removeCommitteeTrainingQuestionImageButton')?.addEventListener('click',()=>{
+    committeeTrainingQuestionRemovedImagePath=path || document.getElementById('committeeTrainingQuestionImagePath').value || null;
+    document.getElementById('committeeTrainingQuestionImagePath').value='';
+    document.getElementById('committeeTrainingQuestionImageUrl').value='';
+    document.getElementById('committeeTrainingQuestionImage').value='';
+    renderCommitteeTrainingQuestionImagePreview('','');
+  });
+}
+
+function openCommitteeTrainingQuestionModal(question=null) {
+  if (!activeCommitteeTrainingId) return;
+  activeCommitteeTrainingQuestionId=question?.id || null;
+  committeeTrainingQuestionRemovedImagePath=null;
+  committeeTrainingQuestionMessage('');
+
+  document.getElementById('committeeTrainingQuestionModalTitle').textContent=question?'Editar pregunta':'Nueva pregunta';
+  document.getElementById('committeeTrainingQuestionId').value=question?.id || '';
+  document.getElementById('committeeTrainingQuestionText').value=question?.enunciado || '';
+  document.getElementById('committeeTrainingQuestionType').value=question?.tipo || 'SINGLE';
+  document.getElementById('committeeTrainingQuestionTopic').value=question?.nivel_tema || 'General';
+  document.getElementById('committeeTrainingQuestionWeight').value=question?.peso ?? 1;
+  document.getElementById('committeeTrainingQuestionExplanation').value=question?.explicacion || '';
+  document.getElementById('committeeTrainingQuestionImage').value='';
+  document.getElementById('committeeTrainingQuestionImagePath').value=question?.imagen_path || '';
+  document.getElementById('committeeTrainingQuestionImageUrl').value=question?.imagen_url || '';
+  document.getElementById('committeeTrainingFreeTextAnswers').value=(question?.respuestas_aceptadas || []).join('\n');
+
+  renderCommitteeTrainingQuestionImagePreview(question?.imagen_url || '',question?.imagen_path || '');
+  renderCommitteeTrainingQuestionOptions(question?.tipo || 'SINGLE',question);
+
+  const modal=document.getElementById('committeeTrainingQuestionModal');
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeTrainingQuestionModal() {
+  const modal=document.getElementById('committeeTrainingQuestionModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  activeCommitteeTrainingQuestionId=null;
+  committeeTrainingQuestionRemovedImagePath=null;
+  if (!document.getElementById('committeeTrainingModal')?.classList.contains('hidden')) {
+    document.body.classList.add('modal-open');
+  } else {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function saveCommitteeTrainingQuestion() {
+  if (!activeCommitteeTrainingId) return;
+  committeeTrainingQuestionMessage('');
+
+  const training=committeeTrainingRecords.find(x=>x.id===activeCommitteeTrainingId);
+  if (!training || !committeeTrainingCanManage(training)) return;
+
+  const id=document.getElementById('committeeTrainingQuestionId').value || null;
+  const enunciado=document.getElementById('committeeTrainingQuestionText').value.trim();
+  const tipo=document.getElementById('committeeTrainingQuestionType').value;
+  const nivel_tema=document.getElementById('committeeTrainingQuestionTopic').value.trim() || 'General';
+  const peso=Number(document.getElementById('committeeTrainingQuestionWeight').value || 0);
+  const explicacion=document.getElementById('committeeTrainingQuestionExplanation').value.trim() || '';
+  const file=document.getElementById('committeeTrainingQuestionImage').files?.[0] || null;
+  const previousPath=document.getElementById('committeeTrainingQuestionImagePath').value || null;
+  let imagen_path=previousPath;
+  let imagen_url=document.getElementById('committeeTrainingQuestionImageUrl').value || '';
+  let uploadedPath=null;
+
+  if (!enunciado) {
+    committeeTrainingQuestionMessage('Ingresa el enunciado de la pregunta.');
+    return;
+  }
+  if (!peso || peso<=0) {
+    committeeTrainingQuestionMessage('El peso debe ser mayor que cero.');
+    return;
+  }
+
+  let opciones=[];
+  let respuestas_aceptadas=[];
+
+  if (tipo==='FREE_TEXT') {
+    respuestas_aceptadas=document.getElementById('committeeTrainingFreeTextAnswers').value
+      .split('\n')
+      .map(x=>x.trim())
+      .filter(Boolean);
+    if (!respuestas_aceptadas.length) {
+      committeeTrainingQuestionMessage('Agrega al menos una respuesta aceptada.');
+      return;
+    }
+  } else {
+    opciones=collectCommitteeTrainingQuestionOptionDrafts()
+      .map(x=>({texto:x.texto.trim(),es_correcta:x.es_correcta}))
+      .filter(x=>x.texto);
+    if (opciones.length<2) {
+      committeeTrainingQuestionMessage('Agrega al menos dos alternativas.');
+      return;
+    }
+    const correct=opciones.filter(x=>x.es_correcta).length;
+    if (['SINGLE','TRUE_FALSE'].includes(tipo) && correct!==1) {
+      committeeTrainingQuestionMessage('Marca una sola alternativa correcta.');
+      return;
+    }
+    if (tipo==='MULTIPLE' && correct<1) {
+      committeeTrainingQuestionMessage('Marca al menos una alternativa correcta.');
+      return;
+    }
+  }
+
+  if (file) {
+    const allowed=['image/jpeg','image/png','image/webp','image/gif'];
+    if (!allowed.includes(file.type)) {
+      committeeTrainingQuestionMessage('La imagen debe ser JPG, PNG, WEBP o GIF.');
+      return;
+    }
+    if (file.size>5*1024*1024) {
+      committeeTrainingQuestionMessage('La imagen supera el máximo de 5 MB.');
+      return;
+    }
+  }
+
+  const button=document.getElementById('saveCommitteeTrainingQuestionButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent=file?'Subiendo imagen…':'Guardando…';
+
+  try {
+    if (file) {
+      const extension=(file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path=`${activeCommitteeTrainingId}/${crypto.randomUUID()}.${extension}`;
+      const upload=await client.storage.from('comite-sst-preguntas').upload(path,file,{
+        contentType:file.type,
+        cacheControl:'3600',
+        upsert:false
+      });
+      if (upload.error) throw upload.error;
+      uploadedPath=path;
+      imagen_path=path;
+      imagen_url=client.storage.from('comite-sst-preguntas').getPublicUrl(path).data.publicUrl;
+    }
+
+    const payload={
+      enunciado,
+      tipo,
+      nivel_tema,
+      explicacion,
+      peso,
+      imagen_url,
+      imagen_path,
+      respuestas_aceptadas,
+      opciones
+    };
+
+    const {data,error}=await client.rpc('guardar_pregunta_capacitacion_comite',{
+      p_capacitacion_id:activeCommitteeTrainingId,
+      p_pregunta_id:id,
+      p_data:payload
+    });
+
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || 'No fue posible guardar la pregunta.');
+
+    const pathsToRemove=new Set();
+    if (committeeTrainingQuestionRemovedImagePath) pathsToRemove.add(committeeTrainingQuestionRemovedImagePath);
+    if (file && previousPath && previousPath!==imagen_path) pathsToRemove.add(previousPath);
+    pathsToRemove.delete(imagen_path);
+    if (pathsToRemove.size) {
+      const remove=await client.storage.from('comite-sst-preguntas').remove([...pathsToRemove]);
+      if (remove.error) console.warn(remove.error);
+    }
+
+    closeCommitteeTrainingQuestionModal();
+    committeeTrainingsLoaded=false;
+    await loadCommitteeTrainingsModule(true);
+    await loadCommitteeTrainingQuestions(activeCommitteeTrainingId);
+    committeeTrainingMessage(id?'Pregunta actualizada correctamente.':'Pregunta agregada correctamente.','success');
+  } catch(err) {
+    console.error(err);
+    if (uploadedPath) {
+      const cleanup=await client.storage.from('comite-sst-preguntas').remove([uploadedPath]);
+      if (cleanup.error) console.warn(cleanup.error);
+    }
+    committeeTrainingQuestionMessage(err?.message || 'No fue posible guardar la pregunta.');
+  } finally {
+    button.disabled=false;
+    button.textContent=old;
+  }
+}
+
+async function deleteCommitteeTrainingQuestion(id) {
+  const q=committeeTrainingQuestionDetails.find(x=>x.id===id);
+  if (!q) return;
+  if (!confirm(`¿Eliminar la pregunta ${q.orden}? Esta acción también elimina sus alternativas.`)) return;
+
+  const {data,error}=await client.rpc('eliminar_pregunta_capacitacion_comite',{
+    p_pregunta_id:id
+  });
+  if (error || !data?.ok) {
+    committeeTrainingMessage(data?.error || error?.message || 'No fue posible eliminar la pregunta.');
+    return;
+  }
+
+  if (q.imagen_path) {
+    const remove=await client.storage.from('comite-sst-preguntas').remove([q.imagen_path]);
+    if (remove.error) console.warn(remove.error);
+  }
+
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+  await loadCommitteeTrainingQuestions(activeCommitteeTrainingId);
+  committeeTrainingMessage('Pregunta eliminada.','success');
+}
+
+function committeeTrainingParticipantById(id) {
+  return committeeTrainingParticipants.find(x=>x.id===id) || null;
+}
+
+function committeeTrainingParticipantWorker(participant) {
+  const value=participant?.trabajadores;
+  return Array.isArray(value) ? (value[0] || {}) : (value || {});
+}
+
+function committeeTrainingParticipantName(participant) {
+  const worker=committeeTrainingParticipantWorker(participant);
+  return [worker.apellidos,worker.nombres].filter(Boolean).join(' ') || '—';
+}
+
+async function openCommitteeTrainingResultsModal(trainingId) {
+  committeeTrainingsLoaded=false;
+  await loadCommitteeTrainingsModule(true);
+
+  const training=committeeTrainingRecords.find(x=>x.id===trainingId);
+  if (!training) return;
+
+  const attempts=committeeTrainingAttempts
+    .filter(x=>x.capacitacion_id===trainingId && x.finalizado_at)
+    .sort((a,b)=>new Date(b.finalizado_at)-new Date(a.finalizado_at));
+
+  const uniqueParticipants=[...new Set(attempts.map(x=>x.participante_id))];
+  const approvedParticipants=new Set(attempts.filter(x=>x.aprobado).map(x=>x.participante_id));
+  const bestNotes=uniqueParticipants.map(pid=>Math.max(...attempts.filter(x=>x.participante_id===pid).map(x=>Number(x.nota || 0))));
+  const average=bestNotes.length ? bestNotes.reduce((a,b)=>a+b,0)/bestNotes.length : 0;
+  const approval=uniqueParticipants.length ? Math.round(approvedParticipants.size/uniqueParticipants.length*100) : 0;
+
+  document.getElementById('committeeTrainingResultsTitle').textContent=training.titulo || 'Resultados';
+  document.getElementById('committeeTrainingResultsSubtitle').textContent=`${training.codigo || ''} · Nota mínima ${Number(training.nota_minima || 0)}`;
+  document.getElementById('committeeTrainingResultsAttempts').textContent=String(attempts.length);
+  document.getElementById('committeeTrainingResultsParticipants').textContent=String(uniqueParticipants.length);
+  document.getElementById('committeeTrainingResultsApproval').textContent=`${approval}%`;
+  document.getElementById('committeeTrainingResultsAverage').textContent=average.toFixed(1);
+
+  const body=document.getElementById('committeeTrainingResultsBody');
+  body.innerHTML=attempts.length ? attempts.map(attempt=>{
+    const participant=committeeTrainingParticipantById(attempt.participante_id);
+    const worker=committeeTrainingParticipantWorker(participant);
+    return `
+      <tr>
+        <td><strong>${escapeHtml(committeeTrainingParticipantName(participant))}</strong><small>${escapeHtml(worker.dni || '')}</small></td>
+        <td>${attempt.numero_intento}</td>
+        <td><strong>${Number(attempt.nota || 0).toFixed(1)}</strong></td>
+        <td><span class="result-status ${attempt.aprobado?'approved':'failed'}">${attempt.aprobado?'APROBADO':'DESAPROBADO'}</span></td>
+        <td>${new Date(attempt.finalizado_at).toLocaleString('es-PE')}</td>
+        <td><button class="eval-row-btn" type="button" data-committee-training-attempt-detail="${attempt.id}">⌄ Ver</button></td>
+      </tr>
+    `;
+  }).join('') : '<tr><td colspan="6" class="table-empty">Todavía no hay resultados.</td></tr>';
+
+  body.querySelectorAll('[data-committee-training-attempt-detail]').forEach(button=>{
+    button.addEventListener('click',()=>toggleCommitteeTrainingAttemptDetail(button.dataset.committeeTrainingAttemptDetail));
+  });
+
+  document.getElementById('committeeTrainingAttemptDetail').classList.add('hidden');
+  document.getElementById('committeeTrainingAttemptDetail').innerHTML='';
+  await renderCommitteeTrainingGapAnalysis(trainingId,attempts);
+
+  const modal=document.getElementById('committeeTrainingResultsModal');
+  modal.dataset.trainingId=trainingId;
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closeCommitteeTrainingResultsModal() {
+  const modal=document.getElementById('committeeTrainingResultsModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  const detail=document.getElementById('committeeTrainingAttemptDetail');
+  if (detail) { detail.classList.add('hidden'); detail.innerHTML=''; detail.dataset.attemptId=''; }
+  if (!document.getElementById('committeeTrainingModal')?.classList.contains('hidden')) {
+    document.body.classList.add('modal-open');
+  } else {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function toggleCommitteeTrainingAttemptDetail(attemptId) {
+  const box=document.getElementById('committeeTrainingAttemptDetail');
+  if (!box) return;
+  if (box.dataset.attemptId===attemptId && !box.classList.contains('hidden')) {
+    box.classList.add('hidden');
+    box.dataset.attemptId='';
+    return;
+  }
+
+  box.classList.remove('hidden');
+  box.dataset.attemptId=attemptId;
+  box.innerHTML='<div class="training-library-empty">Cargando respuestas…</div>';
+
+  const {data,error}=await client.rpc('obtener_resultado_capacitacion_comite_admin',{
+    p_intento_id:attemptId
+  });
+
+  if (error || !data?.ok) {
+    box.innerHTML=`<div class="training-library-empty">${escapeHtml(data?.error || error?.message || 'No fue posible cargar el resultado.')}</div>`;
+    return;
+  }
+
+  const participant=data.participante || {};
+  const attempt=data.intento || {};
+  box.innerHTML=`
+    <div class="committee-training-attempt-detail-head">
+      <div><span class="eyebrow">DETALLE DEL INTENTO</span><h4>${escapeHtml(participant.nombre || 'Participante')}</h4><p>DNI ${escapeHtml(participant.dni || '—')} · Intento ${attempt.numero_intento || '—'} · Nota ${Number(attempt.nota || 0).toFixed(1)}</p></div>
+      ${participant.firma ? `<img src="${participant.firma}" alt="Firma" class="evaluation-signature-thumb large" />` : ''}
+    </div>
+    <div class="committee-training-admin-answer-list">
+      ${(data.preguntas || []).map((q,index)=>{
+        const selected=q.tipo==='FREE_TEXT'
+          ? (q.respuesta_texto || 'Sin respuesta')
+          : ((q.respuesta_seleccionada || []).join(' / ') || 'Sin respuesta');
+        const correct=(q.respuestas_correctas || []).join(' / ') || '—';
+        return `<article class="${q.es_correcta?'correct':'wrong'}"><strong>${index+1}. ${escapeHtml(q.enunciado || '')}</strong>${q.imagen_url?`<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de la pregunta" />`:''}<p><b>Respuesta:</b> ${escapeHtml(selected)}</p><p><b>Correcta:</b> ${escapeHtml(correct)}</p><p><b>Puntaje:</b> ${Number(q.puntaje || 0)} / ${Number(q.peso || 0)}</p>${q.explicacion?`<small>${escapeHtml(q.explicacion)}</small>`:''}</article>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+async function renderCommitteeTrainingGapAnalysis(trainingId,attempts) {
+  const box=document.getElementById('committeeTrainingGapAnalysis');
+  if (!box) return;
+  if (!attempts.length) {
+    box.innerHTML='<div class="training-library-empty">Sin datos todavía.</div>';
+    return;
+  }
+
+  // Para no sobreponderar reintentos se analiza el último intento finalizado de cada participante.
+  const latestByParticipant=new Map();
+  attempts.forEach(attempt=>{
+    const current=latestByParticipant.get(attempt.participante_id);
+    if (!current || Number(attempt.numero_intento)>Number(current.numero_intento)) {
+      latestByParticipant.set(attempt.participante_id,attempt);
+    }
+  });
+  const ids=[...latestByParticipant.values()].map(x=>x.id);
+  if (!ids.length) return;
+
+  const {data,error}=await client.from('comite_sst_capacitacion_respuestas')
+    .select('intento_id,pregunta_id,es_correcta')
+    .in('intento_id',ids);
+
+  if (error) {
+    console.error(error);
+    box.innerHTML='<div class="training-library-empty">No se pudo calcular el análisis de brechas.</div>';
+    return;
+  }
+
+  const qmap=new Map(
+    committeeTrainingQuestionRecords
+      .filter(q=>q.capacitacion_id===trainingId)
+      .map(q=>[q.id,q])
+  );
+  const stats=new Map();
+  (data || []).forEach(row=>{
+    const q=qmap.get(row.pregunta_id);
+    if (!q) return;
+    const topic=q.nivel_tema || 'General';
+    if (!stats.has(topic)) stats.set(topic,{total:0,errors:0});
+    const item=stats.get(topic);
+    item.total++;
+    if (!row.es_correcta) item.errors++;
+  });
+
+  const rows=[...stats.entries()]
+    .map(([tema,x])=>({tema,pct:x.total?Math.round(x.errors/x.total*100):0}))
+    .sort((a,b)=>b.pct-a.pct || a.tema.localeCompare(b.tema));
+
+  box.innerHTML=rows.length ? rows.map(x=>`
+    <div class="evaluation-gap-row">
+      <div><span>${escapeHtml(x.tema)}</span><strong>${x.pct}% error</strong></div>
+      <div><i style="width:${x.pct}%"></i></div>
+    </div>
+  `).join('') : '<div class="training-library-empty">Sin brechas registradas.</div>';
+}
+
+// ------------------------------------------------------------
+// 16D.3 · EXAMEN PÚBLICO
+// ------------------------------------------------------------
+function resetPublicCommitteeTrainingExamViews() {
+  clearInterval(publicCommitteeTrainingExamTimerInterval);
+  publicCommitteeTrainingExamTimerInterval=null;
+  publicCommitteeTrainingExamDeadline=null;
+  publicCommitteeTrainingExamRun=null;
+  document.getElementById('publicCommitteeTrainingExamView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
+}
+
+async function refreshPublicCommitteeTrainingExamState() {
+  if (!publicCommitteeTrainingToken || !publicCommitteeTrainingDni) return null;
+
+  const button=document.getElementById('publicCommitteeTrainingExamButton');
+  const text=document.getElementById('publicCommitteeTrainingExamReadyText');
+  if (button) {
+    button.disabled=true;
+    button.textContent='Consultando examen…';
+    button.dataset.mode='';
+  }
+
+  const {data,error}=await client.rpc('obtener_estado_examen_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni
+  });
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    if (text) text.textContent=data?.error || error?.message || 'No fue posible consultar el examen.';
+    if (button) button.textContent='Examen no disponible';
+    return null;
+  }
+
+  publicCommitteeTrainingExamState=data;
+
+  if (!data.contenido_completado) {
+    if (button) { button.disabled=true; button.textContent='Completa los videos'; }
+    return data;
+  }
+
+  if (!data.preguntas) {
+    if (text) text.textContent='El contenido está completo, pero el evaluador todavía no ha configurado las preguntas del examen.';
+    if (button) { button.disabled=true; button.textContent='Examen pendiente de configuración'; }
+    return data;
+  }
+
+  if (data.aprobado && data.reintento_solo_desaprobado!==false) {
+    if (text) text.textContent='Ya aprobaste esta capacitación. Puedes revisar nuevamente el resultado de tu último intento.';
+    if (button) { button.disabled=false; button.textContent='Ver mi resultado'; button.dataset.mode='result'; }
+    return data;
+  }
+
+  if (Number(data.intentos_disponibles || 0)<=0) {
+    if (text) text.textContent='Alcanzaste el máximo de intentos. Puedes revisar el resultado de tu último intento.';
+    if (button) { button.disabled=false; button.textContent='Ver último resultado'; button.dataset.mode='result'; }
+    return data;
+  }
+
+  if (text) {
+    text.textContent=data.intentos_realizados>0
+      ? `Tienes ${data.intentos_disponibles} intento(s) disponible(s).`
+      : `El examen tiene ${data.preguntas} pregunta(s). Tienes ${data.max_intentos} intento(s) disponible(s).`;
+  }
+  if (button) {
+    button.disabled=false;
+    button.textContent=data.intentos_realizados>0?(data.aprobado?'Realizar otro intento':'Reintentar examen'):'Iniciar examen';
+    button.dataset.mode='start';
+  }
+  return data;
+}
+
+function renderPublicCommitteeTrainingExamQuestions(questions) {
+  const container=document.getElementById('publicCommitteeTrainingExamQuestions');
+  if (!container) return;
+
+  container.innerHTML=(questions || []).map((q,index)=>`
+    <article class="public-committee-training-exam-question" data-committee-training-exam-question="${q.id}">
+      <div class="public-training-question-head">
+        <span>Pregunta ${index+1}</span>
+        <strong>${Number(q.peso || 0)} pts · ${escapeHtml(q.nivel_tema || 'General')}</strong>
+      </div>
+      <h3>${escapeHtml(q.enunciado || '')}</h3>
+      ${q.imagen_url ? `<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de la pregunta" class="public-training-question-image" />` : ''}
+      ${renderPublicCommitteeTrainingExamAnswerControls(q)}
+    </article>
+  `).join('');
+}
+
+function renderPublicCommitteeTrainingExamAnswerControls(q) {
+  if (q.tipo==='FREE_TEXT') {
+    return '<textarea class="public-training-exam-free" rows="4" placeholder="Escribe tu respuesta"></textarea>';
+  }
+  const input=q.tipo==='MULTIPLE'?'checkbox':'radio';
+  return `<div class="public-training-exam-options">${(q.opciones || []).map((o,index)=>`
+    <label><input type="${input}" name="committee-training-exam-${q.id}" value="${o.id}" /><span>${String.fromCharCode(65+index)}) ${escapeHtml(o.texto || '')}</span></label>
+  `).join('')}</div>`;
+}
+
+function collectPublicCommitteeTrainingExamAnswer(q) {
+  const article=document.querySelector(`[data-committee-training-exam-question="${q.id}"]`);
+  if (!article) return {pregunta_id:q.id,opcion_ids:[],texto:''};
+  if (q.tipo==='FREE_TEXT') {
+    return {
+      pregunta_id:q.id,
+      opcion_ids:[],
+      texto:article.querySelector('.public-training-exam-free')?.value.trim() || ''
+    };
+  }
+  return {
+    pregunta_id:q.id,
+    opcion_ids:[...article.querySelectorAll('input:checked')].map(x=>x.value),
+    texto:''
+  };
+}
+
+function startPublicCommitteeTrainingExamTimer(minutes) {
+  clearInterval(publicCommitteeTrainingExamTimerInterval);
+  const box=document.getElementById('publicCommitteeTrainingExamTimerBox');
+  const text=document.getElementById('publicCommitteeTrainingExamTimer');
+
+  if (!minutes) {
+    box?.classList.add('hidden');
+    if (text) text.textContent='Sin límite';
+    return;
+  }
+
+  box?.classList.remove('hidden');
+  publicCommitteeTrainingExamDeadline=Date.now()+Number(minutes)*60000;
+
+  const tick=()=>{
+    const remaining=Math.max(0,publicCommitteeTrainingExamDeadline-Date.now());
+    const min=Math.floor(remaining/60000);
+    const sec=Math.floor((remaining%60000)/1000);
+    if (text) text.textContent=`${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    if (remaining<=0) {
+      clearInterval(publicCommitteeTrainingExamTimerInterval);
+      publicCommitteeTrainingExamTimerInterval=null;
+      submitPublicCommitteeTrainingExam(true);
+    }
+  };
+  tick();
+  publicCommitteeTrainingExamTimerInterval=setInterval(tick,1000);
+}
+
+async function startPublicCommitteeTrainingExam() {
+  if (!publicCommitteeTrainingToken || !publicCommitteeTrainingDni) return;
+
+  clearPublicCommitteeTrainingPlayer();
+  const button=document.getElementById('publicCommitteeTrainingExamButton');
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Preparando examen…'; }
+
+  const {data,error}=await client.rpc('iniciar_examen_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni
+  });
+
+  if (button) { button.disabled=false; button.textContent=old; }
+
+  if (error || !data?.ok) {
+    alert(data?.error || error?.message || 'No fue posible iniciar el examen.');
+    await refreshPublicCommitteeTrainingExamState();
+    return;
+  }
+
+  publicCommitteeTrainingExamRun=data;
+  publicCommitteeTrainingLastExamAttemptId=data.intento_id;
+  document.getElementById('publicCommitteeTrainingContent')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingExamView')?.classList.remove('hidden');
+  document.getElementById('publicCommitteeTrainingExamTitle').textContent=data.titulo || 'Examen de capacitación';
+  document.getElementById('publicCommitteeTrainingExamParticipant').textContent=data.participante || '—';
+  document.getElementById('publicCommitteeTrainingExamAttempt').textContent=`${data.numero_intento} de ${data.max_intentos}`;
+  document.getElementById('publicCommitteeTrainingExamPassingGrade').textContent=String(Number(data.nota_minima || 0));
+  document.getElementById('publicCommitteeTrainingExamSubmitMessage').textContent='';
+  document.getElementById('publicCommitteeTrainingExamSubmitMessage').className='form-message';
+  renderPublicCommitteeTrainingExamQuestions(data.preguntas || []);
+  startPublicCommitteeTrainingExamTimer(data.tiempo_max_min);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function submitPublicCommitteeTrainingExam(auto=false) {
+  if (!publicCommitteeTrainingExamRun) return;
+  const msg=document.getElementById('publicCommitteeTrainingExamSubmitMessage');
+  const button=document.getElementById('publicCommitteeTrainingExamSubmitButton');
+
+  const answers=(publicCommitteeTrainingExamRun.preguntas || [])
+    .map(collectPublicCommitteeTrainingExamAnswer);
+
+  if (!auto) {
+    const answered=answers.filter(a=>a.texto || (a.opcion_ids || []).length).length;
+    if (answered<answers.length) {
+      const proceed=confirm(`Has respondido ${answered} de ${answers.length} preguntas. ¿Deseas finalizar de todas formas?`);
+      if (!proceed) return;
+    }
+  }
+
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Calificando…'; }
+
+  const {data,error}=await client.rpc('finalizar_examen_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni,
+    p_intento_id:publicCommitteeTrainingExamRun.intento_id,
+    p_respuestas:answers
+  });
+
+  if (button) { button.disabled=false; button.textContent=old; }
+
+  if (error || !data?.ok) {
+    if (msg) {
+      msg.textContent=data?.error || error?.message || 'No fue posible finalizar el examen.';
+      msg.className='form-message visible error';
+    }
+    return;
+  }
+
+  clearInterval(publicCommitteeTrainingExamTimerInterval);
+  publicCommitteeTrainingExamTimerInterval=null;
+  publicCommitteeTrainingLastExamResult=data;
+  publicCommitteeTrainingLastExamAttemptId=data.intento_id;
+  publicCommitteeTrainingExamRun=null;
+  showPublicCommitteeTrainingExamResult(data);
+  try {
+    await fetchPublicCommitteeTrainingData();
+    await refreshPublicCommitteeTrainingExamState();
+  } catch(err) {
+    console.warn(err);
+  }
+}
+
+function showPublicCommitteeTrainingExamResult(data) {
+  document.getElementById('publicCommitteeTrainingContent')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingExamView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.remove('hidden');
+
+  const approved=!!data.aprobado;
+  const icon=document.getElementById('publicCommitteeTrainingResultIcon');
+  icon.textContent=approved?'✓':'!';
+  icon.classList.toggle('fail',!approved);
+  document.getElementById('publicCommitteeTrainingResultTitle').textContent=approved?'APROBADO':'DESAPROBADO';
+  document.getElementById('publicCommitteeTrainingResultGrade').innerHTML=`${Number(data.nota || 0).toFixed(1)} <small>/ 20</small>`;
+  document.getElementById('publicCommitteeTrainingResultCorrect').textContent=`${data.correctas || 0} de ${data.total || 0} respuestas correctas · Intento ${data.numero_intento || '—'}`;
+
+  const topics=data.temas_reforzar || [];
+  const reinforce=document.getElementById('publicCommitteeTrainingReinforceCard');
+  reinforce?.classList.toggle('hidden',!topics.length);
+  document.getElementById('publicCommitteeTrainingReinforceList').innerHTML=topics.length
+    ? topics.map(x=>`<div>⚠ ${escapeHtml(x.tema)} <small>${x.errores} error(es)</small></div>`).join('')
+    : '<div>✓ No tienes temas pendientes de reforzar.</div>';
+
+  const retry=document.getElementById('publicCommitteeTrainingRetryButton');
+  retry?.classList.toggle('hidden',approved || Number(data.intentos_restantes || 0)<=0);
+  if (retry && !approved && Number(data.intentos_restantes || 0)>0) {
+    retry.textContent=`Realizar otro intento (${data.intentos_restantes} disponible${Number(data.intentos_restantes)===1?'':'s'})`;
+  }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function openExistingPublicCommitteeTrainingResult() {
+  const attemptId=publicCommitteeTrainingExamState?.ultimo_resultado?.intento_id;
+  if (!attemptId) {
+    alert('No se encontró un resultado anterior.');
+    return;
+  }
+
+  const {data,error}=await client.rpc('revisar_examen_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni,
+    p_intento_id:attemptId
+  });
+
+  if (error || !data?.ok) {
+    alert(data?.error || error?.message || 'No fue posible recuperar el resultado.');
+    return;
+  }
+
+  publicCommitteeTrainingLastExamAttemptId=attemptId;
+  publicCommitteeTrainingLastExamResult={
+    ...data.intento,
+    temas_reforzar:data.temas_reforzar || [],
+    temas_dominados:data.temas_dominados || [],
+    intentos_restantes:publicCommitteeTrainingExamState?.intentos_disponibles || 0
+  };
+  showPublicCommitteeTrainingExamResult(publicCommitteeTrainingLastExamResult);
+}
+
+async function reviewPublicCommitteeTrainingExam() {
+  if (!publicCommitteeTrainingLastExamAttemptId) return;
+
+  const {data,error}=await client.rpc('revisar_examen_capacitacion_comite',{
+    p_token:publicCommitteeTrainingToken,
+    p_dni:publicCommitteeTrainingDni,
+    p_intento_id:publicCommitteeTrainingLastExamAttemptId
+  });
+
+  if (error || !data?.ok) {
+    alert(data?.error || error?.message || 'No fue posible cargar la revisión.');
+    return;
+  }
+
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.remove('hidden');
+
+  document.getElementById('publicCommitteeTrainingReviewQuestions').innerHTML=(data.preguntas || []).map((q,index)=>{
+    const selected=q.tipo==='FREE_TEXT'
+      ? (q.respuesta_texto || 'Sin respuesta')
+      : ((q.respuesta_seleccionada || []).join(' / ') || 'Sin respuesta');
+    const correct=(q.respuestas_correctas || []).join(' / ');
+    return `
+      <article class="public-training-review-question ${q.es_correcta?'correct':'wrong'}">
+        <h3>${index+1}. ${escapeHtml(q.enunciado || '')}</h3>
+        ${q.imagen_url ? `<img src="${escapeHtml(q.imagen_url)}" alt="Imagen de la pregunta" />` : ''}
+        <p><b>Tu respuesta:</b> ${escapeHtml(selected)}</p>
+        ${correct ? `<p><b>Respuesta correcta:</b> ${escapeHtml(correct)}</p>` : ''}
+        ${q.explicacion ? `<p class="public-training-review-explanation">${escapeHtml(q.explicacion)}</p>` : ''}
+        <small>Tema: ${escapeHtml(q.nivel_tema || 'General')}</small>
+      </article>
+    `;
+  }).join('');
+
+  document.getElementById('publicCommitteeTrainingMasteredList').innerHTML=(data.temas_dominados || []).length
+    ? data.temas_dominados.map(x=>`<div>✓ ${escapeHtml(x)}</div>`).join('')
+    : '<div>—</div>';
+  document.getElementById('publicCommitteeTrainingReviewReinforceList').innerHTML=(data.temas_reforzar || []).length
+    ? data.temas_reforzar.map(x=>`<div>⚠ ${escapeHtml(x.tema)}</div>`).join('')
+    : '<div>✓ Sin temas pendientes</div>';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+
 // ------------------------------------------------------------
 // ETAPA 16D.2 · LINK PÚBLICO + FIRMA + PROGRESO DE VIDEOS
 // ------------------------------------------------------------
@@ -4016,6 +5024,10 @@ function initializePublicCommitteeTrainingMode(token) {
   publicCommitteeTrainingDni='';
   publicCommitteeTrainingData=null;
   publicCommitteeTrainingCurrentVideoId=null;
+  publicCommitteeTrainingExamState=null;
+  publicCommitteeTrainingLastExamResult=null;
+  publicCommitteeTrainingLastExamAttemptId=null;
+  resetPublicCommitteeTrainingExamViews();
   clearPublicCommitteeTrainingPlayer();
 
   publicExamScreen?.classList.add('hidden');
@@ -4030,9 +5042,14 @@ function initializePublicCommitteeTrainingMode(token) {
   document.getElementById('publicCommitteeTrainingIdentity')?.classList.remove('hidden');
   document.getElementById('publicCommitteeTrainingSignature')?.classList.add('hidden');
   document.getElementById('publicCommitteeTrainingContent')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingExamView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
   document.getElementById('publicCommitteeTrainingHeaderTitle').textContent='Capacitación del Comité SST';
   document.getElementById('publicCommitteeTrainingHeaderCode').textContent='Identificación requerida';
   document.getElementById('publicCommitteeTrainingDni').value='';
+  const examButton=document.getElementById('publicCommitteeTrainingExamButton');
+  if (examButton) { examButton.dataset.mode=''; examButton.disabled=true; examButton.textContent='Examen'; }
   publicCommitteeTrainingMessage('');
   setTimeout(()=>document.getElementById('publicCommitteeTrainingDni')?.focus(),60);
 }
@@ -4328,6 +5345,9 @@ function showPublicCommitteeTrainingContent() {
 
   document.getElementById('publicCommitteeTrainingIdentity')?.classList.add('hidden');
   document.getElementById('publicCommitteeTrainingSignature')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingExamView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
   document.getElementById('publicCommitteeTrainingContent')?.classList.remove('hidden');
   document.getElementById('publicCommitteeTrainingContentTitle').textContent=cap.titulo || 'Contenido de la capacitación';
   document.getElementById('publicCommitteeTrainingContentSubtitle').textContent=
@@ -4340,6 +5360,7 @@ function showPublicCommitteeTrainingContent() {
   if (selected) loadPublicCommitteeTrainingVideo(selected.id);
   else document.getElementById('publicCommitteeTrainingPlayerCard')?.classList.add('hidden');
 
+  refreshPublicCommitteeTrainingExamState().catch(err=>console.warn('No se pudo consultar el examen.',err));
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -4436,6 +5457,7 @@ async function savePublicCommitteeTrainingProgress(video,current,duration,comple
     // Refresca los datos para que el servidor entregue la URL del siguiente video recién desbloqueado.
     try {
       await fetchPublicCommitteeTrainingData();
+      await refreshPublicCommitteeTrainingExamState();
     } catch(err) {
       console.warn('No fue posible refrescar la ruta de aprendizaje.',err);
     }
@@ -5673,6 +6695,27 @@ document.getElementById('committeeTrainingVideoModal')?.querySelector('.modal-ba
 
 document.getElementById('closeCommitteeTrainingVideoPreviewModal')?.addEventListener('click',closeCommitteeTrainingVideoPreview);
 document.getElementById('committeeTrainingVideoPreviewModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingVideoPreview);
+
+document.getElementById('addCommitteeTrainingQuestionButton')?.addEventListener('click',()=>openCommitteeTrainingQuestionModal());
+document.getElementById('committeeTrainingQuestionType')?.addEventListener('change',event=>{
+  renderCommitteeTrainingQuestionOptions(event.target.value,null);
+});
+document.getElementById('committeeTrainingQuestionImage')?.addEventListener('change',event=>{
+  const file=event.target.files?.[0];
+  if (!file) return;
+  const url=URL.createObjectURL(file);
+  renderCommitteeTrainingQuestionImagePreview(url,document.getElementById('committeeTrainingQuestionImagePath').value || '');
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+});
+document.getElementById('saveCommitteeTrainingQuestionButton')?.addEventListener('click',saveCommitteeTrainingQuestion);
+document.getElementById('closeCommitteeTrainingQuestionModal')?.addEventListener('click',closeCommitteeTrainingQuestionModal);
+document.getElementById('cancelCommitteeTrainingQuestionModal')?.addEventListener('click',closeCommitteeTrainingQuestionModal);
+document.getElementById('committeeTrainingQuestionModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingQuestionModal);
+document.getElementById('committeeTrainingResultsButton')?.addEventListener('click',()=>{
+  if (activeCommitteeTrainingId) openCommitteeTrainingResultsModal(activeCommitteeTrainingId);
+});
+document.getElementById('closeCommitteeTrainingResultsModal')?.addEventListener('click',closeCommitteeTrainingResultsModal);
+document.getElementById('committeeTrainingResultsModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingResultsModal);
 
 document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsOfficialExcel);
 
@@ -12926,7 +13969,18 @@ document.getElementById('publicCommitteeTrainingLookupButton')?.addEventListener
 document.getElementById('clearPublicCommitteeTrainingSignatureButton')?.addEventListener('click',setupPublicCommitteeTrainingSignatureCanvas);
 document.getElementById('savePublicCommitteeTrainingSignatureButton')?.addEventListener('click',savePublicCommitteeTrainingSignature);
 document.getElementById('publicCommitteeTrainingExamButton')?.addEventListener('click',()=>{
-  alert('El examen final se incorporará en la Etapa 16D.3.');
+  const mode=document.getElementById('publicCommitteeTrainingExamButton')?.dataset.mode;
+  if (mode==='result') openExistingPublicCommitteeTrainingResult();
+  else if (mode==='start') startPublicCommitteeTrainingExam();
+});
+document.getElementById('publicCommitteeTrainingExamSubmitButton')?.addEventListener('click',()=>submitPublicCommitteeTrainingExam(false));
+document.getElementById('publicCommitteeTrainingReviewButton')?.addEventListener('click',reviewPublicCommitteeTrainingExam);
+document.getElementById('publicCommitteeTrainingRetryButton')?.addEventListener('click',startPublicCommitteeTrainingExam);
+document.getElementById('publicCommitteeTrainingReturnContentButton')?.addEventListener('click',showPublicCommitteeTrainingContent);
+document.getElementById('publicCommitteeTrainingReviewBackButton')?.addEventListener('click',()=>{
+  document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
+  document.getElementById('publicCommitteeTrainingResultView')?.classList.remove('hidden');
+  window.scrollTo({top:0,behavior:'smooth'});
 });
 
 

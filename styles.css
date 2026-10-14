@@ -4069,3 +4069,873 @@ body.modal-open{
     width:100%;
   }
 }
+
+/* ============================================================
+   ETAPA 16D.3 · EXAMEN FINAL + RESULTADOS
+   ============================================================ */
+
+.committee-training-exam-options{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  padding:10px;
+  border:1px solid #dce3eb;
+  border-radius:10px;
+  background:#f8fafc;
+}
+
+.committee-training-exam-options label{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:8px!important;
+  min-height:38px;
+  border:1px solid #e5e9ef;
+  border-radius:8px;
+  background:#fff;
+  padding:8px 10px;
+}
+
+.committee-training-exam-options input{
+  width:17px!important;
+  height:17px;
+  flex:0 0 auto;
+  accent-color:#c00000;
+}
+
+.committee-training-exam-options span{
+  color:#425269!important;
+  font-size:8.5px!important;
+}
+
+.committee-training-exam-admin-section{
+  margin-top:16px;
+  border:1px solid #dce3eb;
+  border-radius:13px;
+  padding:15px;
+  background:#fff;
+}
+
+.committee-training-exam-head-actions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.committee-training-exam-summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:9px;
+  margin:12px 0;
+}
+
+.committee-training-exam-summary article{
+  border:1px solid #e0e5ec;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:10px 12px;
+}
+
+.committee-training-exam-summary span{
+  display:block;
+  color:#7b8798;
+  font-size:7.5px;
+}
+
+.committee-training-exam-summary strong{
+  display:block;
+  margin-top:4px;
+  color:#142942;
+  font-size:17px;
+}
+
+.committee-training-question-list{
+  display:grid;
+  gap:9px;
+}
+
+.committee-question-empty{
+  min-height:145px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border:1px dashed #cbd5e0;
+  border-radius:11px;
+  background:#fafbfd;
+  text-align:center;
+  color:#758397;
+}
+
+.committee-question-empty>span{
+  width:44px;
+  height:44px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#fff0f0;
+  color:#c00000;
+  font-size:22px;
+  font-weight:900;
+}
+
+.committee-question-empty strong{
+  margin-top:8px;
+  color:#2b3b50;
+}
+
+.committee-question-empty p{
+  margin:4px 0 0;
+  font-size:8.5px;
+}
+
+.committee-question-card{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  gap:10px;
+  align-items:flex-start;
+  border:1px solid #dfe5ec;
+  border-radius:11px;
+  background:#fafbfd;
+  padding:11px;
+}
+
+.committee-question-number{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  border-radius:9px;
+  border:1px solid #dce3eb;
+  background:#fff;
+  color:#c00000;
+  font-weight:900;
+}
+
+.committee-question-title-row{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+
+.committee-question-title-row>strong{
+  color:#1b2d44;
+  font-size:10.5px;
+  line-height:1.45;
+}
+
+.committee-question-points{
+  flex:0 0 auto;
+  border-radius:999px;
+  background:#fff1df;
+  color:#a05a00;
+  padding:3px 7px;
+  font-size:7px;
+  font-weight:900;
+}
+
+.committee-question-meta{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
+
+.committee-question-meta span{
+  border-radius:999px;
+  background:#eef2f7;
+  color:#5c6a7e;
+  padding:3px 7px;
+  font-size:7px;
+}
+
+.committee-question-thumb{
+  display:block;
+  max-width:320px;
+  max-height:150px;
+  object-fit:contain;
+  margin-top:8px;
+  border:1px solid #dce3eb;
+  border-radius:8px;
+  background:#fff;
+}
+
+.committee-question-correct{
+  margin-top:8px;
+  color:#16783a;
+  font-size:8.5px;
+}
+
+.committee-question-explanation{
+  margin:5px 0 0;
+  color:#5d6b7f;
+  font-size:8.5px;
+  line-height:1.45;
+}
+
+.committee-question-actions{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.committee-training-question-modal-card{
+  width:min(980px,calc(100vw - 24px))!important;
+  max-width:980px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.committee-training-question-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.committee-training-question-form-grid label>span,
+.committee-question-answer-section label>span{
+  color:#526179;
+  font-size:8px;
+  font-weight:800;
+}
+
+.committee-training-question-form-grid input,
+.committee-training-question-form-grid select,
+.committee-training-question-form-grid textarea,
+.committee-question-answer-section textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.committee-question-image-preview{
+  border:1px solid #e0e5ec;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:10px;
+}
+
+.committee-question-image-preview-card{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+}
+
+.committee-question-image-preview-card img{
+  max-width:320px;
+  max-height:170px;
+  object-fit:contain;
+  border-radius:8px;
+  border:1px solid #dce3eb;
+  background:#fff;
+}
+
+.committee-question-answer-section{
+  margin-top:14px;
+  border:1px solid #dce3eb;
+  border-radius:11px;
+  padding:12px;
+  background:#fafbfd;
+}
+
+.committee-question-answer-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:9px;
+}
+
+.committee-question-answer-head strong{
+  color:#223349;
+  font-size:10px;
+}
+
+.committee-question-answer-head small{
+  color:#778598;
+  font-size:8px;
+}
+
+.committee-question-option-list{
+  display:grid;
+  gap:7px;
+  margin-bottom:8px;
+}
+
+.committee-question-option-row{
+  display:grid;
+  grid-template-columns:22px 28px minmax(0,1fr) 30px;
+  gap:7px;
+  align-items:center;
+}
+
+.committee-question-option-correct{
+  width:17px!important;
+  height:17px;
+  accent-color:#c00000;
+}
+
+.committee-question-option-letter{
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border-radius:7px;
+  background:#eef2f7;
+  color:#26364d;
+  font-size:9px;
+  font-weight:900;
+}
+
+.committee-question-remove-option{
+  width:30px;
+  height:30px;
+  border:0;
+  border-radius:7px;
+  background:#ffe9e9;
+  color:#c00000;
+  cursor:pointer;
+  font-weight:900;
+}
+
+#committeeTrainingFreeTextField{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+#committeeTrainingFreeTextField small{
+  color:#7b8799;
+  font-size:8px;
+}
+
+.evaluation-results-btn{
+  min-height:40px;
+  border:0;
+  border-radius:9px;
+  background:#6a37d8;
+  color:#fff;
+  padding:0 14px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.committee-training-results-modal-card{
+  width:min(1250px,calc(100vw - 24px))!important;
+  max-width:1250px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.committee-training-results-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:12px 0 15px;
+}
+
+.committee-training-results-stats article{
+  border:1px solid #dce3eb;
+  border-radius:11px;
+  background:#f8fafc;
+  padding:12px;
+}
+
+.committee-training-results-stats span{
+  display:block;
+  color:#788598;
+  font-size:8px;
+}
+
+.committee-training-results-stats strong{
+  display:block;
+  margin-top:4px;
+  color:#17283f;
+  font-size:21px;
+}
+
+.committee-training-results-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.55fr) minmax(280px,.75fr);
+  gap:14px;
+}
+
+.committee-training-results-layout>section,
+.committee-training-results-layout>aside{
+  border:1px solid #dce3eb;
+  border-radius:12px;
+  padding:13px;
+  background:#fff;
+}
+
+.committee-training-results-layout h4{
+  margin:0 0 10px;
+  color:#1d2e45;
+}
+
+.committee-training-results-table-wrap{
+  overflow:auto;
+}
+
+.committee-training-results-table{
+  min-width:720px;
+}
+
+.committee-training-results-table td:first-child strong,
+.committee-training-results-table td:first-child small{
+  display:block;
+}
+
+.committee-training-results-table td:first-child small{
+  color:#7b8798;
+  margin-top:3px;
+}
+
+.committee-training-attempt-detail{
+  margin-top:12px;
+  border-top:1px solid #e1e6ed;
+  padding-top:12px;
+}
+
+.committee-training-attempt-detail-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.committee-training-attempt-detail-head h4{
+  margin:3px 0 2px;
+}
+
+.committee-training-attempt-detail-head p{
+  margin:0;
+  color:#748196;
+  font-size:8.5px;
+}
+
+.evaluation-signature-thumb.large{
+  width:95px;
+  height:42px;
+  object-fit:contain;
+}
+
+.committee-training-admin-answer-list{
+  display:grid;
+  gap:8px;
+  max-height:470px;
+  overflow:auto;
+}
+
+.committee-training-admin-answer-list article{
+  border:1px solid #dfe5ec;
+  border-left:4px solid #d0d6df;
+  border-radius:9px;
+  padding:10px;
+  background:#fafbfd;
+}
+
+.committee-training-admin-answer-list article.correct{
+  border-left-color:#24a657;
+  background:#f2fbf5;
+}
+
+.committee-training-admin-answer-list article.wrong{
+  border-left-color:#d33b31;
+  background:#fff7f6;
+}
+
+.committee-training-admin-answer-list strong{
+  color:#223349;
+  font-size:9px;
+}
+
+.committee-training-admin-answer-list p,
+.committee-training-admin-answer-list small{
+  display:block;
+  margin:5px 0 0;
+  color:#5c6a7d;
+  font-size:8px;
+}
+
+.committee-training-admin-answer-list img{
+  display:block;
+  max-width:270px;
+  max-height:140px;
+  object-fit:contain;
+  margin:8px 0;
+  border-radius:7px;
+}
+
+.committee-training-gap-analysis{
+  display:grid;
+  gap:9px;
+}
+
+/* Público · Examen */
+.public-committee-training-exam-view,
+.public-committee-training-result-view,
+.public-committee-training-review-view{
+  padding:2px 0;
+}
+
+.public-training-exam-meta{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:9px;
+  margin:16px 0;
+}
+
+.public-training-exam-meta article{
+  border:1px solid #dfe5ed;
+  border-radius:11px;
+  background:#f8fafc;
+  padding:12px;
+}
+
+.public-training-exam-meta span{
+  display:block;
+  color:#788598;
+  font-size:9px;
+}
+
+.public-training-exam-meta strong{
+  display:block;
+  margin-top:5px;
+  color:#142942;
+  font-size:12px;
+}
+
+.public-committee-training-exam-questions{
+  display:grid;
+  gap:13px;
+}
+
+.public-committee-training-exam-question{
+  border:1px solid #dce3eb;
+  border-radius:13px;
+  background:#fff;
+  padding:15px;
+}
+
+.public-training-question-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:#7a879a;
+  font-size:9px;
+}
+
+.public-training-question-head strong{
+  color:#c00000;
+  font-size:8px;
+}
+
+.public-committee-training-exam-question h3{
+  margin:8px 0 12px;
+  color:#17283f;
+  font-size:15px;
+  line-height:1.45;
+}
+
+.public-training-question-image{
+  display:block;
+  max-width:100%;
+  max-height:320px;
+  object-fit:contain;
+  margin:0 auto 12px;
+  border:1px solid #e0e5ec;
+  border-radius:10px;
+}
+
+.public-training-exam-options{
+  display:grid;
+  gap:8px;
+}
+
+.public-training-exam-options label{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  border:1px solid #dfe5ec;
+  border-radius:9px;
+  background:#fafbfd;
+  padding:11px 12px;
+  cursor:pointer;
+}
+
+.public-training-exam-options label:has(input:checked){
+  border-color:#c00000;
+  background:#fff5f5;
+}
+
+.public-training-exam-options input{
+  width:18px;
+  height:18px;
+  accent-color:#c00000;
+  flex:0 0 auto;
+}
+
+.public-training-exam-options span{
+  color:#324259;
+  font-size:11px;
+  line-height:1.35;
+}
+
+.public-training-exam-free{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:9px;
+  padding:11px;
+  font:inherit;
+  min-height:100px;
+}
+
+.public-training-exam-submit-row{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:16px;
+}
+
+.public-committee-training-result-view{
+  text-align:center;
+  padding:34px 6px 12px;
+}
+
+.public-committee-training-result-view h2{
+  margin:8px 0 2px;
+  color:#142942;
+  font-size:25px;
+}
+
+.public-training-result-grade{
+  margin:7px 0;
+  color:#102640;
+  font-size:45px;
+  font-weight:900;
+}
+
+.public-training-result-grade small{
+  font-size:18px;
+  color:#738095;
+}
+
+#publicCommitteeTrainingResultCorrect{
+  color:#6c7a8e;
+}
+
+.public-training-reinforce-card{
+  max-width:620px;
+  margin:20px auto 0;
+  border:1px solid #f0d9b4;
+  border-radius:13px;
+  background:#fff8ec;
+  padding:15px;
+  text-align:left;
+}
+
+.public-training-reinforce-card h3{
+  margin:0 0 8px;
+  color:#915220;
+  font-size:14px;
+}
+
+.public-training-reinforce-card>div{
+  display:grid;
+  gap:6px;
+  color:#a35d2d;
+  font-size:10px;
+}
+
+.public-training-reinforce-card small{
+  color:#a98066;
+}
+
+.public-training-result-actions{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:20px;
+}
+
+.public-committee-training-review-questions{
+  display:grid;
+  gap:11px;
+  margin-top:15px;
+}
+
+.public-training-review-question{
+  border:1px solid #dde4ec;
+  border-left:5px solid #c8d0dc;
+  border-radius:12px;
+  background:#fff;
+  padding:14px;
+}
+
+.public-training-review-question.correct{
+  border-left-color:#34b666;
+  background:#f6fff8;
+}
+
+.public-training-review-question.wrong{
+  border-left-color:#d6493f;
+  background:#fff8f7;
+}
+
+.public-training-review-question h3{
+  margin:0 0 9px;
+  color:#1a2c43;
+  font-size:14px;
+  line-height:1.45;
+}
+
+.public-training-review-question p{
+  margin:6px 0;
+  color:#56667c;
+  font-size:10px;
+  line-height:1.45;
+}
+
+.public-training-review-question img{
+  display:block;
+  max-width:100%;
+  max-height:300px;
+  object-fit:contain;
+  margin:8px 0;
+  border-radius:9px;
+}
+
+.public-training-review-explanation{
+  border-radius:9px;
+  background:#eef5ff;
+  padding:10px;
+  color:#375a84!important;
+}
+
+.public-training-review-question small{
+  color:#7a879a;
+}
+
+.public-committee-training-topic-review-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin:16px 0;
+}
+
+.public-committee-training-topic-review-grid section{
+  border:1px solid #dce3eb;
+  border-radius:12px;
+  background:#fff;
+  padding:14px;
+}
+
+.public-committee-training-topic-review-grid h3{
+  margin:0 0 9px;
+  color:#26374e;
+  font-size:13px;
+}
+
+.public-committee-training-topic-review-grid section:first-child>div{
+  color:#26834a;
+}
+
+.public-committee-training-topic-review-grid section:last-child>div{
+  color:#a45b2a;
+}
+
+.public-committee-training-topic-review-grid section>div{
+  display:grid;
+  gap:5px;
+  font-size:10px;
+}
+
+@media(max-width:900px){
+  .committee-training-exam-summary,
+  .committee-training-results-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-training-results-layout{
+    grid-template-columns:1fr;
+  }
+
+  .public-training-exam-meta{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media(max-width:700px){
+  .committee-training-exam-options{
+    grid-template-columns:1fr;
+  }
+
+  .committee-training-exam-head-actions{
+    width:100%;
+  }
+
+  .committee-training-exam-head-actions button{
+    flex:1;
+  }
+
+  .committee-question-card{
+    grid-template-columns:36px 1fr;
+  }
+
+  .committee-question-actions{
+    grid-column:1/-1;
+    justify-content:flex-start;
+  }
+
+  .committee-question-title-row{
+    flex-direction:column;
+  }
+
+  .committee-question-image-preview-card{
+    flex-direction:column;
+  }
+
+  .committee-question-image-preview-card img{
+    max-width:100%;
+  }
+
+  .committee-training-results-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .public-training-exam-meta{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .public-committee-training-topic-review-grid{
+    grid-template-columns:1fr;
+  }
+
+  .public-training-exam-submit-row .primary-btn,
+  .public-training-result-actions button{
+    width:100%;
+  }
+
+  .public-training-result-actions{
+    flex-direction:column;
+  }
+}
+
+.committee-exam-locked-note{
+  display:inline-flex;
+  align-items:center;
+  max-width:170px;
+  border-radius:8px;
+  background:#eef1f5;
+  color:#667487;
+  padding:6px 8px;
+  font-size:7px;
+  line-height:1.3;
+  text-align:center;
+}

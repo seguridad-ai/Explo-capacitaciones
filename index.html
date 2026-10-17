@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261012-16d3" />
+  <link rel="stylesheet" href="styles.css?v=20261013-16d4" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -197,6 +197,7 @@
 
           <div class="public-training-result-actions">
             <button id="publicCommitteeTrainingReviewButton" class="primary-btn" type="button">Revisar mis respuestas</button>
+            <button id="publicCommitteeTrainingDownloadExamButton" class="public-document-btn" type="button">Descargar mi examen PDF</button>
             <button id="publicCommitteeTrainingRetryButton" class="secondary-btn hidden" type="button">Realizar otro intento</button>
             <button id="publicCommitteeTrainingReturnContentButton" class="secondary-btn" type="button">Volver al contenido</button>
           </div>
@@ -2314,7 +2315,11 @@
               <div>
                 <span class="eyebrow">CAPACITACIONES DEL COMITÉ SST</span>
                 <h3>Biblioteca de capacitaciones y videos</h3>
-                <p class="committee-meeting-help">Crea la capacitación, organiza uno o varios videos y deja el contenido listo para el flujo público de la siguiente etapa.</p>
+                <p class="committee-meeting-help">Crea la capacitación, administra el contenido, evalúa a los integrantes y genera la documentación de respaldo.</p>
+              </div>
+              <div class="committee-training-report-actions">
+                <button id="downloadCommitteeTrainingConsolidatedExcelButton" class="secondary-btn" type="button">Excel consolidado</button>
+                <button id="downloadCommitteeTrainingConsolidatedPdfButton" class="primary-btn" type="button">Reporte consolidado PDF</button>
               </div>
             </div>
 
@@ -2674,6 +2679,17 @@
               <article><span>Participantes</span><strong id="committeeTrainingResultsParticipants">0</strong></article>
               <article><span>Aprobación</span><strong id="committeeTrainingResultsApproval">0%</strong></article>
               <article><span>Promedio</span><strong id="committeeTrainingResultsAverage">0.0</strong></article>
+            </div>
+
+            <div class="committee-training-document-actions">
+              <div>
+                <span class="eyebrow">DOCUMENTOS</span>
+                <strong>Documentación de la capacitación</strong>
+                <small>Registro oficial, reporte de resultados y Excel de participantes.</small>
+              </div>
+              <button id="downloadCommitteeTrainingRegisterPdfButton" class="primary-btn" type="button">Registro PDF</button>
+              <button id="downloadCommitteeTrainingResultsPdfButton" class="secondary-btn" type="button">Reporte PDF</button>
+              <button id="downloadCommitteeTrainingResultsExcelButton" class="secondary-btn" type="button">Resultados Excel</button>
             </div>
 
             <div class="committee-training-results-layout">
@@ -3398,7 +3414,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261012-16d3"></script>
+  <script src="app.js?v=20261013-16d4"></script>
 </body>
 </html>

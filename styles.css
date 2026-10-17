@@ -4939,3 +4939,110 @@ body.modal-open{
   line-height:1.3;
   text-align:center;
 }
+
+/* ============================================================
+   ETAPA 16D.4 · DOCUMENTOS Y REPORTES
+   ============================================================ */
+
+.committee-training-report-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.committee-training-document-actions{
+  display:grid;
+  grid-template-columns:minmax(240px,1fr) auto auto auto;
+  gap:9px;
+  align-items:center;
+  margin:14px 0 18px;
+  padding:13px 15px;
+  border:1px solid #dfe5ec;
+  border-radius:12px;
+  background:#f8fafc;
+}
+
+.committee-training-document-actions>div strong,
+.committee-training-document-actions>div small{
+  display:block;
+}
+
+.committee-training-document-actions>div strong{
+  margin-top:2px;
+  color:#17263c;
+  font-size:12px;
+}
+
+.committee-training-document-actions>div small{
+  margin-top:3px;
+  color:#768397;
+  font-size:8px;
+}
+
+.committee-training-result-actions-cell{
+  min-width:155px;
+}
+
+.committee-training-result-actions-cell button{
+  margin:2px 3px 2px 0;
+}
+
+.public-document-btn{
+  min-height:42px;
+  border:0;
+  border-radius:9px;
+  padding:0 16px;
+  background:#0f9f4f;
+  color:#fff;
+  font:inherit;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.public-document-btn:hover{
+  filter:brightness(.96);
+}
+
+.public-document-btn:disabled{
+  opacity:.6;
+  cursor:not-allowed;
+}
+
+@media(max-width:900px){
+  .committee-training-document-actions{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .committee-training-document-actions>div{
+    grid-column:1/-1;
+  }
+}
+
+@media(max-width:680px){
+  .committee-training-report-actions{
+    width:100%;
+    justify-content:stretch;
+  }
+
+  .committee-training-report-actions button{
+    flex:1 1 100%;
+  }
+
+  .committee-training-document-actions{
+    grid-template-columns:1fr;
+  }
+
+  .committee-training-document-actions>div{
+    grid-column:auto;
+  }
+
+  .committee-training-document-actions button{
+    width:100%;
+  }
+
+  .public-training-result-actions .public-document-btn{
+    width:100%;
+  }
+}

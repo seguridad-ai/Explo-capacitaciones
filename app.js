@@ -4542,13 +4542,19 @@ async function openCommitteeTrainingResultsModal(trainingId) {
         <td><strong>${Number(attempt.nota || 0).toFixed(1)}</strong></td>
         <td><span class="result-status ${attempt.aprobado?'approved':'failed'}">${attempt.aprobado?'APROBADO':'DESAPROBADO'}</span></td>
         <td>${new Date(attempt.finalizado_at).toLocaleString('es-PE')}</td>
-        <td><button class="eval-row-btn" type="button" data-committee-training-attempt-detail="${attempt.id}">⌄ Ver</button></td>
+        <td class="committee-training-result-actions-cell">
+          <button class="eval-row-btn" type="button" data-committee-training-attempt-detail="${attempt.id}">⌄ Ver</button>
+          <button class="result-download-btn" type="button" data-download-committee-training-exam="${attempt.id}">Examen PDF</button>
+        </td>
       </tr>
     `;
   }).join('') : '<tr><td colspan="6" class="table-empty">Todavía no hay resultados.</td></tr>';
 
   body.querySelectorAll('[data-committee-training-attempt-detail]').forEach(button=>{
     button.addEventListener('click',()=>toggleCommitteeTrainingAttemptDetail(button.dataset.committeeTrainingAttemptDetail));
+  });
+  body.querySelectorAll('[data-download-committee-training-exam]').forEach(button=>{
+    button.addEventListener('click',()=>downloadCommitteeTrainingAttemptPdf(button.dataset.downloadCommitteeTrainingExam,button));
   });
 
   document.getElementById('committeeTrainingAttemptDetail').classList.add('hidden');
@@ -4671,6 +4677,651 @@ async function renderCommitteeTrainingGapAnalysis(trainingId,attempts) {
       <div><i style="width:${x.pct}%"></i></div>
     </div>
   `).join('') : '<div class="training-library-empty">Sin brechas registradas.</div>';
+}
+
+// ============================================================
+// ETAPA 16D.4 · DOCUMENTOS Y REPORTES
+// ============================================================
+
+function committeeTrainingLatestAttempts(trainingId) {
+  const rows=committeeTrainingAttempts
+    .filter(x=>x.capacitacion_id===trainingId && x.finalizado_at)
+    .sort((a,b)=>{
+      if (a.participante_id===b.participante_id) {
+        return Number(b.numero_intento||0)-Number(a.numero_intento||0) || new Date(b.finalizado_at)-new Date(a.finalizado_at);
+      }
+      return new Date(b.finalizado_at)-new Date(a.finalizado_at);
+    });
+
+  const map=new Map();
+  rows.forEach(row=>{
+    if (!map.has(row.participante_id)) map.set(row.participante_id,row);
+  });
+  return [...map.values()];
+}
+
+function committeeTrainingDocumentUnit(training) {
+  const committee=committeeTrainingCommittee(training);
+  if (!committee) return '—';
+  return `${committee.tipo==='SUBCOMITE'?'Proyecto':'Sede'} - ${committeeUnitName(committee)}`;
+}
+
+function committeeTrainingDocumentParticipantRows(trainingId) {
+  return committeeTrainingLatestAttempts(trainingId)
+    .map(attempt=>{
+      const participant=committeeTrainingParticipantById(attempt.participante_id);
+      const worker=committeeTrainingParticipantWorker(participant);
+      return {attempt,participant,worker};
+    })
+    .filter(x=>x.participant && x.worker)
+    .sort((a,b)=>committeeTrainingParticipantName(a.participant).localeCompare(committeeTrainingParticipantName(b.participant),'es'));
+}
+
+function safeDocumentFileName(value,fallback='documento') {
+  const text=String(value || fallback)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^A-Za-z0-9_-]+/g,'_')
+    .replace(/^_+|_+$/g,'')
+    .slice(0,80);
+  return text || fallback;
+}
+
+function committeeTrainingPdfText(doc,value,x,y,size=8,bold=false,align='left',color=[20,20,20]) {
+  doc.setFont('helvetica',bold?'bold':'normal');
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+  doc.text(String(value ?? ''),x,y,{align});
+}
+
+function committeeTrainingPdfFitText(doc,value,x,y,maxWidth,size=8,bold=false,align='left',color=[20,20,20]) {
+  let text=String(value ?? '');
+  doc.setFont('helvetica',bold?'bold':'normal');
+  doc.setFontSize(size);
+  doc.setTextColor(...color);
+  if (doc.getTextWidth(text)<=maxWidth) {
+    doc.text(text,x,y,{align});
+    return;
+  }
+  while (text.length>3 && doc.getTextWidth(`${text}…`)>maxWidth) text=text.slice(0,-1);
+  doc.text(`${text}…`,x,y,{align});
+}
+
+function committeeTrainingRegisterDrawCheckbox(doc,checked,x,y) {
+  doc.setDrawColor(30,30,30);
+  doc.setLineWidth(.18);
+  doc.rect(x,y,2.7,2.7);
+  if (checked) {
+    doc.setLineWidth(.38);
+    doc.line(x+.45,y+1.35,x+1.12,y+2.05);
+    doc.line(x+1.12,y+2.05,x+2.35,y+.5);
+  }
+}
+
+async function downloadCommitteeTrainingRegisterPdf(trainingId=null,button=null) {
+  const id=trainingId || document.getElementById('committeeTrainingResultsModal')?.dataset.trainingId;
+  const training=committeeTrainingRecords.find(x=>x.id===id);
+  if (!training) return alert('No se encontró la capacitación.');
+  if (!window.jspdf?.jsPDF) return alert('No se cargó el generador PDF.');
+
+  const rows=committeeTrainingDocumentParticipantRows(id);
+  if (!rows.length) {
+    alert('Todavía no existen participantes con evaluación finalizada para generar el registro.');
+    return;
+  }
+
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Generando…'; }
+
+  try {
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+    let logo=null;
+    try { logo=await imageToDataUrl('assets/logo-explo.jpg'); } catch(err) { console.warn(err); }
+
+    const BLACK=[20,20,20], DARK=[82,82,82], LIGHT=[232,232,232], RED=[192,0,0], WHITE=[255,255,255];
+    const pageW=210,left=5,right=205,totalW=200;
+    const committee=committeeTrainingCommittee(training);
+    const members=committeeActiveMembers(training.comite_id).length;
+    const chunks=[];
+    for (let i=0;i<rows.length;i+=20) chunks.push(rows.slice(i,i+20));
+
+    const rect=(x,y,w,h,fill=null,lw=.2)=>{
+      doc.setDrawColor(...BLACK); doc.setLineWidth(lw);
+      if (fill) { doc.setFillColor(...fill); doc.rect(x,y,w,h,'FD'); }
+      else doc.rect(x,y,w,h,'S');
+    };
+    const line=(x1,y1,x2,y2,lw=.2)=>{doc.setDrawColor(...BLACK);doc.setLineWidth(lw);doc.line(x1,y1,x2,y2);};
+    const txt=(v,x,y,size=5,bold=false,align='left',color=BLACK)=>committeeTrainingPdfText(doc,v,x,y,size,bold,align,color);
+    const fit=(v,x,y,w,size=5,bold=false,align='left',color=BLACK)=>committeeTrainingPdfFitText(doc,v,x,y,w,size,bold,align,color);
+
+    for (let pageIndex=0;pageIndex<chunks.length;pageIndex++) {
+      if (pageIndex>0) doc.addPage();
+      const participants=chunks[pageIndex];
+      const hy=5,hh=19,logoW=36,titleW=120,metaW=44;
+      rect(left,hy,totalW,hh);
+      line(left+logoW,hy,left+logoW,hy+hh);
+      line(left+logoW+titleW,hy,left+logoW+titleW,hy+hh);
+      if (logo) doc.addImage(logo,'JPEG',left+2,hy+1,logoW-4,hh-2,undefined,'FAST');
+      const tx=left+logoW;
+      line(tx,hy+8.3,tx+titleW,hy+8.3);
+      txt('SIG - SSOMAC',tx+titleW/2,hy+5.7,8.2,true,'center');
+      rect(tx,hy+8.3,titleW,10.7,RED);
+      txt('REGISTRO DE INDUCCIÓN, CAPACITACIÓN, ENTRENAMIENTO Y SIMULACRO DE EMERGENCIA',tx+titleW/2,hy+14.8,5.3,true,'center',WHITE);
+
+      const mx=tx+titleW;
+      const meta=[['Código:',PDF_EMPLOYER.codigoFormato],['N°:',PDF_EMPLOYER.numeroFormato],['Versión:',PDF_EMPLOYER.version],['Fecha Act:',PDF_EMPLOYER.fechaActualizacion]];
+      meta.forEach((row,i)=>{
+        const y=hy+i*(hh/4);
+        if (i>0) line(mx,y,right,y);
+        line(mx+13,y,mx+13,y+hh/4);
+        txt(row[0],mx+1.5,y+3.2,4.2,true);
+        fit(row[1],mx+14.5,y+3.2,metaW-15.5,4.0,i<3);
+      });
+
+      let y=24;
+      rect(left,y,totalW,4.5);
+      txt('DATOS DE EMPLEADOR:',left+1,y+3.15,5,true);
+      y+=4.5;
+      const ew=[36,30,66,33,35];
+      const eh=['RAZÓN O DENOMINACIÓN SOCIAL','RUC','DOMICILIO (Dirección, distrito, provincia, dpto.)','ACTIVIDAD ECONÓMICA','N° TRABAJADORES EN EL CENTRO LABORAL'];
+      let x=left;
+      ew.forEach((w,i)=>{rect(x,y,w,8,DARK);fit(eh[i],x+w/2,y+4.6,w-2,3.7,true,'center',WHITE);x+=w;});
+      y+=8;
+      const ev=[PDF_EMPLOYER.razonSocial,PDF_EMPLOYER.ruc,PDF_EMPLOYER.domicilio,PDF_EMPLOYER.actividad,String(members||0)];
+      x=left;
+      ew.forEach((w,i)=>{rect(x,y,w,7,LIGHT);fit(ev[i],x+w/2,y+4.35,w-2,3.8,false,'center');x+=w;});
+      y+=7;
+
+      // Clasificación + datos de la capacitación.
+      const classW=33, detailX=left+classW, detailW=167;
+      rect(left,y,classW,32);
+      rect(detailX,y,detailW,32);
+      txt('CLASIFICACIÓN',left+1,y+3.2,4.5,true);
+      const opts=['INDUCCIÓN','CAPACITACIÓN','ENTRENAMIENTO','SIMULACRO DE EMERGENCIA','VISITANTES','RE-INDUCCIÓN','CAMBIO DE PUESTO','REUNIÓN','OTROS'];
+      opts.forEach((opt,i)=>{
+        const yy=y+5.2+i*2.85;
+        committeeTrainingRegisterDrawCheckbox(doc,opt==='CAPACITACIÓN',left+1,yy-2.1);
+        txt(opt,left+4.4,yy,3.8,opt==='CAPACITACIÓN');
+      });
+
+      const rowH=5.33;
+      const labelW=17,rightColX=detailX+119,rightLabelW=16;
+      const labelsLeft=[
+        ['TEMA:',training.titulo || '—'],
+        ['EXPOSITOR:',training.expositor || '—'],
+        ['CARGO:',training.cargo_expositor || '—'],
+        ['EMPRESA:',PDF_EMPLOYER.razonSocial],
+        ['ÁREA:','SSOMAC'],
+        ['UNIDAD:',committeeTrainingDocumentUnit(training)]
+      ];
+      const labelsRight=[
+        ['FIRMA:',''],
+        ['DNI:',''],
+        ['FECHA:',formatDatePE(training.fecha)],
+        ['TIEMPO:',`${Number(training.duracion_horas||0)} h`],
+        ['CÓDIGO:',training.codigo || '—'],
+        ['COMITÉ:',committee?.codigo || '—']
+      ];
+      for (let i=0;i<6;i++) {
+        const yy=y+i*rowH;
+        if (i>0) line(detailX,yy,detailX+detailW,yy);
+        line(detailX+labelW,yy,detailX+labelW,yy+rowH);
+        line(rightColX,yy,rightColX,yy+rowH);
+        line(rightColX+rightLabelW,yy,rightColX+rightLabelW,yy+rowH);
+        txt(labelsLeft[i][0],detailX+1,yy+3.55,4.1,true);
+        fit(labelsLeft[i][1],detailX+labelW+1,yy+3.55,rightColX-(detailX+labelW)-2,4.0,false);
+        txt(labelsRight[i][0],rightColX+1,yy+3.55,4.1,true);
+        fit(labelsRight[i][1],rightColX+rightLabelW+1,yy+3.55,(detailX+detailW)-(rightColX+rightLabelW)-2,4.0,false);
+      }
+      y+=32;
+
+      const body=[];
+      for (let i=0;i<20;i++) {
+        const item=participants[i] || null;
+        body.push(item ? [
+          String(pageIndex*20+i+1),
+          committeeTrainingParticipantName(item.participant),
+          item.worker.dni || '',
+          item.worker.cargo || '',
+          item.worker.area || '',
+          '',
+          Number(item.attempt.nota || 0).toFixed(1)
+        ] : [String(pageIndex*20+i+1),'','','','','','']);
+      }
+
+      doc.autoTable({
+        startY:y,
+        head:[['N°','APELLIDOS Y NOMBRES','N° DNI','PUESTO DE TRABAJO','ÁREA','FIRMA','NOTA']],
+        body,
+        margin:{left,right:5},
+        tableWidth:200,
+        styles:{font:'helvetica',fontSize:4.5,cellPadding:1.2,minCellHeight:7.1,valign:'middle',lineColor:[25,25,25],lineWidth:.18,textColor:BLACK},
+        headStyles:{fillColor:DARK,textColor:WHITE,fontStyle:'bold',halign:'center',minCellHeight:7},
+        columnStyles:{0:{cellWidth:9,halign:'center'},1:{cellWidth:47},2:{cellWidth:22,halign:'center'},3:{cellWidth:41},4:{cellWidth:27},5:{cellWidth:38},6:{cellWidth:16,halign:'center'}},
+        didDrawCell:(cellData)=>{
+          if (cellData.section!=='body' || cellData.column.index!==5) return;
+          const item=participants[cellData.row.index];
+          if (!item?.participant?.firma_electronica) return;
+          try {
+            const sig=item.participant.firma_electronica;
+            const prop=doc.getImageProperties(sig);
+            const maxW=cellData.cell.width-2,maxH=cellData.cell.height-1.4;
+            const ratio=Math.min(maxW/prop.width,maxH/prop.height);
+            const w=prop.width*ratio,h=prop.height*ratio;
+            doc.addImage(sig,'PNG',cellData.cell.x+(cellData.cell.width-w)/2,cellData.cell.y+(cellData.cell.height-h)/2,w,h,undefined,'FAST');
+          } catch(err) { console.warn('Firma no insertada',err); }
+        }
+      });
+
+      const fy=Math.min(281,doc.lastAutoTable.finalY+2);
+      rect(left,fy,totalW,4,LIGHT);
+      txt('RESPONSABLE DEL REGISTRO',105,fy+2.8,4.3,true,'center');
+      rect(left,fy+4,100,10);
+      rect(left+100,fy+4,100,10);
+      txt('NOMBRE:',left+1,fy+7.4,4,true);
+      fit([currentProfile?.nombres,currentProfile?.apellidos].filter(Boolean).join(' ') || training.expositor || '—',left+18,fy+7.4,77,4.1,false);
+      txt('FIRMA:',left+101,fy+7.4,4,true);
+      txt('CARGO:',left+1,fy+12.2,4,true);
+      fit(currentProfile?.cargo || training.cargo_expositor || '—',left+18,fy+12.2,77,4.1,false);
+      txt('FECHA:',left+101,fy+12.2,4,true);
+      txt(formatDatePE(training.fecha),left+116,fy+12.2,4.1,false);
+      txt(`Página ${pageIndex+1} de ${chunks.length}`,right,291,4,false,'right',[110,110,110]);
+    }
+
+    doc.save(`${safeDocumentFileName(training.codigo,'CAP_COMITE')}_Registro_Capacitacion.pdf`);
+  } catch(err) {
+    console.error(err);
+    alert(err?.message || 'No fue posible generar el registro PDF.');
+  } finally {
+    if (button) { button.disabled=false; button.textContent=old; }
+  }
+}
+
+async function generateCommitteeTrainingExamPdf(detail,options={}) {
+  if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+  const training=detail.capacitacion || detail.training || {};
+  const participant=detail.participante || {};
+  const attempt=detail.intento || {};
+  const questions=detail.preguntas || [];
+  const GREEN=[0,145,55], RED=[192,0,0], BLACK=[20,20,20], GRAY=[95,105,118], LIGHT=[225,230,236];
+  let logo=null;
+  try { logo=await imageToDataUrl('assets/logo-explo.jpg'); } catch(err) { console.warn(err); }
+
+  const text=(v,x,y,size=8,bold=false,align='left',color=BLACK)=>committeeTrainingPdfText(doc,v,x,y,size,bold,align,color);
+  const wrapped=(v,x,y,maxW,size=8,bold=false,color=BLACK,lineGap=4)=>{
+    doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);doc.setTextColor(...color);
+    const lines=doc.splitTextToSize(String(v ?? ''),maxW);
+    doc.text(lines,x,y,{lineHeightFactor:1.12});
+    return y+lines.length*lineGap;
+  };
+  const header=()=>{
+    if (logo) doc.addImage(logo,'JPEG',14,8,31,18,undefined,'FAST');
+    text('SIG - SSOMAC',105,14,10,true,'center');
+    text('EXAMEN',105,23,15,true,'center');
+    text('Código: EDP-SIG-SSOMAC-RE-EA-122',151,12,6.8);
+    text('N°: 8',151,18,6.8);
+    text('Versión: 1',151,24,6.8);
+    doc.setDrawColor(0,0,0);doc.setLineWidth(.45);doc.line(14,30,196,30);
+    text('RESOLUCIÓN DEL EXAMEN',105,39,12.5,true,'center');
+  };
+  const footer=()=>{
+    const page=doc.internal.getCurrentPageInfo().pageNumber;
+    text(`Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión · Página ${page}`,105,291,5,false,'center',[130,130,130]);
+  };
+  const ensure=(needed=20)=>{
+    if (cursor+needed>282) { footer(); doc.addPage(); header(); cursor=48; }
+  };
+
+  header();
+  let cursor=51;
+  const meta=[
+    ['Participante:',participant.nombre || '—'],
+    ['DNI:',participant.dni || '—'],
+    ['Cargo:',participant.cargo || '—'],
+    ['Área:',participant.area || '—'],
+    ['Curso:',training.titulo || training.tema || '—'],
+    ['Fecha:',formatLongDatePE(training.fecha)]
+  ];
+  for (const [label,value] of meta) {
+    text(label,18,cursor,8.5,true);
+    cursor=wrapped(value,48,cursor,140,8.5,false,BLACK,4)+1;
+  }
+  cursor+=3;
+  text(`Nota Final: ${Number(attempt.nota || 0).toFixed(1)}`,18,cursor,11,true,'left',attempt.aprobado?GREEN:RED);cursor+=6;
+  text(`Estado: ${attempt.aprobado?'APROBADO':'DESAPROBADO'}`,18,cursor,11,true,'left',attempt.aprobado?GREEN:RED);cursor+=6;
+  text(`Preguntas Correctas: ${attempt.correctas || 0} / ${attempt.total || questions.length}`,18,cursor,10,true);cursor+=8;
+
+  for (let i=0;i<questions.length;i++) {
+    const q=questions[i];
+    ensure(28);
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(.25);doc.line(17,cursor-3,193,cursor-3);
+    cursor=wrapped(`${i+1}. ${q.enunciado || ''}`,18,cursor,173,9.2,true,BLACK,4.3)+1;
+    text(`Tema: ${q.nivel_tema || 'General'} · ${q.es_correcta?'CORRECTA':'INCORRECTA'}`,20,cursor,7.4,true,'left',q.es_correcta?GREEN:RED);cursor+=5;
+
+    if (q.imagen_url) {
+      try {
+        ensure(45);
+        const img=await imageToDataUrl(q.imagen_url);
+        const prop=doc.getImageProperties(img);
+        const maxW=90,maxH=40,ratio=Math.min(maxW/prop.width,maxH/prop.height);
+        const w=prop.width*ratio,h=prop.height*ratio;
+        doc.addImage(img,'JPEG',20,cursor,w,h,undefined,'FAST');
+        cursor+=h+4;
+      } catch(err) { console.warn('Imagen de pregunta no insertada',err); }
+    }
+
+    const response=q.tipo==='FREE_TEXT'
+      ? (q.respuesta_texto || 'Sin respuesta')
+      : ((q.respuesta_seleccionada || []).join(' / ') || 'Sin respuesta');
+    const correct=(q.respuestas_correctas || []).join(' / ') || '—';
+    cursor=wrapped(`Tu respuesta: ${response}`,20,cursor,168,8,false,q.es_correcta?GREEN:RED,3.8)+1;
+    cursor=wrapped(`Respuesta correcta: ${correct}`,20,cursor,168,8,true,GREEN,3.8)+1;
+    text(`Puntos: ${Number(q.puntaje || 0)} / ${Number(q.peso || 0)}`,20,cursor,7.7,true);cursor+=5;
+    if (q.explicacion) {
+      cursor=wrapped(`Retroalimentación: ${q.explicacion}`,20,cursor,168,7.7,false,GRAY,3.7)+2;
+    } else cursor+=2;
+  }
+
+  ensure(30);
+  doc.setDrawColor(...LIGHT);doc.line(18,cursor,192,cursor);cursor+=8;
+  if (participant.firma) {
+    text('Firma del participante:',18,cursor,8.5,true);
+    try {
+      const prop=doc.getImageProperties(participant.firma);
+      const ratio=Math.min(40/prop.width,16/prop.height);
+      const w=prop.width*ratio,h=prop.height*ratio;
+      doc.addImage(participant.firma,'PNG',55,cursor-7,w,h,undefined,'FAST');
+    } catch(err) { console.warn(err); }
+    cursor+=12;
+  }
+  text(`Intento: ${attempt.numero_intento || '—'}`,18,cursor,8);cursor+=5;
+  text(`Finalizado: ${attempt.finalizado_at ? new Date(attempt.finalizado_at).toLocaleString('es-PE') : '—'}`,18,cursor,8);
+  footer();
+
+  const name=safeDocumentFileName(participant.nombre,'Participante');
+  const code=safeDocumentFileName(training.codigo,'CAP_COMITE');
+  const filename=`${code}_Examen_${name}_Intento_${attempt.numero_intento || 1}.pdf`;
+  if (options.returnBlob) return {blob:doc.output('blob'),filename};
+  doc.save(filename);
+  return {filename};
+}
+
+async function downloadCommitteeTrainingAttemptPdf(attemptId,button=null) {
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Generando…'; }
+  try {
+    const attempt=committeeTrainingAttempts.find(x=>x.id===attemptId);
+    const training=committeeTrainingRecords.find(x=>x.id===attempt?.capacitacion_id);
+    if (!attempt || !training) throw new Error('No se encontró el resultado.');
+    const {data,error}=await client.rpc('obtener_resultado_capacitacion_comite_admin',{p_intento_id:attemptId});
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || 'No fue posible cargar el examen.');
+    await generateCommitteeTrainingExamPdf({...data,capacitacion:training});
+  } catch(err) {
+    console.error(err); alert(err?.message || 'No fue posible generar el examen PDF.');
+  } finally {
+    if (button) { button.disabled=false; button.textContent=old; }
+  }
+}
+
+async function downloadPublicCommitteeTrainingExamPdf() {
+  if (!publicCommitteeTrainingLastExamAttemptId || !publicCommitteeTrainingToken || !publicCommitteeTrainingDni) {
+    alert('No se encontró el resultado del examen.');
+    return;
+  }
+  const button=document.getElementById('publicCommitteeTrainingDownloadExamButton');
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Generando…'; }
+  try {
+    const {data,error}=await client.rpc('obtener_documento_examen_capacitacion_comite_publico',{
+      p_token:publicCommitteeTrainingToken,
+      p_dni:publicCommitteeTrainingDni,
+      p_intento_id:publicCommitteeTrainingLastExamAttemptId
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || 'No fue posible cargar el documento.');
+    await generateCommitteeTrainingExamPdf(data);
+  } catch(err) {
+    console.error(err); alert(err?.message || 'No fue posible generar el examen PDF.');
+  } finally {
+    if (button) { button.disabled=false; button.textContent=old || 'Descargar mi examen PDF'; }
+  }
+}
+
+async function committeeTrainingGapRows(trainingIds=null) {
+  const idSet=trainingIds ? new Set(Array.isArray(trainingIds)?trainingIds:[trainingIds]) : null;
+  const latest=[];
+  const grouped=new Map();
+  committeeTrainingAttempts.filter(x=>x.finalizado_at && (!idSet || idSet.has(x.capacitacion_id))).forEach(a=>{
+    const key=`${a.capacitacion_id}:${a.participante_id}`;
+    const current=grouped.get(key);
+    if (!current || Number(a.numero_intento)>Number(current.numero_intento)) grouped.set(key,a);
+  });
+  latest.push(...grouped.values());
+  if (!latest.length) return [];
+
+  const {data,error}=await client.from('comite_sst_capacitacion_respuestas')
+    .select('intento_id,pregunta_id,es_correcta')
+    .in('intento_id',latest.map(x=>x.id));
+  if (error) throw error;
+
+  const qMap=new Map(committeeTrainingQuestionRecords.map(q=>[q.id,q]));
+  const attemptMap=new Map(latest.map(a=>[a.id,a]));
+  const stats=new Map();
+  (data || []).forEach(r=>{
+    const a=attemptMap.get(r.intento_id),q=qMap.get(r.pregunta_id);
+    if (!a || !q) return;
+    const key=`${a.capacitacion_id}|||${q.nivel_tema || 'General'}`;
+    if (!stats.has(key)) stats.set(key,{capacitacion_id:a.capacitacion_id,tema:q.nivel_tema || 'General',total:0,errores:0});
+    const item=stats.get(key); item.total++; if (!r.es_correcta) item.errores++;
+  });
+  return [...stats.values()].map(x=>({...x,error_pct:x.total?Math.round(x.errores/x.total*100):0}));
+}
+
+async function downloadCommitteeTrainingResultsReportPdf(trainingId=null,button=null) {
+  const id=trainingId || document.getElementById('committeeTrainingResultsModal')?.dataset.trainingId;
+  const training=committeeTrainingRecords.find(x=>x.id===id);
+  if (!training) return alert('No se encontró la capacitación.');
+  if (!window.jspdf?.jsPDF) return alert('No se cargó el generador PDF.');
+
+  const old=button?.textContent || '';
+  if (button) { button.disabled=true; button.textContent='Generando…'; }
+  try {
+    const rows=committeeTrainingDocumentParticipantRows(id);
+    const gap=await committeeTrainingGapRows(id);
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true});
+    let logo=null;try{logo=await imageToDataUrl('assets/logo-explo.jpg');}catch{}
+    if (logo) doc.addImage(logo,'JPEG',12,8,30,17,undefined,'FAST');
+    committeeTrainingPdfText(doc,'SIG - SSOMAC',148,13,10,true,'center');
+    committeeTrainingPdfText(doc,'REPORTE DE RESULTADOS - CAPACITACIÓN DEL COMITÉ SST',148,21,13,true,'center');
+    committeeTrainingPdfText(doc,training.codigo || '—',285,12,7,false,'right');
+    doc.setDrawColor(192,0,0);doc.setLineWidth(.8);doc.line(12,28,285,28);
+
+    const approved=rows.filter(x=>x.attempt.aprobado).length;
+    const avg=rows.length?rows.reduce((s,x)=>s+Number(x.attempt.nota||0),0)/rows.length:0;
+    committeeTrainingPdfText(doc,`Tema: ${training.titulo}`,12,37,9,true);
+    committeeTrainingPdfText(doc,`Comité / Unidad: ${committeeTrainingDocumentUnit(training)}`,12,43,8);
+    committeeTrainingPdfText(doc,`Expositor: ${training.expositor || '—'} · Fecha: ${formatDatePE(training.fecha)} · Duración: ${Number(training.duracion_horas||0)} h`,12,49,8);
+    committeeTrainingPdfText(doc,`Participantes evaluados: ${rows.length}    Aprobados: ${approved}    Aprobación: ${rows.length?Math.round(approved/rows.length*100):0}%    Promedio: ${avg.toFixed(1)}`,12,56,9,true);
+
+    doc.autoTable({
+      startY:62,
+      head:[['N°','APELLIDOS Y NOMBRES','DNI','PUESTO','ÁREA','INTENTO FINAL','NOTA','ESTADO','FECHA']],
+      body:rows.map((x,i)=>[i+1,committeeTrainingParticipantName(x.participant),x.worker.dni||'',x.worker.cargo||'',x.worker.area||'',x.attempt.numero_intento,Number(x.attempt.nota||0).toFixed(1),x.attempt.aprobado?'APROBADO':'DESAPROBADO',new Date(x.attempt.finalizado_at).toLocaleDateString('es-PE')]),
+      styles:{fontSize:6.6,cellPadding:1.8,lineColor:[210,215,222],lineWidth:.15,valign:'middle'},
+      headStyles:{fillColor:[70,70,70],textColor:[255,255,255],fontStyle:'bold'},
+      columnStyles:{0:{cellWidth:10},1:{cellWidth:55},2:{cellWidth:25},3:{cellWidth:45},4:{cellWidth:35},5:{cellWidth:22},6:{cellWidth:18},7:{cellWidth:28},8:{cellWidth:25}}
+    });
+
+    let y=doc.lastAutoTable.finalY+9;
+    if (y>165) { doc.addPage(); y=20; }
+    committeeTrainingPdfText(doc,'TEMAS A REFORZAR',12,y,9,true);y+=5;
+    const gapRows=gap.sort((a,b)=>b.error_pct-a.error_pct);
+    doc.autoTable({
+      startY:y,
+      head:[['NIVEL / TEMA','RESPUESTAS','ERRORES','% ERROR']],
+      body:(gapRows.length?gapRows:[{tema:'Sin brechas registradas',total:0,errores:0,error_pct:0}]).map(x=>[x.tema,x.total,x.errores,`${x.error_pct}%`]),
+      styles:{fontSize:7,cellPadding:2,lineColor:[215,220,226],lineWidth:.15},
+      headStyles:{fillColor:[192,0,0],textColor:[255,255,255]}
+    });
+    const pages=doc.getNumberOfPages();
+    for(let i=1;i<=pages;i++){doc.setPage(i);committeeTrainingPdfText(doc,`Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión · Página ${i} de ${pages}`,148,202,5,false,'center',[125,125,125]);}
+    doc.save(`${safeDocumentFileName(training.codigo,'CAP_COMITE')}_Reporte_Resultados.pdf`);
+  } catch(err) {
+    console.error(err);alert(err?.message || 'No fue posible generar el reporte PDF.');
+  } finally {
+    if(button){button.disabled=false;button.textContent=old;}
+  }
+}
+
+async function buildCommitteeTrainingWorkbook(trainingIds=null) {
+  if (!window.XLSX) throw new Error('No se cargó el generador de Excel.');
+  const ids=trainingIds ? new Set(Array.isArray(trainingIds)?trainingIds:[trainingIds]) : null;
+  const trainings=committeeTrainingRecords.filter(t=>!ids || ids.has(t.id));
+  const gapRows=await committeeTrainingGapRows(trainings.map(t=>t.id));
+
+  const summary=trainings.map(t=>{
+    const latest=committeeTrainingDocumentParticipantRows(t.id);
+    const approved=latest.filter(x=>x.attempt.aprobado).length;
+    const avg=latest.length?latest.reduce((s,x)=>s+Number(x.attempt.nota||0),0)/latest.length:0;
+    const committee=committeeTrainingCommittee(t);
+    return {
+      'Código':t.codigo || '',
+      'Capacitación':t.titulo || '',
+      'Tipo':committee?.tipo==='SUBCOMITE'?'Subcomité SST':'Comité SST',
+      'Unidad':committeeTrainingDocumentUnit(t),
+      'Fecha':formatDatePE(t.fecha),
+      'Expositor':t.expositor || '',
+      'Horas':Number(t.duracion_horas||0),
+      'Videos':committeeTrainingVideosFor(t.id).length,
+      'Preguntas':committeeTrainingQuestionRecords.filter(q=>q.capacitacion_id===t.id).length,
+      'Participantes evaluados':latest.length,
+      'Aprobados':approved,
+      'Aprobación %':latest.length?Math.round(approved/latest.length*100):0,
+      'Promedio':Number(avg.toFixed(1)),
+      'Estado':t.estado || ''
+    };
+  });
+
+  const participants=[];
+  trainings.forEach(t=>{
+    committeeTrainingDocumentParticipantRows(t.id).forEach(x=>participants.push({
+      'Código':t.codigo || '',
+      'Capacitación':t.titulo || '',
+      'Unidad':committeeTrainingDocumentUnit(t),
+      'Fecha capacitación':formatDatePE(t.fecha),
+      'Apellidos y nombres':committeeTrainingParticipantName(x.participant),
+      'DNI':x.worker.dni || '',
+      'Puesto':x.worker.cargo || '',
+      'Área':x.worker.area || '',
+      'Intento final':x.attempt.numero_intento,
+      'Nota':Number(Number(x.attempt.nota||0).toFixed(1)),
+      'Resultado':x.attempt.aprobado?'APROBADO':'DESAPROBADO',
+      'Contenido completado':x.participant.contenido_completado_at ? new Date(x.participant.contenido_completado_at).toLocaleString('es-PE') : '',
+      'Examen finalizado':x.attempt.finalizado_at ? new Date(x.attempt.finalizado_at).toLocaleString('es-PE') : ''
+    }));
+  });
+
+  const attempts=committeeTrainingAttempts
+    .filter(a=>a.finalizado_at && trainings.some(t=>t.id===a.capacitacion_id))
+    .map(a=>{
+      const t=trainings.find(x=>x.id===a.capacitacion_id);
+      const p=committeeTrainingParticipantById(a.participante_id);
+      const w=committeeTrainingParticipantWorker(p);
+      return {
+        'Código':t?.codigo || '',
+        'Capacitación':t?.titulo || '',
+        'Participante':committeeTrainingParticipantName(p),
+        'DNI':w.dni || '',
+        'Intento':a.numero_intento,
+        'Nota':Number(Number(a.nota||0).toFixed(1)),
+        'Correctas':a.correctas,
+        'Total preguntas':a.total_preguntas,
+        'Resultado':a.aprobado?'APROBADO':'DESAPROBADO',
+        'Fecha y hora':new Date(a.finalizado_at).toLocaleString('es-PE')
+      };
+    });
+
+  const gaps=gapRows.map(x=>{
+    const t=trainings.find(t=>t.id===x.capacitacion_id);
+    return {'Código':t?.codigo || '', 'Capacitación':t?.titulo || '', 'Tema / nivel':x.tema, 'Respuestas analizadas':x.total, 'Errores':x.errores, '% Error':x.error_pct};
+  });
+
+  const wb=XLSX.utils.book_new();
+  const addSheet=(name,data,widths)=>{
+    const ws=XLSX.utils.json_to_sheet(data.length?data:[{'Sin datos':'No existen registros'}]);
+    ws['!cols']=widths.map(w=>({wch:w}));
+    ws['!autofilter']=data.length?{ref:ws['!ref']}:undefined;
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  };
+  addSheet('Resumen',summary,[18,42,18,28,15,30,10,10,12,20,12,14,12,14]);
+  addSheet('Participantes',participants,[18,40,28,16,38,14,28,24,14,12,16,22,22]);
+  addSheet('Intentos',attempts,[18,40,38,14,10,10,10,14,16,22]);
+  addSheet('Brechas',gaps,[18,40,30,20,12,12]);
+  return wb;
+}
+
+async function downloadCommitteeTrainingResultsExcel(trainingId=null,button=null) {
+  const id=trainingId || document.getElementById('committeeTrainingResultsModal')?.dataset.trainingId;
+  const training=committeeTrainingRecords.find(x=>x.id===id);
+  if (!training) return alert('No se encontró la capacitación.');
+  const old=button?.textContent || '';
+  if(button){button.disabled=true;button.textContent='Generando…';}
+  try {
+    const wb=await buildCommitteeTrainingWorkbook([id]);
+    XLSX.writeFile(wb,`${safeDocumentFileName(training.codigo,'CAP_COMITE')}_Resultados.xlsx`);
+  } catch(err) {console.error(err);alert(err?.message || 'No fue posible generar el Excel.');}
+  finally{if(button){button.disabled=false;button.textContent=old;}}
+}
+
+async function downloadCommitteeTrainingConsolidatedExcel() {
+  const button=document.getElementById('downloadCommitteeTrainingConsolidatedExcelButton');
+  const old=button?.textContent || '';
+  if(button){button.disabled=true;button.textContent='Generando…';}
+  try {
+    if (!committeeTrainingsLoaded) await loadCommitteeTrainingsModule(true);
+    const wb=await buildCommitteeTrainingWorkbook();
+    XLSX.writeFile(wb,`Reporte_Consolidado_Capacitaciones_Comite_SST_${new Date().toISOString().slice(0,10)}.xlsx`);
+  } catch(err) {console.error(err);alert(err?.message || 'No fue posible generar el Excel consolidado.');}
+  finally{if(button){button.disabled=false;button.textContent=old;}}
+}
+
+async function downloadCommitteeTrainingConsolidatedPdf() {
+  const button=document.getElementById('downloadCommitteeTrainingConsolidatedPdfButton');
+  const old=button?.textContent || '';
+  if(button){button.disabled=true;button.textContent='Generando…';}
+  try {
+    if (!window.jspdf?.jsPDF) throw new Error('No se cargó el generador PDF.');
+    if (!committeeTrainingsLoaded) await loadCommitteeTrainingsModule(true);
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true});
+    let logo=null;try{logo=await imageToDataUrl('assets/logo-explo.jpg');}catch{}
+    if(logo)doc.addImage(logo,'JPEG',12,8,30,17,undefined,'FAST');
+    committeeTrainingPdfText(doc,'SIG - SSOMAC',148,13,10,true,'center');
+    committeeTrainingPdfText(doc,'REPORTE CONSOLIDADO DE CAPACITACIONES DEL COMITÉ SST',148,21,13,true,'center');
+    doc.setDrawColor(192,0,0);doc.setLineWidth(.8);doc.line(12,28,285,28);
+
+    const rows=committeeTrainingRecords.map(t=>{
+      const latest=committeeTrainingDocumentParticipantRows(t.id);
+      const approved=latest.filter(x=>x.attempt.aprobado).length;
+      const avg=latest.length?latest.reduce((s,x)=>s+Number(x.attempt.nota||0),0)/latest.length:0;
+      return [t.codigo||'',t.titulo||'',committeeTrainingDocumentUnit(t),formatDatePE(t.fecha),committeeTrainingVideosFor(t.id).length,committeeTrainingQuestionRecords.filter(q=>q.capacitacion_id===t.id).length,latest.length,`${latest.length?Math.round(approved/latest.length*100):0}%`,avg.toFixed(1),t.estado||''];
+    });
+
+    doc.autoTable({
+      startY:35,
+      head:[['CÓDIGO','CAPACITACIÓN','UNIDAD','FECHA','VIDEOS','PREG.','PART.','APROB.','PROM.','ESTADO']],
+      body:rows.length?rows:[['','','','','','','','','','']],
+      styles:{fontSize:6.2,cellPadding:1.7,lineColor:[215,220,226],lineWidth:.15},
+      headStyles:{fillColor:[70,70,70],textColor:[255,255,255],fontStyle:'bold'},
+      columnStyles:{0:{cellWidth:27},1:{cellWidth:65},2:{cellWidth:40},3:{cellWidth:22},4:{cellWidth:16},5:{cellWidth:16},6:{cellWidth:16},7:{cellWidth:18},8:{cellWidth:18},9:{cellWidth:22}}
+    });
+    const pages=doc.getNumberOfPages();
+    for(let i=1;i<=pages;i++){doc.setPage(i);committeeTrainingPdfText(doc,`Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión · ${new Date().toLocaleDateString('es-PE')} · Página ${i} de ${pages}`,148,202,5,false,'center',[125,125,125]);}
+    doc.save(`Reporte_Consolidado_Capacitaciones_Comite_SST_${new Date().toISOString().slice(0,10)}.pdf`);
+  } catch(err) {console.error(err);alert(err?.message || 'No fue posible generar el reporte consolidado PDF.');}
+  finally{if(button){button.disabled=false;button.textContent=old;}}
 }
 
 // ------------------------------------------------------------
@@ -6716,6 +7367,11 @@ document.getElementById('committeeTrainingResultsButton')?.addEventListener('cli
 });
 document.getElementById('closeCommitteeTrainingResultsModal')?.addEventListener('click',closeCommitteeTrainingResultsModal);
 document.getElementById('committeeTrainingResultsModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closeCommitteeTrainingResultsModal);
+document.getElementById('downloadCommitteeTrainingRegisterPdfButton')?.addEventListener('click',event=>downloadCommitteeTrainingRegisterPdf(null,event.currentTarget));
+document.getElementById('downloadCommitteeTrainingResultsPdfButton')?.addEventListener('click',event=>downloadCommitteeTrainingResultsReportPdf(null,event.currentTarget));
+document.getElementById('downloadCommitteeTrainingResultsExcelButton')?.addEventListener('click',event=>downloadCommitteeTrainingResultsExcel(null,event.currentTarget));
+document.getElementById('downloadCommitteeTrainingConsolidatedExcelButton')?.addEventListener('click',downloadCommitteeTrainingConsolidatedExcel);
+document.getElementById('downloadCommitteeTrainingConsolidatedPdfButton')?.addEventListener('click',downloadCommitteeTrainingConsolidatedPdf);
 
 document.getElementById('exportCommitteeAgreementsButton')?.addEventListener('click',exportCommitteeAgreementsOfficialExcel);
 
@@ -13975,6 +14631,7 @@ document.getElementById('publicCommitteeTrainingExamButton')?.addEventListener('
 });
 document.getElementById('publicCommitteeTrainingExamSubmitButton')?.addEventListener('click',()=>submitPublicCommitteeTrainingExam(false));
 document.getElementById('publicCommitteeTrainingReviewButton')?.addEventListener('click',reviewPublicCommitteeTrainingExam);
+document.getElementById('publicCommitteeTrainingDownloadExamButton')?.addEventListener('click',downloadPublicCommitteeTrainingExamPdf);
 document.getElementById('publicCommitteeTrainingRetryButton')?.addEventListener('click',startPublicCommitteeTrainingExam);
 document.getElementById('publicCommitteeTrainingReturnContentButton')?.addEventListener('click',showPublicCommitteeTrainingContent);
 document.getElementById('publicCommitteeTrainingReviewBackButton')?.addEventListener('click',()=>{

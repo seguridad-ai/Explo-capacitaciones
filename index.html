@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17a" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17b" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -841,7 +841,7 @@
           <div>
             <span class="eyebrow">CENTRO DE PLANIFICACIÓN</span>
             <h2>Planificación</h2>
-            <p>Organiza proyectos, cronogramas y actividades. En esta etapa se incorpora la gestión visual mediante diagramas de Gantt.</p>
+            <p>Organiza proyectos, cronogramas y pendientes personales o asignados. Gestiona Gantt, prioridades, vencimientos y seguimiento tipo ticket.</p>
           </div>
           <button id="planningNewProjectButton" class="primary-btn" type="button">＋ Nuevo proyecto</button>
         </div>
@@ -850,7 +850,7 @@
 
         <div class="planning-tabs" role="tablist">
           <button id="planningProjectsTab" class="active" type="button">Proyectos y Gantt</button>
-          <button id="planningTasksTab" type="button">Pendientes <span class="planning-coming-badge">17B</span></button>
+          <button id="planningTasksTab" type="button">Pendientes</button>
         </div>
 
         <div id="planningProjectsView">
@@ -983,11 +983,188 @@
         </div>
 
         <div id="planningTasksView" class="hidden">
-          <article class="coming-card planning-next-stage-card">
-            <span>☑</span>
-            <h3>Pendientes y seguimiento personal</h3>
-            <p>Esta bandeja se desarrollará en la Etapa 17B: pendientes del día, semana y mes, prioridades, vencimientos, reprogramaciones y seguimiento tipo ticket.</p>
+          <div class="planning-task-stats">
+            <article class="task-stat-overdue"><span>Vencidos</span><strong id="planningTaskOverdueCount">0</strong><small>Requieren atención</small></article>
+            <article><span>Para hoy</span><strong id="planningTaskTodayCount">0</strong><small>Pendientes del día</small></article>
+            <article><span>En proceso</span><strong id="planningTaskInProgressCount">0</strong><small>Actualmente atendidos</small></article>
+            <article><span>En espera</span><strong id="planningTaskWaitingCount">0</strong><small>Dependen de terceros</small></article>
+            <article><span>Completados semana</span><strong id="planningTaskCompletedWeekCount">0</strong><small>Últimos 7 días</small></article>
+            <article><span>Cumplimiento semanal</span><strong id="planningTaskWeeklyCompliance">0%</strong><small>Completados / tareas de la semana</small></article>
+          </div>
+
+          <article id="planningNextTaskCard" class="planning-next-ticket-card">
+            <div class="planning-next-ticket-main">
+              <span class="eyebrow">SIGUIENTE PENDIENTE</span>
+              <div class="planning-next-ticket-title">
+                <strong id="planningNextTaskCode">—</strong>
+                <h3 id="planningNextTaskTitle">No hay pendientes por atender</h3>
+              </div>
+              <p id="planningNextTaskMeta">Tu bandeja está al día.</p>
+            </div>
+            <button id="planningAttendNextButton" class="primary-btn" type="button" disabled>Atender siguiente</button>
           </article>
+
+          <div class="planning-task-time-tabs">
+            <button class="active" type="button" data-planning-task-period="TODAY">Hoy</button>
+            <button type="button" data-planning-task-period="WEEK">Semana</button>
+            <button type="button" data-planning-task-period="MONTH">Mes</button>
+            <button type="button" data-planning-task-period="ALL">Todos</button>
+          </div>
+
+          <article class="panel planning-task-toolbar-panel">
+            <div class="planning-task-filters">
+              <input id="planningTaskSearch" type="search" placeholder="Buscar ticket, pendiente, responsable, proyecto..." />
+              <select id="planningTaskOwnershipFilter">
+                <option value="MINE">Mis pendientes</option>
+                <option value="CREATED">Asignados por mí</option>
+                <option value="ALL">Todos visibles</option>
+              </select>
+              <select id="planningTaskStatusFilter">
+                <option value="ALL">Todos los estados</option>
+                <option value="PENDIENTE">Pendientes</option>
+                <option value="EN_PROCESO">En proceso</option>
+                <option value="EN_ESPERA">En espera</option>
+                <option value="COMPLETADO">Completados</option>
+                <option value="CANCELADO">Cancelados</option>
+              </select>
+              <select id="planningTaskPriorityFilter">
+                <option value="ALL">Todas las prioridades</option>
+                <option value="CRITICA">Crítica</option>
+                <option value="ALTA">Alta</option>
+                <option value="MEDIA">Media</option>
+                <option value="BAJA">Baja</option>
+              </select>
+              <select id="planningTaskCategoryFilter">
+                <option value="ALL">Todas las categorías</option>
+                <option value="PERSONAL">Personal</option>
+                <option value="SIG">SIG</option>
+                <option value="SST">SST</option>
+                <option value="AMBIENTAL">Ambiental</option>
+                <option value="CALIDAD">Calidad</option>
+                <option value="AUDITORIA">Auditoría</option>
+                <option value="INDICADORES">Indicadores</option>
+                <option value="COMITE_SST">Comité SST</option>
+                <option value="CAPACITACION">Capacitación</option>
+                <option value="CLIENTE">Cliente</option>
+                <option value="OPERACIONES">Operaciones</option>
+                <option value="OTRO">Otro</option>
+              </select>
+              <button id="planningTaskRefreshButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+            </div>
+          </article>
+
+          <div class="planning-library-headline">
+            <div><span class="eyebrow">BANDEJA DE TRABAJO</span><h3 id="planningTaskPeriodTitle">Pendientes de hoy</h3></div>
+            <span id="planningTaskResultCount" class="schedule-result-count">0 pendientes</span>
+          </div>
+
+          <div id="planningTaskList" class="planning-task-list">
+            <div class="training-library-empty">Cargando pendientes…</div>
+          </div>
+        </div>
+
+        <div id="planningTaskModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-task-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">PLANIFICACIÓN · PENDIENTE</span>
+                <h3 id="planningTaskModalTitle">Nuevo pendiente</h3>
+                <p id="planningTaskModalSubtitle" class="modal-subtitle">Registra el ticket y su fecha de atención.</p>
+              </div>
+              <button id="planningTaskModalClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="planningTaskForm" novalidate>
+              <input id="planningTaskId" type="hidden" />
+              <div class="form-grid planning-task-form-grid">
+                <label class="form-span-2"><span>Pendiente / tarea *</span><input id="planningTaskTitle" maxlength="260" placeholder="Ej. Consolidar indicadores de Cerro Verde" /></label>
+
+                <label><span>Categoría *</span>
+                  <select id="planningTaskCategory">
+                    <option value="PERSONAL">Personal</option><option value="SIG" selected>SIG</option><option value="SST">SST</option>
+                    <option value="AMBIENTAL">Ambiental</option><option value="CALIDAD">Calidad</option><option value="AUDITORIA">Auditoría</option>
+                    <option value="INDICADORES">Indicadores</option><option value="COMITE_SST">Comité SST</option><option value="CAPACITACION">Capacitación</option>
+                    <option value="CLIENTE">Cliente</option><option value="OPERACIONES">Operaciones</option><option value="OTRO">Otro</option>
+                  </select>
+                </label>
+
+                <label><span>Origen *</span>
+                  <select id="planningTaskOrigin">
+                    <option value="PERSONAL">Personal</option><option value="GANTT">Gantt / proyecto</option><option value="COMITE_SST">Comité SST</option>
+                    <option value="CAPACITACION">Capacitación</option><option value="AUDITORIA">Auditoría</option><option value="INDICADORES">Indicadores</option>
+                    <option value="CLIENTE">Cliente</option><option value="PROYECTO">Proyecto</option><option value="OTRO">Otro</option>
+                  </select>
+                </label>
+
+                <label><span>Prioridad *</span>
+                  <select id="planningTaskPriority">
+                    <option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option>
+                  </select>
+                </label>
+
+                <label><span>Estado *</span>
+                  <select id="planningTaskStatus">
+                    <option value="PENDIENTE">PENDIENTE</option><option value="EN_PROCESO">EN PROCESO</option>
+                    <option value="EN_ESPERA">EN ESPERA</option><option value="COMPLETADO">COMPLETADO</option><option value="CANCELADO">CANCELADO</option>
+                  </select>
+                </label>
+
+                <label><span>Responsable *</span><select id="planningTaskAssignee"></select></label>
+                <label id="planningTaskManualAssigneeField" class="hidden"><span>Responsable manual *</span><input id="planningTaskAssigneeManual" maxlength="180" placeholder="Apellidos y nombres / área" /></label>
+
+                <label><span>Fecha objetivo *</span><input id="planningTaskDueDate" type="date" /></label>
+                <label><span>Hora objetivo</span><input id="planningTaskDueTime" type="time" /></label>
+
+                <label><span>Proyecto operativo</span><select id="planningTaskOperationalProject"><option value="">Ninguno / corporativo</option></select></label>
+                <label><span>Proyecto Gantt</span><select id="planningTaskPlanningProject"><option value="">Ninguno</option></select></label>
+
+                <label class="form-span-2"><span>Actividad Gantt vinculada</span><select id="planningTaskPlanningActivity"><option value="">Ninguna</option></select></label>
+
+                <div id="planningTaskWaitingFields" class="form-span-2 planning-task-waiting-fields hidden">
+                  <label><span>Esperando respuesta / acción de</span><input id="planningTaskWaitingFor" maxlength="180" placeholder="Persona, área, cliente o proyecto" /></label>
+                  <label><span>Próximo seguimiento</span><input id="planningTaskFollowupDate" type="date" /></label>
+                  <label class="form-span-2"><span>Motivo de espera</span><textarea id="planningTaskWaitingReason" rows="2" maxlength="1200" placeholder="Qué información o acción está pendiente"></textarea></label>
+                </div>
+
+                <label class="form-span-2"><span>Descripción</span><textarea id="planningTaskDescription" rows="3" maxlength="2400"></textarea></label>
+                <label class="form-span-2"><span>Observaciones</span><textarea id="planningTaskNotes" rows="2" maxlength="1800"></textarea></label>
+              </div>
+
+              <section id="planningTaskHistorySection" class="planning-task-history-section hidden">
+                <div class="meeting-editor-section-head">
+                  <div><span class="meeting-section-number">↺</span><div><h4>Trazabilidad del ticket</h4><p>Creación, cambios de estado, reprogramaciones y asignaciones.</p></div></div>
+                </div>
+                <div id="planningTaskHistoryList" class="planning-task-history-list"></div>
+              </section>
+
+              <div id="planningTaskFormMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="planningTaskDeleteButton" class="danger-outline-btn hidden" type="button">Eliminar</button>
+                <button id="planningTaskCancel" class="secondary-btn" type="button">Cancelar</button>
+                <button id="planningTaskSave" class="primary-btn" type="submit">Guardar pendiente</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="planningTaskRescheduleModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-task-action-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">REPROGRAMAR TICKET</span><h3 id="planningTaskRescheduleTitle">Reprogramar pendiente</h3><p class="modal-subtitle">La reprogramación quedará registrada en la trazabilidad.</p></div>
+              <button id="planningTaskRescheduleClose" class="modal-close" type="button">×</button>
+            </div>
+            <input id="planningTaskRescheduleId" type="hidden" />
+            <div class="form-grid">
+              <label><span>Nueva fecha *</span><input id="planningTaskRescheduleDate" type="date" /></label>
+              <label><span>Nueva hora</span><input id="planningTaskRescheduleTime" type="time" /></label>
+              <label class="form-span-2"><span>Motivo de reprogramación *</span><textarea id="planningTaskRescheduleReason" rows="4" maxlength="1400" placeholder="Ej. Pendiente información del proyecto"></textarea></label>
+            </div>
+            <div id="planningTaskRescheduleMessage" class="form-message"></div>
+            <div class="modal-actions"><button id="planningTaskRescheduleCancel" class="secondary-btn" type="button">Cancelar</button><button id="planningTaskRescheduleSave" class="primary-btn" type="button">Reprogramar</button></div>
+          </div>
         </div>
 
         <div id="planningProjectModal" class="modal hidden" aria-hidden="true">
@@ -3628,6 +3805,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17a"></script>
+  <script src="app.js?v=20261019-17b"></script>
 </body>
 </html>

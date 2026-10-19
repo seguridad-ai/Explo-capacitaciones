@@ -32,6 +32,13 @@ let planningLoaded = false;
 let activePlanningProjectId = null;
 let planningGanttZoom = 'WEEK';
 let planningDetailMode = 'gantt';
+let planningModuleTab = 'PROJECTS';
+let planningTaskRecords = [];
+let planningTaskHistory = [];
+let planningAssignableUsers = [];
+let planningTasksLoaded = false;
+let planningTaskPeriod = 'TODAY';
+let activePlanningTaskId = null;
 
 
 function showMessage(message, type = 'error') {
@@ -557,12 +564,21 @@ async function loadPlanningModule(force=false) {
 }
 
 function switchPlanningTab(tab) {
-  const projects=tab!=='TASKS';
+  planningModuleTab=tab==='TASKS'?'TASKS':'PROJECTS';
+  const projects=planningModuleTab==='PROJECTS';
+
   document.getElementById('planningProjectsTab')?.classList.toggle('active',projects);
   document.getElementById('planningTasksTab')?.classList.toggle('active',!projects);
   document.getElementById('planningProjectsView')?.classList.toggle('hidden',!projects);
   document.getElementById('planningTasksView')?.classList.toggle('hidden',projects);
-  document.getElementById('planningNewProjectButton')?.classList.toggle('hidden',!projects);
+
+  const topButton=document.getElementById('planningNewProjectButton');
+  if (topButton) {
+    topButton.classList.remove('hidden');
+    topButton.textContent=projects?'＋ Nuevo proyecto':'＋ Nuevo pendiente';
+  }
+
+  if (!projects) loadPlanningTasksModule();
 }
 
 function openPlanningProjectModal(project=null) {
@@ -773,10 +789,912 @@ function syncPlanningGanttScroll() {
   scroller.addEventListener('scroll',()=>{const x=scroller.scrollLeft;document.querySelectorAll('.planning-gantt-row .planning-gantt-timeline').forEach(el=>{el.style.transform=`translateX(${-x}px)`;});});
 }
 
+
+// ============================================================
+// ETAPA 17B · PENDIENTES Y SEGUIMIENTO TIPO TICKET
+// ============================================================
+
+function planningTaskFormMessage(message='',type='error') {
+  const el=document.getElementById('planningTaskFormMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningTaskRescheduleMessage(message='',type='error') {
+  const el=document.getElementById('planningTaskRescheduleMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningProfileDisplayName(profile) {
+  if (!profile) return '';
+  if (profile.nombre) return String(profile.nombre).trim();
+  return [profile.apellidos,profile.nombres].filter(Boolean).join(' ').trim();
+}
+
+function planningTaskStatusLabel(value) {
+  return {
+    PENDIENTE:'PENDIENTE',
+    EN_PROCESO:'EN PROCESO',
+    EN_ESPERA:'EN ESPERA',
+    COMPLETADO:'COMPLETADO',
+    CANCELADO:'CANCELADO'
+  }[value] || value || '—';
+}
+
+function planningTaskCategoryLabel(value) {
+  return {
+    PERSONAL:'Personal',SIG:'SIG',SST:'SST',AMBIENTAL:'Ambiental',CALIDAD:'Calidad',
+    AUDITORIA:'Auditoría',CLIENTE:'Cliente',OPERACIONES:'Operaciones',COMITE_SST:'Comité SST',
+    CAPACITACION:'Capacitación',INDICADORES:'Indicadores',OTRO:'Otro'
+  }[value] || value || '—';
+}
+
+function planningTaskOriginLabel(value) {
+  return {
+    PERSONAL:'Personal',GANTT:'Gantt / proyecto',COMITE_SST:'Comité SST',
+    CAPACITACION:'Capacitación',AUDITORIA:'Auditoría',INDICADORES:'Indicadores',
+    CLIENTE:'Cliente',PROYECTO:'Proyecto',OTRO:'Otro'
+  }[value] || value || '—';
+}
+
+function planningTaskDateTime(task) {
+  if (!task?.fecha_objetivo) return null;
+  const time=task.hora_objetivo ? String(task.hora_objetivo).slice(0,5) : '23:59';
+  const d=new Date(`${task.fecha_objetivo}T${time}:00`);
+  return Number.isNaN(d.getTime())?null:d;
+}
+
+function planningTaskSituation(task) {
+  if (!task) return {code:'PENDIENTE',label:'Pendiente'};
+  if (task.estado==='COMPLETADO') return {code:'COMPLETADO',label:'Completado'};
+  if (task.estado==='CANCELADO') return {code:'CANCELADO',label:'Cancelado'};
+
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const dueDate=planningParseDate(task.fecha_objetivo);
+  const dueDateTime=planningTaskDateTime(task);
+
+  if (dueDateTime && dueDateTime<now) {
+    const diffMs=now-dueDateTime;
+    const hours=Math.floor(diffMs/3600000);
+    const days=Math.floor(diffMs/86400000);
+    const label=days>=1?`Vencido hace ${days} día(s)`:`Vencido hace ${Math.max(1,hours)} h`;
+    return {code:'VENCIDO',label};
+  }
+
+  if (dueDate && dueDate.getTime()===today.getTime()) {
+    return {code:'HOY',label:task.hora_objetivo?`Hoy · ${String(task.hora_objetivo).slice(0,5)}`:'Hoy'};
+  }
+
+  if (task.estado==='EN_ESPERA') {
+    return {code:'EN_ESPERA',label:'En espera'};
+  }
+
+  if (dueDate) {
+    const diff=Math.ceil((dueDate-today)/86400000);
+    if (diff===1) return {code:'MANANA',label:'Mañana'};
+    if (diff>1 && diff<=7) return {code:'PROXIMO',label:`En ${diff} días`};
+  }
+
+  return {code:'PROGRAMADO',label:'Programado'};
+}
+
+function planningTaskPriorityRank(value) {
+  return {CRITICA:0,ALTA:1,MEDIA:2,BAJA:3}[value] ?? 9;
+}
+
+function planningTaskSortRows(rows) {
+  return [...rows].sort((a,b)=>{
+    const aSituation=planningTaskSituation(a).code;
+    const bSituation=planningTaskSituation(b).code;
+    const urgency={VENCIDO:0,HOY:1,EN_ESPERA:2,MANANA:3,PROXIMO:4,PROGRAMADO:5,COMPLETADO:8,CANCELADO:9};
+    const au=urgency[aSituation] ?? 7;
+    const bu=urgency[bSituation] ?? 7;
+    if (au!==bu) return au-bu;
+
+    const ap=planningTaskPriorityRank(a.prioridad);
+    const bp=planningTaskPriorityRank(b.prioridad);
+    if (ap!==bp) return ap-bp;
+
+    const ad=planningTaskDateTime(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bd=planningTaskDateTime(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    return ad-bd;
+  });
+}
+
+function planningTaskCanManage(task) {
+  if (!task || !currentProfile) return false;
+  if (currentProfile.rol_codigo==='ADMIN') return true;
+  if (task.created_by===currentProfile.id || task.asignado_a_profile_id===currentProfile.id) return true;
+  if (currentProfile.rol_codigo==='GERENCIA') return false;
+  return true; // La autorización efectiva permanece protegida por RLS.
+}
+
+function planningTaskCanDelete(task) {
+  if (!task || !currentProfile) return false;
+  return currentProfile.rol_codigo==='ADMIN' || task.created_by===currentProfile.id;
+}
+
+function planningTaskOperationalProjectName(task) {
+  return task?.proyecto_id ? planningOperationalProjectName(task.proyecto_id) : 'Corporativo / sin vínculo';
+}
+
+function planningTaskPlanningProjectName(task) {
+  const p=planningProjects.find(x=>x.id===task?.planificacion_proyecto_id);
+  return p ? `${p.codigo || ''} · ${p.nombre}` : '';
+}
+
+function planningTaskPlanningActivityName(task) {
+  const a=planningActivities.find(x=>x.id===task?.planificacion_actividad_id);
+  return a?.nombre || '';
+}
+
+function planningTaskWeekBounds(date=new Date()) {
+  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  const day=d.getDay() || 7;
+  const start=new Date(d);
+  start.setDate(d.getDate()-day+1);
+  const end=new Date(start);
+  end.setDate(start.getDate()+6);
+  return {start,end};
+}
+
+function planningTaskMatchesPeriod(task,period=planningTaskPeriod) {
+  if (period==='ALL') return true;
+  const due=planningParseDate(task.fecha_objetivo);
+  if (!due) return false;
+
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  const terminal=['COMPLETADO','CANCELADO'].includes(task.estado);
+
+  if (period==='TODAY') {
+    return due.getTime()===today.getTime() || (!terminal && due<today);
+  }
+
+  if (period==='WEEK') {
+    const {start,end}=planningTaskWeekBounds(today);
+    return (due>=start && due<=end) || (!terminal && due<start);
+  }
+
+  if (period==='MONTH') {
+    const start=new Date(today.getFullYear(),today.getMonth(),1);
+    const end=new Date(today.getFullYear(),today.getMonth()+1,0);
+    return (due>=start && due<=end) || (!terminal && due<start);
+  }
+
+  return true;
+}
+
+function planningTaskOwnershipMatch(task,mode) {
+  if (!currentProfile) return true;
+  if (mode==='ALL') return true;
+  if (mode==='CREATED') {
+    return task.created_by===currentProfile.id && task.asignado_a_profile_id!==currentProfile.id;
+  }
+  return task.asignado_a_profile_id===currentProfile.id
+    || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+}
+
+function populatePlanningTaskAssignees(selectedId=null,responsibleName='') {
+  const select=document.getElementById('planningTaskAssignee');
+  if (!select) return;
+
+  const me=planningAssignableUsers.find(x=>x.id===currentProfile?.id);
+  const rows=planningAssignableUsers
+    .filter(x=>x.id!==currentProfile?.id)
+    .map(x=>`<option value="${x.id}">${escapeHtml(x.nombre || 'Usuario')}${x.cargo?` · ${escapeHtml(x.cargo)}`:''}</option>`)
+    .join('');
+
+  select.innerHTML=
+    `${currentProfile?.id?`<option value="${currentProfile.id}">Yo mismo${me?.nombre?` · ${escapeHtml(me.nombre)}`:''}</option>`:''}`+
+    rows+
+    '<option value="MANUAL">Responsable sin usuario del sistema</option>';
+
+  if (selectedId && [...select.options].some(o=>o.value===selectedId)) {
+    select.value=selectedId;
+  } else if (!selectedId && responsibleName && currentProfile && responsibleName!==planningProfileDisplayName(currentProfile)) {
+    select.value='MANUAL';
+  } else if (currentProfile?.id) {
+    select.value=currentProfile.id;
+  } else {
+    select.value='MANUAL';
+  }
+
+  document.getElementById('planningTaskAssigneeManual').value=
+    select.value==='MANUAL' ? (responsibleName || '') : '';
+  togglePlanningTaskManualAssignee();
+}
+
+function togglePlanningTaskManualAssignee() {
+  const manual=document.getElementById('planningTaskAssignee')?.value==='MANUAL';
+  document.getElementById('planningTaskManualAssigneeField')?.classList.toggle('hidden',!manual);
+}
+
+function populatePlanningTaskOperationalProjects() {
+  const select=document.getElementById('planningTaskOperationalProject');
+  if (!select) return;
+  const current=select.value;
+  select.innerHTML='<option value="">Ninguno / corporativo</option>'+
+    planningOperationalProjects.filter(x=>x.activo!==false).map(p=>
+      `<option value="${p.id}">${escapeHtml(p.nombre)}${p.cliente?` · ${escapeHtml(p.cliente)}`:''}</option>`
+    ).join('');
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function populatePlanningTaskPlanningProjects() {
+  const select=document.getElementById('planningTaskPlanningProject');
+  if (!select) return;
+  const current=select.value;
+  select.innerHTML='<option value="">Ninguno</option>'+
+    planningProjects.filter(x=>!['CANCELADO'].includes(x.estado)).map(p=>
+      `<option value="${p.id}">${escapeHtml(p.codigo || '')} · ${escapeHtml(p.nombre)}</option>`
+    ).join('');
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function populatePlanningTaskActivities(projectId,selectedId=null) {
+  const select=document.getElementById('planningTaskPlanningActivity');
+  if (!select) return;
+  const rows=projectId
+    ? planningActivitiesFor(projectId).filter(x=>x.estado!=='CANCELADO')
+    : [];
+
+  select.innerHTML='<option value="">Ninguna</option>'+rows.map(a=>
+    `<option value="${a.id}">${a.tipo==='HITO'?'◆ ':''}${escapeHtml(a.nombre)}</option>`
+  ).join('');
+
+  if (selectedId && [...select.options].some(o=>o.value===selectedId)) {
+    select.value=selectedId;
+  }
+}
+
+function updatePlanningTaskWaitingFields() {
+  const waiting=document.getElementById('planningTaskStatus')?.value==='EN_ESPERA';
+  document.getElementById('planningTaskWaitingFields')?.classList.toggle('hidden',!waiting);
+}
+
+function updatePlanningTaskStats() {
+  const rows=planningTaskRecords.filter(x=>x.estado!=='CANCELADO');
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const {start:weekStart,end:weekEnd}=planningTaskWeekBounds(today);
+
+  const overdue=rows.filter(x=>planningTaskSituation(x).code==='VENCIDO').length;
+  const todayCount=rows.filter(x=>
+    !['COMPLETADO'].includes(x.estado)
+    && planningParseDate(x.fecha_objetivo)?.getTime()===today.getTime()
+  ).length;
+  const inProgress=rows.filter(x=>x.estado==='EN_PROCESO').length;
+  const waiting=rows.filter(x=>x.estado==='EN_ESPERA').length;
+
+  const completedWeek=rows.filter(x=>{
+    if (x.estado!=='COMPLETADO' || !x.completado_at) return false;
+    const d=new Date(x.completado_at);
+    return d>=weekStart && d<planningAddDays(weekEnd,1);
+  }).length;
+
+  const dueWeek=rows.filter(x=>{
+    const d=planningParseDate(x.fecha_objetivo);
+    return d && d>=weekStart && d<=weekEnd;
+  });
+  const dueWeekCompleted=dueWeek.filter(x=>x.estado==='COMPLETADO').length;
+  const compliance=dueWeek.length?Math.round((dueWeekCompleted/dueWeek.length)*100):0;
+
+  const map={
+    planningTaskOverdueCount:overdue,
+    planningTaskTodayCount:todayCount,
+    planningTaskInProgressCount:inProgress,
+    planningTaskWaitingCount:waiting,
+    planningTaskCompletedWeekCount:completedWeek,
+    planningTaskWeeklyCompliance:`${compliance}%`
+  };
+
+  Object.entries(map).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function planningTaskNextCandidate() {
+  if (!currentProfile) return null;
+
+  const today=planningIsoDate(new Date());
+  const candidates=planningTaskRecords.filter(task=>{
+    if (['COMPLETADO','CANCELADO'].includes(task.estado)) return false;
+    const mine=task.asignado_a_profile_id===currentProfile.id
+      || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+    if (!mine) return false;
+
+    if (task.estado==='EN_ESPERA') {
+      return !!task.fecha_seguimiento && task.fecha_seguimiento<=today;
+    }
+    return true;
+  });
+
+  return planningTaskSortRows(candidates)[0] || null;
+}
+
+function renderPlanningNextTask() {
+  const next=planningTaskNextCandidate();
+  const code=document.getElementById('planningNextTaskCode');
+  const title=document.getElementById('planningNextTaskTitle');
+  const meta=document.getElementById('planningNextTaskMeta');
+  const button=document.getElementById('planningAttendNextButton');
+
+  if (!code || !title || !meta || !button) return;
+
+  if (!next) {
+    code.textContent='—';
+    title.textContent='No hay pendientes por atender';
+    meta.textContent='Tu bandeja está al día.';
+    button.disabled=true;
+    button.dataset.taskId='';
+    return;
+  }
+
+  const situation=planningTaskSituation(next);
+  code.textContent=next.codigo || 'TK';
+  title.textContent=next.titulo || 'Pendiente';
+  meta.textContent=[
+    planningPriorityLabel(next.prioridad),
+    situation.label,
+    next.responsable_nombre,
+    next.hora_objetivo?`Hora ${String(next.hora_objetivo).slice(0,5)}`:''
+  ].filter(Boolean).join(' · ');
+  button.disabled=false;
+  button.dataset.taskId=next.id;
+  button.textContent=next.estado==='EN_PROCESO'?'Continuar atención':'Atender siguiente';
+}
+
+function planningTaskPeriodLabel() {
+  return {
+    TODAY:'Pendientes de hoy',
+    WEEK:'Pendientes de la semana',
+    MONTH:'Pendientes del mes',
+    ALL:'Todos los pendientes'
+  }[planningTaskPeriod] || 'Pendientes';
+}
+
+function renderPlanningTaskList() {
+  const container=document.getElementById('planningTaskList');
+  if (!container) return;
+
+  const q=(document.getElementById('planningTaskSearch')?.value || '').trim().toLowerCase();
+  const ownership=document.getElementById('planningTaskOwnershipFilter')?.value || 'MINE';
+  const status=document.getElementById('planningTaskStatusFilter')?.value || 'ALL';
+  const priority=document.getElementById('planningTaskPriorityFilter')?.value || 'ALL';
+  const category=document.getElementById('planningTaskCategoryFilter')?.value || 'ALL';
+
+  let rows=planningTaskRecords.filter(task=>{
+    if (!planningTaskMatchesPeriod(task)) return false;
+    if (!planningTaskOwnershipMatch(task,ownership)) return false;
+    if (status!=='ALL' && task.estado!==status) return false;
+    if (priority!=='ALL' && task.prioridad!==priority) return false;
+    if (category!=='ALL' && task.categoria!==category) return false;
+
+    const hay=[
+      task.codigo,task.titulo,task.descripcion,task.responsable_nombre,
+      planningTaskOperationalProjectName(task),
+      planningTaskPlanningProjectName(task),
+      planningTaskPlanningActivityName(task),
+      task.esperando_de,task.categoria,task.origen
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  rows=planningTaskSortRows(rows);
+
+  const resultCount=document.getElementById('planningTaskResultCount');
+  if (resultCount) resultCount.textContent=`${rows.length} pendiente${rows.length===1?'':'s'}`;
+  const periodTitle=document.getElementById('planningTaskPeriodTitle');
+  if (periodTitle) periodTitle.textContent=planningTaskPeriodLabel();
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No se encontraron pendientes para esta vista.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(task=>{
+    const situation=planningTaskSituation(task);
+    const canManage=planningTaskCanManage(task);
+    const canDelete=planningTaskCanDelete(task);
+    const planName=planningTaskPlanningProjectName(task);
+    const activityName=planningTaskPlanningActivityName(task);
+    const waiting=task.estado==='EN_ESPERA';
+
+    return `
+      <article class="planning-ticket-card ${situation.code.toLowerCase()}">
+        <div class="planning-ticket-code">
+          <span>${escapeHtml(task.codigo || 'TK')}</span>
+          <small>${escapeHtml(planningTaskCategoryLabel(task.categoria))}</small>
+        </div>
+
+        <div class="planning-ticket-main">
+          <div class="planning-ticket-top">
+            <div>
+              <div class="planning-ticket-badges">
+                <span class="planning-ticket-priority ${String(task.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(task.prioridad))}</span>
+                <span class="planning-ticket-status ${String(task.estado||'').toLowerCase()}">${escapeHtml(planningTaskStatusLabel(task.estado))}</span>
+                <span class="planning-ticket-situation ${situation.code.toLowerCase()}">${escapeHtml(situation.label)}</span>
+              </div>
+              <h4>${escapeHtml(task.titulo || 'Pendiente')}</h4>
+              ${task.descripcion?`<p>${escapeHtml(task.descripcion)}</p>`:''}
+            </div>
+          </div>
+
+          <div class="planning-ticket-meta">
+            <span>Responsable: <strong>${escapeHtml(task.responsable_nombre || '—')}</strong></span>
+            <span>Fecha: <strong>${escapeHtml(formatDatePE(task.fecha_objetivo))}</strong>${task.hora_objetivo?` · ${escapeHtml(String(task.hora_objetivo).slice(0,5))}`:''}</span>
+            <span>Origen: ${escapeHtml(planningTaskOriginLabel(task.origen))}</span>
+            ${task.proyecto_id?`<span>${escapeHtml(planningTaskOperationalProjectName(task))}</span>`:''}
+            ${planName?`<span>Gantt: ${escapeHtml(planName)}</span>`:''}
+            ${activityName?`<span>Actividad: ${escapeHtml(activityName)}</span>`:''}
+          </div>
+
+          ${waiting?`
+            <div class="planning-ticket-waiting">
+              <strong>En espera de:</strong> ${escapeHtml(task.esperando_de || 'tercero')}
+              ${task.fecha_seguimiento?` · Próximo seguimiento: ${escapeHtml(formatDatePE(task.fecha_seguimiento))}`:''}
+              ${task.motivo_espera?`<small>${escapeHtml(task.motivo_espera)}</small>`:''}
+            </div>
+          `:''}
+        </div>
+
+        <div class="planning-ticket-actions">
+          ${canManage && task.estado==='PENDIENTE'?`<button class="task-action-start" type="button" data-task-start="${task.id}">Iniciar</button>`:''}
+          ${canManage && ['PENDIENTE','EN_PROCESO'].includes(task.estado)?`<button class="task-action-wait" type="button" data-task-wait="${task.id}">En espera</button>`:''}
+          ${canManage && !['COMPLETADO','CANCELADO'].includes(task.estado)?`<button class="task-action-reschedule" type="button" data-task-reschedule="${task.id}">Reprogramar</button>`:''}
+          ${canManage && !['COMPLETADO','CANCELADO'].includes(task.estado)?`<button class="task-action-complete" type="button" data-task-complete="${task.id}">Completar</button>`:''}
+          <button class="secondary-btn small-btn" type="button" data-task-edit="${task.id}">${canManage?'Editar':'Ver'}</button>
+          ${canDelete?`<button class="induction-delete-btn small-btn" type="button" data-task-delete="${task.id}">Eliminar</button>`:''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-task-start]').forEach(button=>{
+    button.addEventListener('click',()=>quickUpdatePlanningTask(button.dataset.taskStart,'EN_PROCESO','Atención iniciada desde la bandeja.'));
+  });
+
+  container.querySelectorAll('[data-task-wait]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const task=planningTaskRecords.find(x=>x.id===button.dataset.taskWait);
+      openPlanningTaskModal(task);
+      document.getElementById('planningTaskStatus').value='EN_ESPERA';
+      updatePlanningTaskWaitingFields();
+      setTimeout(()=>document.getElementById('planningTaskWaitingFor')?.focus(),50);
+    });
+  });
+
+  container.querySelectorAll('[data-task-reschedule]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningTaskRescheduleModal(button.dataset.taskReschedule));
+  });
+
+  container.querySelectorAll('[data-task-complete]').forEach(button=>{
+    button.addEventListener('click',()=>completePlanningTask(button.dataset.taskComplete));
+  });
+
+  container.querySelectorAll('[data-task-edit]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningTaskModal(
+      planningTaskRecords.find(x=>x.id===button.dataset.taskEdit)
+    ));
+  });
+
+  container.querySelectorAll('[data-task-delete]').forEach(button=>{
+    button.addEventListener('click',()=>deletePlanningTask(button.dataset.taskDelete));
+  });
+}
+
+async function loadPlanningTasksModule(force=false) {
+  if (!client) return;
+
+  if (planningTasksLoaded && !force) {
+    updatePlanningTaskStats();
+    renderPlanningNextTask();
+    renderPlanningTaskList();
+    return;
+  }
+
+  const [tasks,history,users]=await Promise.all([
+    client.from('planificacion_pendientes')
+      .select('*')
+      .order('fecha_objetivo',{ascending:true})
+      .order('hora_objetivo',{ascending:true}),
+    client.from('planificacion_pendiente_historial')
+      .select('*')
+      .order('changed_at',{ascending:false}),
+    client.rpc('planificacion_usuarios_asignables')
+  ]);
+
+  const error=tasks.error || history.error || users.error;
+  if (error) {
+    console.error(error);
+    planningMessage(
+      error.message || 'No fue posible cargar la bandeja de pendientes.'
+    );
+    return;
+  }
+
+  planningTaskRecords=tasks.data || [];
+  planningTaskHistory=history.data || [];
+  planningAssignableUsers=users.data || [];
+  planningTasksLoaded=true;
+
+  updatePlanningTaskStats();
+  renderPlanningNextTask();
+  renderPlanningTaskList();
+}
+
+function renderPlanningTaskHistory(taskId) {
+  const container=document.getElementById('planningTaskHistoryList');
+  if (!container) return;
+
+  const rows=planningTaskHistory.filter(x=>x.pendiente_id===taskId);
+  if (!rows.length) {
+    container.innerHTML='<div class="meeting-empty-note">Todavía no existe historial adicional para este ticket.</div>';
+    return;
+  }
+
+  const labels={
+    CREADO:'Creado',
+    EDITADO:'Editado',
+    ESTADO:'Cambio de estado',
+    REPROGRAMADO:'Reprogramado',
+    ASIGNACION:'Asignación',
+    ESPERA:'En espera',
+    COMPLETADO:'Completado',
+    CANCELADO:'Cancelado'
+  };
+
+  container.innerHTML=rows.map(row=>{
+    const details=[];
+    if (row.estado_anterior!==row.estado_nuevo && row.estado_nuevo) {
+      details.push(`${planningTaskStatusLabel(row.estado_anterior)} → ${planningTaskStatusLabel(row.estado_nuevo)}`);
+    }
+    if (row.fecha_anterior!==row.fecha_nueva && row.fecha_nueva) {
+      details.push(`${row.fecha_anterior?formatDatePE(row.fecha_anterior):'—'} → ${formatDatePE(row.fecha_nueva)}`);
+    }
+    if (row.hora_anterior!==row.hora_nueva && row.hora_nueva) {
+      details.push(`Hora ${String(row.hora_nueva).slice(0,5)}`);
+    }
+    if (row.responsable_anterior!==row.responsable_nuevo && row.responsable_nuevo) {
+      details.push(`Responsable: ${row.responsable_nuevo}`);
+    }
+
+    return `
+      <article class="planning-task-history-item">
+        <span class="planning-task-history-dot"></span>
+        <div>
+          <strong>${escapeHtml(labels[row.evento] || row.evento || 'Actualización')}</strong>
+          ${details.length?`<p>${escapeHtml(details.join(' · '))}</p>`:''}
+          ${row.detalle?`<p>${escapeHtml(row.detalle)}</p>`:''}
+          <small>${row.changed_at?new Date(row.changed_at).toLocaleString('es-PE'):'—'}</small>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function openPlanningTaskModal(task=null) {
+  activePlanningTaskId=task?.id || null;
+  planningTaskFormMessage('');
+
+  populatePlanningTaskOperationalProjects();
+  populatePlanningTaskPlanningProjects();
+
+  document.getElementById('planningTaskId').value=task?.id || '';
+  document.getElementById('planningTaskModalTitle').textContent=task?'Editar pendiente':'Nuevo pendiente';
+  document.getElementById('planningTaskModalSubtitle').textContent=
+    task ? `${task.codigo || ''} · ${planningTaskStatusLabel(task.estado)}` : 'Registra el ticket, responsable y fecha de atención.';
+
+  document.getElementById('planningTaskTitle').value=task?.titulo || '';
+  document.getElementById('planningTaskCategory').value=task?.categoria || 'SIG';
+  document.getElementById('planningTaskOrigin').value=task?.origen || 'PERSONAL';
+  document.getElementById('planningTaskPriority').value=task?.prioridad || 'MEDIA';
+  document.getElementById('planningTaskStatus').value=task?.estado || 'PENDIENTE';
+  document.getElementById('planningTaskDueDate').value=task?.fecha_objetivo || planningIsoDate(new Date());
+  document.getElementById('planningTaskDueTime').value=task?.hora_objetivo ? String(task.hora_objetivo).slice(0,5) : '';
+  document.getElementById('planningTaskOperationalProject').value=task?.proyecto_id || '';
+  document.getElementById('planningTaskPlanningProject').value=task?.planificacion_proyecto_id || '';
+  populatePlanningTaskActivities(task?.planificacion_proyecto_id || '',task?.planificacion_actividad_id || null);
+
+  document.getElementById('planningTaskWaitingFor').value=task?.esperando_de || '';
+  document.getElementById('planningTaskFollowupDate').value=task?.fecha_seguimiento || '';
+  document.getElementById('planningTaskWaitingReason').value=task?.motivo_espera || '';
+  document.getElementById('planningTaskDescription').value=task?.descripcion || '';
+  document.getElementById('planningTaskNotes').value=task?.observaciones || '';
+
+  populatePlanningTaskAssignees(task?.asignado_a_profile_id || null,task?.responsable_nombre || '');
+  updatePlanningTaskWaitingFields();
+
+  const canManage=task ? planningTaskCanManage(task) : true;
+  document.querySelectorAll('#planningTaskForm input,#planningTaskForm textarea,#planningTaskForm select').forEach(el=>{
+    if (el.id!=='planningTaskId') el.disabled=!canManage;
+  });
+  document.getElementById('planningTaskSave')?.classList.toggle('hidden',!canManage);
+  document.getElementById('planningTaskDeleteButton')?.classList.toggle('hidden',!task || !planningTaskCanDelete(task));
+
+  const historySection=document.getElementById('planningTaskHistorySection');
+  historySection?.classList.toggle('hidden',!task);
+  if (task) renderPlanningTaskHistory(task.id);
+
+  const modal=document.getElementById('planningTaskModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningTaskModal() {
+  document.getElementById('planningTaskModal')?.classList.add('hidden');
+  document.getElementById('planningTaskModal')?.setAttribute('aria-hidden','true');
+  activePlanningTaskId=null;
+  document.body.classList.remove('modal-open');
+}
+
+function selectedPlanningTaskAssignee() {
+  const value=document.getElementById('planningTaskAssignee')?.value || 'MANUAL';
+
+  if (value==='MANUAL') {
+    return {
+      id:null,
+      name:document.getElementById('planningTaskAssigneeManual')?.value.trim() || ''
+    };
+  }
+
+  const user=planningAssignableUsers.find(x=>x.id===value);
+  if (user) return {id:user.id,name:user.nombre || 'Usuario'};
+
+  if (value===currentProfile?.id) {
+    return {id:currentProfile.id,name:planningProfileDisplayName(currentProfile) || 'Usuario'};
+  }
+
+  return {id:null,name:''};
+}
+
+async function savePlanningTask(event) {
+  event.preventDefault();
+  planningTaskFormMessage('');
+
+  const id=document.getElementById('planningTaskId').value || null;
+  const assignee=selectedPlanningTaskAssignee();
+  const estado=document.getElementById('planningTaskStatus').value;
+
+  const payload={
+    titulo:document.getElementById('planningTaskTitle').value.trim(),
+    descripcion:document.getElementById('planningTaskDescription').value.trim() || null,
+    categoria:document.getElementById('planningTaskCategory').value,
+    origen:document.getElementById('planningTaskOrigin').value,
+    prioridad:document.getElementById('planningTaskPriority').value,
+    estado,
+    asignado_a_profile_id:assignee.id,
+    responsable_nombre:assignee.name,
+    fecha_objetivo:document.getElementById('planningTaskDueDate').value,
+    hora_objetivo:document.getElementById('planningTaskDueTime').value || null,
+    esperando_de:estado==='EN_ESPERA' ? (document.getElementById('planningTaskWaitingFor').value.trim() || null) : null,
+    motivo_espera:estado==='EN_ESPERA' ? (document.getElementById('planningTaskWaitingReason').value.trim() || null) : null,
+    fecha_seguimiento:estado==='EN_ESPERA' ? (document.getElementById('planningTaskFollowupDate').value || null) : null,
+    proyecto_id:document.getElementById('planningTaskOperationalProject').value || null,
+    planificacion_proyecto_id:document.getElementById('planningTaskPlanningProject').value || null,
+    planificacion_actividad_id:document.getElementById('planningTaskPlanningActivity').value || null,
+    observaciones:document.getElementById('planningTaskNotes').value.trim() || null,
+    ultimo_motivo_cambio:id ? 'Datos del pendiente actualizados.' : 'Pendiente creado desde Planificación.'
+  };
+
+  if (!payload.titulo || !payload.responsable_nombre || !payload.fecha_objetivo) {
+    planningTaskFormMessage('Completa pendiente, responsable y fecha objetivo.');
+    return;
+  }
+
+  if (estado==='EN_ESPERA' && !payload.esperando_de) {
+    planningTaskFormMessage('Indica de quién o de qué área estás esperando una respuesta o acción.');
+    return;
+  }
+
+  const button=document.getElementById('planningTaskSave');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const result=id
+    ? await client.from('planificacion_pendientes').update(payload).eq('id',id).select().single()
+    : await client.from('planificacion_pendientes').insert({
+        ...payload,
+        created_by:currentProfile?.id || undefined
+      }).select().single();
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (result.error) {
+    console.error(result.error);
+    planningTaskFormMessage(result.error.message || 'No fue posible guardar el pendiente.');
+    return;
+  }
+
+  closePlanningTaskModal();
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  planningMessage(id?'Pendiente actualizado correctamente.':'Pendiente creado correctamente.','success');
+}
+
+async function quickUpdatePlanningTask(id,status,reason) {
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  const payload={
+    estado:status,
+    ultimo_motivo_cambio:reason || `Estado actualizado a ${planningTaskStatusLabel(status)}.`
+  };
+
+  if (status!=='EN_ESPERA') {
+    payload.esperando_de=null;
+    payload.motivo_espera=null;
+    payload.fecha_seguimiento=null;
+  }
+
+  const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',id);
+  if (error) {
+    planningMessage(error.message || 'No fue posible actualizar el pendiente.');
+    return;
+  }
+
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+}
+
+async function completePlanningTask(id) {
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task || !planningTaskCanManage(task)) return;
+  if (!confirm(`¿Marcar como COMPLETADO el ticket ${task.codigo || ''}?\n\n${task.titulo}`)) return;
+
+  await quickUpdatePlanningTask(id,'COMPLETADO','Pendiente completado desde la bandeja de trabajo.');
+  planningMessage('Pendiente completado.','success');
+}
+
+function openPlanningTaskRescheduleModal(id) {
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  planningTaskRescheduleMessage('');
+  document.getElementById('planningTaskRescheduleId').value=task.id;
+  document.getElementById('planningTaskRescheduleTitle').textContent=`Reprogramar · ${task.codigo || ''}`;
+  document.getElementById('planningTaskRescheduleDate').value=task.fecha_objetivo || planningIsoDate(new Date());
+  document.getElementById('planningTaskRescheduleTime').value=task.hora_objetivo ? String(task.hora_objetivo).slice(0,5) : '';
+  document.getElementById('planningTaskRescheduleReason').value='';
+
+  const modal=document.getElementById('planningTaskRescheduleModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningTaskRescheduleModal() {
+  document.getElementById('planningTaskRescheduleModal')?.classList.add('hidden');
+  document.getElementById('planningTaskRescheduleModal')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function savePlanningTaskReschedule() {
+  const id=document.getElementById('planningTaskRescheduleId').value;
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  const date=document.getElementById('planningTaskRescheduleDate').value;
+  const time=document.getElementById('planningTaskRescheduleTime').value || null;
+  const reason=document.getElementById('planningTaskRescheduleReason').value.trim();
+
+  if (!date || !reason) {
+    planningTaskRescheduleMessage('Completa la nueva fecha y el motivo de reprogramación.');
+    return;
+  }
+
+  const button=document.getElementById('planningTaskRescheduleSave');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Reprogramando…';
+
+  const {error}=await client.from('planificacion_pendientes').update({
+    fecha_objetivo:date,
+    hora_objetivo:time,
+    ultimo_motivo_cambio:reason
+  }).eq('id',id);
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error) {
+    planningTaskRescheduleMessage(error.message || 'No fue posible reprogramar.');
+    return;
+  }
+
+  closePlanningTaskRescheduleModal();
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  planningMessage('Pendiente reprogramado. El cambio quedó registrado en la trazabilidad.','success');
+}
+
+async function deletePlanningTask(id) {
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task || !planningTaskCanDelete(task)) return;
+
+  if (!confirm(`¿Eliminar definitivamente ${task.codigo || 'este ticket'}?\n\n${task.titulo}`)) return;
+
+  const {error}=await client.from('planificacion_pendientes').delete().eq('id',id);
+  if (error) {
+    planningTaskFormMessage(error.message || 'No fue posible eliminar el pendiente.');
+    return;
+  }
+
+  closePlanningTaskModal();
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  planningMessage('Pendiente eliminado.','success');
+}
+
+function syncPlanningTaskFromActivity() {
+  const activityId=document.getElementById('planningTaskPlanningActivity')?.value;
+  if (!activityId) return;
+
+  const activity=planningActivities.find(x=>x.id===activityId);
+  if (!activity) return;
+
+  const title=document.getElementById('planningTaskTitle');
+  const due=document.getElementById('planningTaskDueDate');
+  if (title && !title.value.trim()) title.value=activity.nombre || '';
+  if (due && !due.value) due.value=activity.fecha_fin || activity.fecha_inicio || '';
+  document.getElementById('planningTaskOrigin').value='GANTT';
+
+  if (activity.responsable_nombre && !document.getElementById('planningTaskAssigneeManual').value) {
+    const match=planningAssignableUsers.find(x=>
+      String(x.nombre || '').trim().toLowerCase()===String(activity.responsable_nombre || '').trim().toLowerCase()
+    );
+
+    if (match) {
+      document.getElementById('planningTaskAssignee').value=match.id;
+    } else {
+      document.getElementById('planningTaskAssignee').value='MANUAL';
+      document.getElementById('planningTaskAssigneeManual').value=activity.responsable_nombre;
+    }
+    togglePlanningTaskManualAssignee();
+  }
+}
+
+async function attendNextPlanningTask() {
+  const id=document.getElementById('planningAttendNextButton')?.dataset.taskId;
+  const task=planningTaskRecords.find(x=>x.id===id);
+  if (!task) return;
+
+  if (task.estado==='PENDIENTE') {
+    const {error}=await client.from('planificacion_pendientes').update({
+      estado:'EN_PROCESO',
+      ultimo_motivo_cambio:'Atención iniciada desde “Siguiente pendiente”.'
+    }).eq('id',task.id);
+
+    if (error) {
+      planningMessage(error.message || 'No fue posible iniciar el pendiente.');
+      return;
+    }
+
+    planningTasksLoaded=false;
+    await loadPlanningTasksModule(true);
+  }
+
+  openPlanningTaskModal(planningTaskRecords.find(x=>x.id===task.id) || task);
+}
+
+
 // Eventos 17A
 document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
-document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>openPlanningProjectModal());
+document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
+  if (planningModuleTab==='TASKS') openPlanningTaskModal();
+  else openPlanningProjectModal();
+});
 document.getElementById('planningProjectForm')?.addEventListener('submit',savePlanningProject);
 document.getElementById('planningProjectModalClose')?.addEventListener('click',closePlanningProjectModal);
 document.getElementById('planningProjectCancel')?.addEventListener('click',closePlanningProjectModal);
@@ -800,6 +1718,48 @@ document.getElementById('planningStatusFilter')?.addEventListener('change',rende
 document.getElementById('planningCategoryFilter')?.addEventListener('change',renderPlanningProjectList);
 document.getElementById('planningYearFilter')?.addEventListener('change',renderPlanningProjectList);
 document.getElementById('planningRefreshButton')?.addEventListener('click',()=>{planningLoaded=false;loadPlanningModule(true);});
+
+
+// Eventos 17B
+document.querySelectorAll('[data-planning-task-period]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    planningTaskPeriod=button.dataset.planningTaskPeriod || 'TODAY';
+    document.querySelectorAll('[data-planning-task-period]').forEach(x=>x.classList.toggle('active',x===button));
+    renderPlanningTaskList();
+  });
+});
+
+document.getElementById('planningTaskSearch')?.addEventListener('input',renderPlanningTaskList);
+document.getElementById('planningTaskOwnershipFilter')?.addEventListener('change',renderPlanningTaskList);
+document.getElementById('planningTaskStatusFilter')?.addEventListener('change',renderPlanningTaskList);
+document.getElementById('planningTaskPriorityFilter')?.addEventListener('change',renderPlanningTaskList);
+document.getElementById('planningTaskCategoryFilter')?.addEventListener('change',renderPlanningTaskList);
+document.getElementById('planningTaskRefreshButton')?.addEventListener('click',()=>{
+  planningTasksLoaded=false;
+  loadPlanningTasksModule(true);
+});
+document.getElementById('planningAttendNextButton')?.addEventListener('click',attendNextPlanningTask);
+
+document.getElementById('planningTaskForm')?.addEventListener('submit',savePlanningTask);
+document.getElementById('planningTaskModalClose')?.addEventListener('click',closePlanningTaskModal);
+document.getElementById('planningTaskCancel')?.addEventListener('click',closePlanningTaskModal);
+document.getElementById('planningTaskModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningTaskModal);
+document.getElementById('planningTaskDeleteButton')?.addEventListener('click',()=>{
+  const id=document.getElementById('planningTaskId')?.value;
+  if (id) deletePlanningTask(id);
+});
+
+document.getElementById('planningTaskAssignee')?.addEventListener('change',togglePlanningTaskManualAssignee);
+document.getElementById('planningTaskStatus')?.addEventListener('change',updatePlanningTaskWaitingFields);
+document.getElementById('planningTaskPlanningProject')?.addEventListener('change',event=>{
+  populatePlanningTaskActivities(event.target.value || '');
+});
+document.getElementById('planningTaskPlanningActivity')?.addEventListener('change',syncPlanningTaskFromActivity);
+
+document.getElementById('planningTaskRescheduleClose')?.addEventListener('click',closePlanningTaskRescheduleModal);
+document.getElementById('planningTaskRescheduleCancel')?.addEventListener('click',closePlanningTaskRescheduleModal);
+document.getElementById('planningTaskRescheduleModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningTaskRescheduleModal);
+document.getElementById('planningTaskRescheduleSave')?.addEventListener('click',savePlanningTaskReschedule);
 
 
 // ============================================================

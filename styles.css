@@ -5063,3 +5063,519 @@ body.modal-open{
 .planning-project-modal-card{width:min(980px,calc(100vw - 24px))!important;max-width:980px!important}.planning-activity-modal-card{width:min(900px,calc(100vw - 24px))!important;max-width:900px!important}.planning-project-form-grid label,.planning-activity-form-grid label{display:flex;flex-direction:column;gap:6px}.planning-project-form-grid label>span,.planning-activity-form-grid label>span{color:#526179;font-size:8px;font-weight:800}.planning-project-form-grid input,.planning-project-form-grid select,.planning-project-form-grid textarea,.planning-activity-form-grid input,.planning-activity-form-grid select,.planning-activity-form-grid textarea{width:100%;border:1px solid #ccd6e2;border-radius:8px;padding:9px 10px;font:inherit}.planning-activity-form-grid select[multiple]{min-height:125px;padding:6px}.planning-next-stage-card{margin-top:22px}
 @media(max-width:1250px){.planning-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.planning-filters{grid-template-columns:1fr 1fr}.planning-filters input{grid-column:1/-1}.planning-project-hero-main{grid-template-columns:1fr}.planning-project-card{grid-template-columns:52px minmax(0,1fr)}.planning-project-card-actions{grid-column:1/-1;justify-content:flex-start}.planning-gantt-grid,.planning-gantt-row{grid-template-columns:260px minmax(0,1fr)}.planning-gantt-left-header{width:auto}.planning-gantt-task{width:auto}}
 @media(max-width:760px){.planning-stats{grid-template-columns:1fr 1fr}.planning-filters{grid-template-columns:1fr}.planning-filters input{grid-column:auto}.planning-project-card{grid-template-columns:1fr}.planning-project-card-icon{width:48px;height:48px}.planning-project-card-top{flex-direction:column}.planning-detail-topbar{align-items:stretch;flex-direction:column}.planning-detail-actions{justify-content:stretch}.planning-detail-actions button{flex:1}.planning-project-title-row{flex-direction:column}.planning-gantt-toolbar{align-items:flex-start;flex-direction:column}.planning-gantt-controls{width:100%;justify-content:space-between}.planning-gantt-grid,.planning-gantt-row{grid-template-columns:220px minmax(0,1fr)}.planning-gantt-task{padding:7px}.planning-view-tabs{overflow-x:auto}.planning-view-tabs button{white-space:nowrap}}
+
+
+/* ============================================================
+   ETAPA 17B · PENDIENTES Y SEGUIMIENTO TIPO TICKET
+   ============================================================ */
+
+.planning-task-stats{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:12px;
+  margin:18px 0;
+}
+
+.planning-task-stats article{
+  border:1px solid #dce3ec;
+  border-radius:14px;
+  background:#fff;
+  padding:15px 16px;
+  box-shadow:0 5px 18px rgba(28,45,68,.04);
+}
+
+.planning-task-stats span,
+.planning-task-stats small{
+  display:block;
+  color:#758399;
+  font-size:8px;
+}
+
+.planning-task-stats strong{
+  display:block;
+  margin:5px 0 2px;
+  color:#102640;
+  font-size:24px;
+}
+
+.planning-task-stats .task-stat-overdue strong{
+  color:#c00000;
+}
+
+.planning-next-ticket-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:18px;
+  align-items:center;
+  border:1px solid #d9e1eb;
+  border-radius:16px;
+  background:#fff;
+  padding:18px 20px;
+  margin-bottom:15px;
+  box-shadow:0 6px 22px rgba(27,45,70,.05);
+}
+
+.planning-next-ticket-title{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  margin-top:5px;
+}
+
+.planning-next-ticket-title>strong{
+  border-radius:8px;
+  background:#fff0f0;
+  color:#c00000;
+  padding:6px 9px;
+  font-size:9px;
+  white-space:nowrap;
+}
+
+.planning-next-ticket-title h3{
+  margin:0;
+  color:#102640;
+  font-size:18px;
+}
+
+.planning-next-ticket-main>p{
+  margin:6px 0 0;
+  color:#6d7b8e;
+  font-size:9px;
+}
+
+.planning-task-time-tabs{
+  display:flex;
+  gap:7px;
+  border-bottom:1px solid #dde4ec;
+  margin:10px 0 14px;
+}
+
+.planning-task-time-tabs button{
+  border:0;
+  border-bottom:3px solid transparent;
+  background:transparent;
+  color:#6b788b;
+  padding:10px 18px;
+  font-size:9px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.planning-task-time-tabs button.active{
+  color:#c00000;
+  border-bottom-color:#c00000;
+}
+
+.planning-task-toolbar-panel{
+  margin-bottom:16px;
+}
+
+.planning-task-filters{
+  display:grid;
+  grid-template-columns:minmax(250px,1fr) 160px 155px 150px 165px auto;
+  gap:8px;
+}
+
+.planning-task-list{
+  display:grid;
+  gap:11px;
+}
+
+.planning-ticket-card{
+  display:grid;
+  grid-template-columns:118px minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  border:1px solid #dce3eb;
+  border-left:4px solid #c9d2de;
+  border-radius:13px;
+  background:#fff;
+  padding:14px;
+}
+
+.planning-ticket-card.vencido{
+  border-left-color:#c00000;
+  background:#fffafa;
+}
+
+.planning-ticket-card.hoy{
+  border-left-color:#ee8d00;
+}
+
+.planning-ticket-card.en_espera{
+  border-left-color:#6f42c1;
+}
+
+.planning-ticket-card.completado{
+  border-left-color:#168443;
+  opacity:.88;
+}
+
+.planning-ticket-card.cancelado{
+  border-left-color:#8b96a5;
+  opacity:.7;
+}
+
+.planning-ticket-code{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:76px;
+  border-radius:11px;
+  background:#f6f8fb;
+  text-align:center;
+}
+
+.planning-ticket-code>span{
+  color:#102640;
+  font-size:11px;
+  font-weight:900;
+}
+
+.planning-ticket-code>small{
+  margin-top:5px;
+  color:#758397;
+  font-size:7.5px;
+}
+
+.planning-ticket-top h4{
+  margin:7px 0 0;
+  color:#17263c;
+  font-size:14px;
+}
+
+.planning-ticket-top p{
+  margin:5px 0 0;
+  color:#65748a;
+  font-size:9px;
+  line-height:1.45;
+}
+
+.planning-ticket-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+
+.planning-ticket-priority,
+.planning-ticket-status,
+.planning-ticket-situation{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:4px 7px;
+  font-size:7px;
+  font-weight:900;
+}
+
+.planning-ticket-priority.critica{
+  background:#ffe0e0;
+  color:#b00000;
+}
+
+.planning-ticket-priority.alta{
+  background:#fff0da;
+  color:#995700;
+}
+
+.planning-ticket-priority.media{
+  background:#e7f0ff;
+  color:#2458ae;
+}
+
+.planning-ticket-priority.baja{
+  background:#edf1f5;
+  color:#667487;
+}
+
+.planning-ticket-status.pendiente{
+  background:#f0f2f5;
+  color:#5d6a7d;
+}
+
+.planning-ticket-status.en_proceso{
+  background:#e8f0ff;
+  color:#2458b8;
+}
+
+.planning-ticket-status.en_espera{
+  background:#eee8ff;
+  color:#6337c4;
+}
+
+.planning-ticket-status.completado{
+  background:#e5f7ea;
+  color:#0d7b35;
+}
+
+.planning-ticket-status.cancelado{
+  background:#edf0f3;
+  color:#707b88;
+}
+
+.planning-ticket-situation.vencido{
+  background:#ffe0e0;
+  color:#b00000;
+}
+
+.planning-ticket-situation.hoy{
+  background:#fff0da;
+  color:#995700;
+}
+
+.planning-ticket-situation.manana,
+.planning-ticket-situation.proximo{
+  background:#fff7d8;
+  color:#816100;
+}
+
+.planning-ticket-situation.programado{
+  background:#eef4fa;
+  color:#5b6b80;
+}
+
+.planning-ticket-situation.en_espera{
+  background:#eee8ff;
+  color:#6337c4;
+}
+
+.planning-ticket-situation.completado{
+  background:#e5f7ea;
+  color:#0d7b35;
+}
+
+.planning-ticket-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px 14px;
+  margin-top:10px;
+  color:#647388;
+  font-size:8.5px;
+}
+
+.planning-ticket-waiting{
+  margin-top:9px;
+  border:1px solid #e4dcfa;
+  border-radius:8px;
+  background:#faf8ff;
+  color:#5f4b8b;
+  padding:8px 10px;
+  font-size:8.5px;
+}
+
+.planning-ticket-waiting small{
+  display:block;
+  margin-top:4px;
+  color:#78679d;
+}
+
+.planning-ticket-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:5px;
+  max-width:320px;
+}
+
+.task-action-start,
+.task-action-wait,
+.task-action-reschedule,
+.task-action-complete{
+  min-height:34px;
+  border:0;
+  border-radius:8px;
+  padding:0 10px;
+  font-size:8px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.task-action-start{
+  background:#e7f0ff;
+  color:#1f57b4;
+}
+
+.task-action-wait{
+  background:#eee8ff;
+  color:#6337c4;
+}
+
+.task-action-reschedule{
+  background:#fff1da;
+  color:#925900;
+}
+
+.task-action-complete{
+  background:#e4f7ea;
+  color:#0c7833;
+}
+
+.planning-task-modal-card{
+  width:min(1020px,calc(100vw - 24px))!important;
+  max-width:1020px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.planning-task-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.planning-task-form-grid label>span{
+  color:#526179;
+  font-size:8px;
+  font-weight:800;
+}
+
+.planning-task-form-grid input,
+.planning-task-form-grid select,
+.planning-task-form-grid textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.planning-task-waiting-fields{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  border:1px solid #e3dcf6;
+  border-radius:10px;
+  background:#faf8ff;
+  padding:12px;
+}
+
+.planning-task-history-section{
+  margin-top:15px;
+  border:1px solid #dce3eb;
+  border-radius:12px;
+  padding:14px;
+}
+
+.planning-task-history-list{
+  display:grid;
+  gap:7px;
+}
+
+.planning-task-history-item{
+  display:grid;
+  grid-template-columns:14px 1fr;
+  gap:8px;
+  padding:7px 0;
+  border-bottom:1px solid #edf0f4;
+}
+
+.planning-task-history-item:last-child{
+  border-bottom:0;
+}
+
+.planning-task-history-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:#c00000;
+  margin-top:4px;
+}
+
+.planning-task-history-item strong{
+  color:#35455b;
+  font-size:8.5px;
+}
+
+.planning-task-history-item p{
+  margin:3px 0;
+  color:#667589;
+  font-size:8px;
+}
+
+.planning-task-history-item small{
+  color:#8a96a6;
+  font-size:7.5px;
+}
+
+.planning-task-action-modal-card{
+  width:min(650px,calc(100vw - 24px))!important;
+  max-width:650px!important;
+}
+
+@media(max-width:1250px){
+  .planning-task-stats{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+  .planning-task-filters{
+    grid-template-columns:1fr 1fr 1fr;
+  }
+
+  .planning-task-filters input{
+    grid-column:1/-1;
+  }
+
+  .planning-ticket-card{
+    grid-template-columns:105px 1fr;
+  }
+
+  .planning-ticket-actions{
+    grid-column:1/-1;
+    max-width:none;
+    justify-content:flex-start;
+  }
+}
+
+@media(max-width:760px){
+  .planning-task-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .planning-next-ticket-card{
+    grid-template-columns:1fr;
+  }
+
+  .planning-next-ticket-card .primary-btn{
+    width:100%;
+  }
+
+  .planning-next-ticket-title{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .planning-task-time-tabs{
+    overflow-x:auto;
+  }
+
+  .planning-task-time-tabs button{
+    white-space:nowrap;
+  }
+
+  .planning-task-filters{
+    grid-template-columns:1fr;
+  }
+
+  .planning-task-filters input{
+    grid-column:auto;
+  }
+
+  .planning-ticket-card{
+    grid-template-columns:1fr;
+  }
+
+  .planning-ticket-code{
+    min-height:55px;
+    align-items:flex-start;
+    padding:10px 12px;
+  }
+
+  .planning-ticket-actions{
+    grid-column:auto;
+  }
+
+  .planning-task-waiting-fields{
+    grid-template-columns:1fr;
+  }
+}

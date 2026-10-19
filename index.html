@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261013-16d4" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17a" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -756,6 +756,7 @@
 
       <nav class="menu" aria-label="Menú principal">
         <button class="menu-item active" data-section="inicio"><span class="menu-icon">⌂</span><span>Inicio</span></button>
+        <button class="menu-item" data-section="planificacion"><span class="menu-icon">◫</span><span>Planificación</span></button>
         <button class="menu-item" data-section="programacion"><span class="menu-icon">▣</span><span>Capacitaciones</span></button>
         <button class="menu-item" data-section="nueva-capacitacion"><span class="menu-icon">＋</span><span>Nueva capacitación</span></button>
         <button class="menu-item" data-section="trabajadores"><span class="menu-icon">♟</span><span>Trabajadores</span></button>
@@ -832,6 +833,217 @@
               <div><strong>Conexión configurada</strong><small>La sesión se conserva al recargar la página y puede cerrarse desde la barra superior.</small></div>
             </div>
           </article>
+        </div>
+      </section>
+
+      <section id="planificacion" class="page-section">
+        <div class="section-title section-title-row planning-section-title">
+          <div>
+            <span class="eyebrow">CENTRO DE PLANIFICACIÓN</span>
+            <h2>Planificación</h2>
+            <p>Organiza proyectos, cronogramas y actividades. En esta etapa se incorpora la gestión visual mediante diagramas de Gantt.</p>
+          </div>
+          <button id="planningNewProjectButton" class="primary-btn" type="button">＋ Nuevo proyecto</button>
+        </div>
+
+        <div id="planningMessage" class="module-message" role="alert"></div>
+
+        <div class="planning-tabs" role="tablist">
+          <button id="planningProjectsTab" class="active" type="button">Proyectos y Gantt</button>
+          <button id="planningTasksTab" type="button">Pendientes <span class="planning-coming-badge">17B</span></button>
+        </div>
+
+        <div id="planningProjectsView">
+          <div id="planningPortfolioView">
+            <div class="planning-stats">
+              <article><span>Proyectos activos</span><strong id="planningActiveProjectsCount">0</strong><small>En ejecución</small></article>
+              <article><span>Actividades</span><strong id="planningActivitiesCount">0</strong><small>Del portafolio visible</small></article>
+              <article class="planning-stat-alert"><span>Actividades atrasadas</span><strong id="planningOverdueCount">0</strong><small>Vencidas sin completar</small></article>
+              <article><span>Hitos próximos</span><strong id="planningMilestonesCount">0</strong><small>Próximos 30 días</small></article>
+              <article><span>Avance general</span><strong id="planningAverageProgress">0%</strong><small>Promedio de proyectos</small></article>
+            </div>
+
+            <article class="panel planning-toolbar-panel">
+              <div class="planning-filters">
+                <input id="planningSearch" type="search" placeholder="Buscar proyecto, código, responsable o unidad…" />
+                <select id="planningStatusFilter">
+                  <option value="ALL">Todos los estados</option>
+                  <option value="ACTIVO">Activos</option>
+                  <option value="BORRADOR">Borradores</option>
+                  <option value="PAUSADO">Pausados</option>
+                  <option value="CERRADO">Cerrados</option>
+                  <option value="CANCELADO">Cancelados</option>
+                </select>
+                <select id="planningCategoryFilter">
+                  <option value="ALL">Todas las categorías</option>
+                  <option value="SIG">SIG</option>
+                  <option value="SST">SST</option>
+                  <option value="AMBIENTAL">Ambiental</option>
+                  <option value="CALIDAD">Calidad</option>
+                  <option value="AUDITORIA">Auditoría</option>
+                  <option value="CLIENTE">Cliente</option>
+                  <option value="OPERACIONES">Operaciones</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+                <select id="planningYearFilter"><option value="ALL">Todos los años</option></select>
+                <button id="planningRefreshButton" class="icon-refresh" type="button" title="Actualizar">↻</button>
+              </div>
+            </article>
+
+            <div class="planning-library-headline">
+              <div><span class="eyebrow">PORTAFOLIO</span><h3>Proyectos planificados</h3></div>
+              <span id="planningResultCount" class="schedule-result-count">0 proyectos</span>
+            </div>
+
+            <div id="planningProjectList" class="planning-project-list">
+              <div class="training-library-empty">Cargando proyectos…</div>
+            </div>
+          </div>
+
+          <div id="planningProjectDetailView" class="planning-project-detail hidden">
+            <div class="planning-detail-topbar">
+              <button id="planningBackButton" class="secondary-btn" type="button">← Volver a proyectos</button>
+              <div class="planning-detail-actions">
+                <button id="planningEditProjectButton" class="secondary-btn" type="button">Editar proyecto</button>
+                <button id="planningDeleteProjectButton" class="danger-outline-btn" type="button">Eliminar proyecto</button>
+                <button id="planningAddActivityButton" class="primary-btn" type="button">＋ Nueva actividad</button>
+              </div>
+            </div>
+
+            <article class="planning-project-hero">
+              <div class="planning-project-hero-main">
+                <div>
+                  <div class="planning-project-title-row">
+                    <div>
+                      <span id="planningDetailCode" class="eyebrow">PLN-—</span>
+                      <h2 id="planningDetailName">—</h2>
+                    </div>
+                    <span id="planningDetailStatus" class="planning-project-status activo">ACTIVO</span>
+                  </div>
+                  <p id="planningDetailDescription" class="planning-detail-description">—</p>
+                  <div class="planning-project-meta">
+                    <span>Responsable: <strong id="planningDetailResponsible">—</strong></span>
+                    <span>Inicio: <strong id="planningDetailStart">—</strong></span>
+                    <span>Fin: <strong id="planningDetailEnd">—</strong></span>
+                    <span>Duración: <strong id="planningDetailDuration">—</strong></span>
+                    <span>Unidad: <strong id="planningDetailUnit">—</strong></span>
+                  </div>
+                </div>
+                <div class="planning-project-progress-card">
+                  <span>Avance del proyecto</span>
+                  <strong id="planningDetailProgress">0%</strong>
+                  <div class="planning-progress-track"><div id="planningDetailProgressBar" class="planning-progress-fill"></div></div>
+                  <small id="planningDetailProgressText">0 de 0 actividades completadas</small>
+                </div>
+              </div>
+              <div id="planningDetailObjectiveBox" class="planning-objective-box hidden"><strong>Objetivo</strong><p id="planningDetailObjective"></p></div>
+            </article>
+
+            <div class="planning-view-tabs">
+              <button class="active" type="button" data-planning-detail-view="gantt">Diagrama de Gantt</button>
+              <button type="button" data-planning-detail-view="list">Lista de actividades</button>
+            </div>
+
+            <section id="planningGanttPanel" class="planning-detail-panel active">
+              <div class="planning-gantt-toolbar">
+                <div>
+                  <span class="eyebrow">CRONOGRAMA</span>
+                  <h3>Diagrama de Gantt</h3>
+                </div>
+                <div class="planning-gantt-controls">
+                  <div class="planning-zoom-toggle">
+                    <button type="button" data-gantt-zoom="DAY">Día</button>
+                    <button class="active" type="button" data-gantt-zoom="WEEK">Semana</button>
+                    <button type="button" data-gantt-zoom="MONTH">Mes</button>
+                  </div>
+                  <button id="planningGanttTodayButton" class="secondary-btn small-btn" type="button">Hoy</button>
+                </div>
+              </div>
+              <div id="planningGanttEmpty" class="training-library-empty hidden">Agrega actividades para construir el Gantt.</div>
+              <div id="planningGantt" class="planning-gantt"></div>
+              <div class="planning-gantt-legend">
+                <span><i class="legend-task"></i>Tarea</span>
+                <span><i class="legend-progress"></i>Avance</span>
+                <span><i class="legend-milestone"></i>Hito</span>
+                <span><i class="legend-today"></i>Hoy</span>
+              </div>
+            </section>
+
+            <section id="planningListPanel" class="planning-detail-panel hidden">
+              <div class="planning-activity-table-wrap">
+                <table class="data-table planning-activity-table">
+                  <thead>
+                    <tr><th>#</th><th>Actividad</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Dependencias</th><th>Avance</th><th>Situación</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="planningActivityTableBody"><tr><td colspan="9" class="table-empty">Sin actividades.</td></tr></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="planningTasksView" class="hidden">
+          <article class="coming-card planning-next-stage-card">
+            <span>☑</span>
+            <h3>Pendientes y seguimiento personal</h3>
+            <p>Esta bandeja se desarrollará en la Etapa 17B: pendientes del día, semana y mes, prioridades, vencimientos, reprogramaciones y seguimiento tipo ticket.</p>
+          </article>
+        </div>
+
+        <div id="planningProjectModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-project-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">PLANIFICACIÓN · PROYECTO</span><h3 id="planningProjectModalTitle">Nuevo proyecto</h3><p class="modal-subtitle">Define el marco general del cronograma.</p></div>
+              <button id="planningProjectModalClose" class="modal-close" type="button">×</button>
+            </div>
+            <form id="planningProjectForm" novalidate>
+              <input id="planningProjectId" type="hidden" />
+              <div class="form-grid planning-project-form-grid">
+                <label class="form-span-2"><span>Nombre del proyecto *</span><input id="planningProjectName" maxlength="220" placeholder="Ej. Implementación Plan SSOMAC Cerro Verde 2027" /></label>
+                <label><span>Categoría *</span><select id="planningProjectCategory"><option value="SIG">SIG</option><option value="SST">SST</option><option value="AMBIENTAL">Ambiental</option><option value="CALIDAD">Calidad</option><option value="AUDITORIA">Auditoría</option><option value="CLIENTE">Cliente</option><option value="OPERACIONES">Operaciones</option><option value="OTRO">Otro</option></select></label>
+                <label><span>Prioridad *</span><select id="planningProjectPriority"><option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
+                <label><span>Fecha de inicio *</span><input id="planningProjectStart" type="date" /></label>
+                <label><span>Fecha de fin *</span><input id="planningProjectEnd" type="date" /></label>
+                <label><span>Responsable general *</span><input id="planningProjectResponsible" maxlength="180" placeholder="Apellidos y nombres" /></label>
+                <label><span>Proyecto operativo vinculado</span><select id="planningProjectOperationalProject"><option value="">Ninguno / corporativo</option></select></label>
+                <label><span>Estado *</span><select id="planningProjectStatus"><option value="BORRADOR">BORRADOR</option><option value="ACTIVO" selected>ACTIVO</option><option value="PAUSADO">PAUSADO</option><option value="CERRADO">CERRADO</option><option value="CANCELADO">CANCELADO</option></select></label>
+                <label class="form-span-2"><span>Objetivo</span><textarea id="planningProjectObjective" rows="3" maxlength="1600" placeholder="Resultado que se espera alcanzar"></textarea></label>
+                <label class="form-span-2"><span>Descripción / alcance</span><textarea id="planningProjectDescription" rows="3" maxlength="2400" placeholder="Alcance, entregables o información general"></textarea></label>
+                <label class="form-span-2"><span>Observaciones</span><textarea id="planningProjectNotes" rows="2" maxlength="1600"></textarea></label>
+              </div>
+              <div id="planningProjectFormMessage" class="form-message"></div>
+              <div class="modal-actions"><button id="planningProjectCancel" class="secondary-btn" type="button">Cancelar</button><button id="planningProjectSave" class="primary-btn" type="submit">Guardar proyecto</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div id="planningActivityModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-activity-modal-card">
+            <div class="modal-head">
+              <div><span class="eyebrow">PLANIFICACIÓN · ACTIVIDAD</span><h3 id="planningActivityModalTitle">Nueva actividad</h3><p id="planningActivityModalSubtitle" class="modal-subtitle">—</p></div>
+              <button id="planningActivityModalClose" class="modal-close" type="button">×</button>
+            </div>
+            <form id="planningActivityForm" novalidate>
+              <input id="planningActivityId" type="hidden" />
+              <div class="form-grid planning-activity-form-grid">
+                <label><span>Tipo *</span><select id="planningActivityType"><option value="TAREA">Tarea</option><option value="HITO">Hito</option></select></label>
+                <label><span>Prioridad *</span><select id="planningActivityPriority"><option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
+                <label class="form-span-2"><span>Actividad / entregable *</span><input id="planningActivityName" maxlength="260" placeholder="Ej. Actualizar matriz IPERC" /></label>
+                <label><span>Responsable</span><input id="planningActivityResponsible" maxlength="180" placeholder="Apellidos y nombres / área" /></label>
+                <label><span>Estado *</span><select id="planningActivityStatus"><option value="PENDIENTE">PENDIENTE</option><option value="EN_PROCESO">EN PROCESO</option><option value="BLOQUEADO">BLOQUEADO</option><option value="COMPLETADO">COMPLETADO</option><option value="CANCELADO">CANCELADO</option></select></label>
+                <label><span>Inicio *</span><input id="planningActivityStart" type="date" /></label>
+                <label><span id="planningActivityEndLabel">Fin *</span><input id="planningActivityEnd" type="date" /></label>
+                <label><span>Avance (%)</span><input id="planningActivityProgress" type="number" min="0" max="100" step="5" value="0" /></label>
+                <label class="form-span-2"><span>Dependencias</span><select id="planningActivityDependencies" multiple size="5"></select><small class="field-help">Selecciona las actividades que deben terminar antes de esta actividad. Ctrl/Cmd + clic para seleccionar varias.</small></label>
+                <label class="form-span-2"><span>Descripción</span><textarea id="planningActivityDescription" rows="3" maxlength="2000"></textarea></label>
+                <label class="form-span-2"><span>Observaciones</span><textarea id="planningActivityNotes" rows="2" maxlength="1600"></textarea></label>
+              </div>
+              <div id="planningActivityFormMessage" class="form-message"></div>
+              <div class="modal-actions"><button id="planningActivityCancel" class="secondary-btn" type="button">Cancelar</button><button id="planningActivitySave" class="primary-btn" type="submit">Guardar actividad</button></div>
+            </form>
+          </div>
         </div>
       </section>
 
@@ -3416,6 +3628,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261013-16d4"></script>
+  <script src="app.js?v=20261019-17a"></script>
 </body>
 </html>

@@ -24,6 +24,15 @@ const mobileMenu = document.getElementById('mobileMenu');
 
 let client = null;
 let currentProfile = null;
+let planningProjects = [];
+let planningActivities = [];
+let planningDependencies = [];
+let planningOperationalProjects = [];
+let planningLoaded = false;
+let activePlanningProjectId = null;
+let planningGanttZoom = 'WEEK';
+let planningDetailMode = 'gantt';
+
 
 function showMessage(message, type = 'error') {
   if (!loginMessage) return;
@@ -76,6 +85,7 @@ function showSection(sectionId) {
   menuItems.forEach(item => item.classList.toggle('active', item.dataset.section === sectionId));
   sidebar?.classList.remove('open');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (sectionId === 'planificacion') loadPlanningModule();
   if (sectionId === 'programacion') loadScheduleModule();
   if (sectionId === 'sedes-proyectos') loadCatalogs();
   if (sectionId === 'trabajadores') loadWorkersModule();
@@ -322,6 +332,474 @@ document.querySelectorAll('[data-go]').forEach(button => button.addEventListener
 mobileMenu?.addEventListener('click', () => sidebar?.classList.toggle('open'));
 
 
+
+
+
+// ============================================================
+// ETAPA 17A · PLANIFICACIÓN · PROYECTOS Y GANTT
+// ============================================================
+
+function planningMessage(message='',type='error') {
+  const el=document.getElementById('planningMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`module-message ${message?'visible':''} ${type}`;
+}
+
+function planningProjectFormMessage(message='',type='error') {
+  const el=document.getElementById('planningProjectFormMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningActivityFormMessage(message='',type='error') {
+  const el=document.getElementById('planningActivityFormMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningParseDate(value) {
+  if (!value) return null;
+  const d=new Date(`${String(value).slice(0,10)}T00:00:00`);
+  return Number.isNaN(d.getTime())?null:d;
+}
+
+function planningIsoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const y=date.getFullYear();
+  const m=String(date.getMonth()+1).padStart(2,'0');
+  const d=String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+
+function planningAddDays(date,days) {
+  const d=new Date(date);
+  d.setDate(d.getDate()+days);
+  return d;
+}
+
+function planningDaysBetween(a,b) {
+  const da=planningParseDate(a); const db=planningParseDate(b);
+  if (!da || !db) return 0;
+  return Math.round((db-da)/86400000);
+}
+
+function planningDurationDays(start,end) {
+  return Math.max(1,planningDaysBetween(start,end)+1);
+}
+
+function planningOperationalProjectName(id) {
+  const p=planningOperationalProjects.find(x=>x.id===id);
+  if (!p) return 'Corporativo / sin vínculo';
+  return p.cliente ? `${p.nombre} · ${p.cliente}` : p.nombre;
+}
+
+function planningActivitiesFor(projectId) {
+  return planningActivities.filter(x=>x.planificacion_proyecto_id===projectId)
+    .sort((a,b)=>(Number(a.orden)||0)-(Number(b.orden)||0));
+}
+
+function planningDependenciesFor(activityId) {
+  return planningDependencies.filter(x=>x.actividad_id===activityId);
+}
+
+function planningDependencyNames(activityId) {
+  const ids=planningDependenciesFor(activityId).map(x=>x.depende_de_actividad_id);
+  return ids.map(id=>planningActivities.find(a=>a.id===id)?.nombre).filter(Boolean);
+}
+
+function planningProjectProgress(projectId) {
+  const rows=planningActivitiesFor(projectId).filter(x=>x.estado!=='CANCELADO');
+  if (!rows.length) return 0;
+  const tasks=rows.filter(x=>x.tipo==='TAREA');
+  const basis=tasks.length?tasks:rows;
+  const total=basis.reduce((sum,x)=>sum+Number(x.progreso||0),0);
+  return Math.round(total/basis.length);
+}
+
+function planningProjectCompletedCount(projectId) {
+  return planningActivitiesFor(projectId).filter(x=>x.estado==='COMPLETADO' || Number(x.progreso)>=100).length;
+}
+
+function planningActivitySituation(activity) {
+  if (!activity) return {code:'PENDIENTE',label:'Pendiente'};
+  if (activity.estado==='CANCELADO') return {code:'CANCELADO',label:'Cancelado'};
+  if (activity.estado==='COMPLETADO' || Number(activity.progreso)>=100) return {code:'COMPLETADO',label:'Completado'};
+  if (activity.estado==='BLOQUEADO') return {code:'BLOQUEADO',label:'Bloqueado'};
+  const today=new Date(); today.setHours(0,0,0,0);
+  const end=planningParseDate(activity.fecha_fin);
+  if (end && end<today) {
+    const days=Math.abs(Math.floor((today-end)/86400000));
+    return {code:'ATRASADO',label:`Atrasado ${days} día(s)`};
+  }
+  if (activity.estado==='EN_PROCESO' || Number(activity.progreso)>0) return {code:'EN_PROCESO',label:'En proceso'};
+  return {code:'PENDIENTE',label:'Pendiente'};
+}
+
+function planningPriorityLabel(value) {
+  return {BAJA:'Baja',MEDIA:'Media',ALTA:'Alta',CRITICA:'Crítica'}[value] || value || '—';
+}
+
+function planningCategoryLabel(value) {
+  return {SIG:'SIG',SST:'SST',AMBIENTAL:'Ambiental',CALIDAD:'Calidad',AUDITORIA:'Auditoría',CLIENTE:'Cliente',OPERACIONES:'Operaciones',OTRO:'Otro'}[value] || value || '—';
+}
+
+function planningCanManage(project) {
+  if (!project || !currentProfile) return false;
+  if (currentProfile.rol_codigo==='ADMIN') return true;
+  if (project.created_by===currentProfile.id || project.responsable_profile_id===currentProfile.id) return true;
+  return true; // RLS de Supabase mantiene la autorización efectiva en escritura.
+}
+
+function populatePlanningOperationalProjects() {
+  const select=document.getElementById('planningProjectOperationalProject');
+  if (!select) return;
+  const current=select.value;
+  select.innerHTML='<option value="">Ninguno / corporativo</option>'+
+    planningOperationalProjects.filter(x=>x.activo!==false).map(p=>
+      `<option value="${p.id}">${escapeHtml(p.nombre)}${p.cliente?` · ${escapeHtml(p.cliente)}`:''}</option>`
+    ).join('');
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function populatePlanningYearFilter() {
+  const select=document.getElementById('planningYearFilter');
+  if (!select) return;
+  const current=select.value || 'ALL';
+  const years=[...new Set(planningProjects.map(x=>String(x.fecha_inicio||'').slice(0,4)).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+  select.innerHTML='<option value="ALL">Todos los años</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function updatePlanningStats() {
+  const active=planningProjects.filter(x=>x.estado==='ACTIVO').length;
+  const activities=planningActivities.filter(x=>x.estado!=='CANCELADO').length;
+  const overdue=planningActivities.filter(x=>planningActivitySituation(x).code==='ATRASADO').length;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const limit=planningAddDays(today,30);
+  const milestones=planningActivities.filter(x=>{
+    if (x.tipo!=='HITO' || x.estado==='COMPLETADO' || x.estado==='CANCELADO') return false;
+    const d=planningParseDate(x.fecha_inicio); return d && d>=today && d<=limit;
+  }).length;
+  const progresses=planningProjects.filter(x=>x.estado!=='CANCELADO').map(x=>planningProjectProgress(x.id));
+  const avg=progresses.length?Math.round(progresses.reduce((a,b)=>a+b,0)/progresses.length):0;
+  const map={planningActiveProjectsCount:active,planningActivitiesCount:activities,planningOverdueCount:overdue,planningMilestonesCount:milestones,planningAverageProgress:`${avg}%`};
+  Object.entries(map).forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=String(value);});
+}
+
+function renderPlanningProjectList() {
+  const container=document.getElementById('planningProjectList');
+  if (!container) return;
+  const q=(document.getElementById('planningSearch')?.value||'').trim().toLowerCase();
+  const status=document.getElementById('planningStatusFilter')?.value||'ALL';
+  const category=document.getElementById('planningCategoryFilter')?.value||'ALL';
+  const year=document.getElementById('planningYearFilter')?.value||'ALL';
+
+  const rows=planningProjects.filter(p=>{
+    if (status!=='ALL' && p.estado!==status) return false;
+    if (category!=='ALL' && p.categoria!==category) return false;
+    if (year!=='ALL' && String(p.fecha_inicio||'').slice(0,4)!==year) return false;
+    const hay=[p.codigo,p.nombre,p.descripcion,p.objetivo,p.responsable_nombre,planningOperationalProjectName(p.proyecto_id),p.categoria].filter(Boolean).join(' ').toLowerCase();
+    return !q || hay.includes(q);
+  });
+
+  const count=document.getElementById('planningResultCount');
+  if (count) count.textContent=`${rows.length} proyecto${rows.length===1?'':'s'}`;
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No se encontraron proyectos planificados.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(p=>{
+    const acts=planningActivitiesFor(p.id);
+    const progress=planningProjectProgress(p.id);
+    const overdue=acts.filter(a=>planningActivitySituation(a).code==='ATRASADO').length;
+    const milestones=acts.filter(a=>a.tipo==='HITO' && a.estado!=='COMPLETADO' && a.estado!=='CANCELADO').length;
+    return `<article class="planning-project-card" data-planning-project-card="${p.id}">
+      <div class="planning-project-card-icon">▤</div>
+      <div class="planning-project-card-main">
+        <div class="planning-project-card-top">
+          <div><span class="eyebrow">${escapeHtml(p.codigo||'PROYECTO')} · ${escapeHtml(planningCategoryLabel(p.categoria))}</span><h4>${escapeHtml(p.nombre)}</h4><p>${escapeHtml(planningOperationalProjectName(p.proyecto_id))}</p></div>
+          <span class="planning-project-status ${String(p.estado||'').toLowerCase()}">${escapeHtml(p.estado||'—')}</span>
+        </div>
+        <div class="planning-project-card-meta">
+          <span>Responsable: ${escapeHtml(p.responsable_nombre||'—')}</span><span>▣ ${escapeHtml(formatDatePE(p.fecha_inicio))} → ${escapeHtml(formatDatePE(p.fecha_fin))}</span><span>${acts.length} actividad(es)</span><span>${milestones} hito(s)</span>${overdue?`<span class="planning-card-overdue">${overdue} atrasada(s)</span>`:''}<span class="planning-priority ${String(p.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(p.prioridad))}</span>
+        </div>
+        <div class="planning-card-progress-row"><div class="planning-progress-track"><div class="planning-progress-fill" style="width:${progress}%"></div></div><strong>${progress}%</strong></div>
+      </div>
+      <div class="planning-project-card-actions"><button class="committee-manage-btn" type="button" data-open-planning-project="${p.id}">Abrir Gantt</button></div>
+    </article>`;
+  }).join('');
+
+  container.querySelectorAll('[data-open-planning-project]').forEach(btn=>btn.addEventListener('click',()=>openPlanningProject(btn.dataset.openPlanningProject)));
+}
+
+async function loadPlanningModule(force=false) {
+  if (!client) return;
+  if (planningLoaded && !force) {
+    populatePlanningYearFilter(); updatePlanningStats(); renderPlanningProjectList(); return;
+  }
+  planningMessage('');
+  const [projects,activities,deps,operational]=await Promise.all([
+    client.from('planificacion_proyectos').select('*').order('fecha_inicio',{ascending:false}).order('created_at',{ascending:false}),
+    client.from('planificacion_actividades').select('*').order('planificacion_proyecto_id').order('orden'),
+    client.from('planificacion_dependencias').select('*'),
+    client.from('proyectos').select('id,nombre,cliente,activo').order('nombre')
+  ]);
+  const err=projects.error||activities.error||deps.error||operational.error;
+  if (err) {console.error(err); planningMessage(err.message||'No fue posible cargar Planificación.'); return;}
+  planningProjects=projects.data||[]; planningActivities=activities.data||[]; planningDependencies=deps.data||[]; planningOperationalProjects=operational.data||[]; planningLoaded=true;
+  populatePlanningOperationalProjects(); populatePlanningYearFilter(); updatePlanningStats(); renderPlanningProjectList();
+  if (activePlanningProjectId && planningProjects.some(x=>x.id===activePlanningProjectId)) renderPlanningProjectDetail();
+}
+
+function switchPlanningTab(tab) {
+  const projects=tab!=='TASKS';
+  document.getElementById('planningProjectsTab')?.classList.toggle('active',projects);
+  document.getElementById('planningTasksTab')?.classList.toggle('active',!projects);
+  document.getElementById('planningProjectsView')?.classList.toggle('hidden',!projects);
+  document.getElementById('planningTasksView')?.classList.toggle('hidden',projects);
+  document.getElementById('planningNewProjectButton')?.classList.toggle('hidden',!projects);
+}
+
+function openPlanningProjectModal(project=null) {
+  planningProjectFormMessage('');
+  populatePlanningOperationalProjects();
+  document.getElementById('planningProjectModalTitle').textContent=project?'Editar proyecto':'Nuevo proyecto';
+  document.getElementById('planningProjectId').value=project?.id||'';
+  document.getElementById('planningProjectName').value=project?.nombre||'';
+  document.getElementById('planningProjectCategory').value=project?.categoria||'SIG';
+  document.getElementById('planningProjectPriority').value=project?.prioridad||'MEDIA';
+  document.getElementById('planningProjectStart').value=project?.fecha_inicio||new Date().toISOString().slice(0,10);
+  document.getElementById('planningProjectEnd').value=project?.fecha_fin||planningIsoDate(planningAddDays(new Date(),30));
+  document.getElementById('planningProjectResponsible').value=project?.responsable_nombre||[currentProfile?.nombres,currentProfile?.apellidos].filter(Boolean).join(' ');
+  document.getElementById('planningProjectOperationalProject').value=project?.proyecto_id||'';
+  document.getElementById('planningProjectStatus').value=project?.estado||'ACTIVO';
+  document.getElementById('planningProjectObjective').value=project?.objetivo||'';
+  document.getElementById('planningProjectDescription').value=project?.descripcion||'';
+  document.getElementById('planningProjectNotes').value=project?.observaciones||'';
+  const modal=document.getElementById('planningProjectModal'); modal?.classList.remove('hidden'); modal?.setAttribute('aria-hidden','false'); document.body.classList.add('modal-open');
+}
+
+function closePlanningProjectModal() {document.getElementById('planningProjectModal')?.classList.add('hidden');document.getElementById('planningProjectModal')?.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');}
+
+async function savePlanningProject(event) {
+  event.preventDefault(); planningProjectFormMessage('');
+  const id=document.getElementById('planningProjectId').value||null;
+  const payload={
+    nombre:document.getElementById('planningProjectName').value.trim(),
+    categoria:document.getElementById('planningProjectCategory').value,
+    prioridad:document.getElementById('planningProjectPriority').value,
+    fecha_inicio:document.getElementById('planningProjectStart').value,
+    fecha_fin:document.getElementById('planningProjectEnd').value,
+    responsable_nombre:document.getElementById('planningProjectResponsible').value.trim(),
+    proyecto_id:document.getElementById('planningProjectOperationalProject').value||null,
+    estado:document.getElementById('planningProjectStatus').value,
+    objetivo:document.getElementById('planningProjectObjective').value.trim()||null,
+    descripcion:document.getElementById('planningProjectDescription').value.trim()||null,
+    observaciones:document.getElementById('planningProjectNotes').value.trim()||null
+  };
+  if (!payload.nombre||!payload.responsable_nombre||!payload.fecha_inicio||!payload.fecha_fin) {planningProjectFormMessage('Completa nombre, responsable y fechas.');return;}
+  if (payload.fecha_fin<payload.fecha_inicio) {planningProjectFormMessage('La fecha de fin no puede ser anterior a la fecha de inicio.');return;}
+  const button=document.getElementById('planningProjectSave'); const old=button.textContent; button.disabled=true;button.textContent='Guardando…';
+  const res=id?await client.from('planificacion_proyectos').update(payload).eq('id',id).select().single():await client.from('planificacion_proyectos').insert({...payload,created_by:currentProfile?.id||undefined}).select().single();
+  button.disabled=false;button.textContent=old;
+  if (res.error) {console.error(res.error);planningProjectFormMessage(res.error.message||'No fue posible guardar el proyecto.');return;}
+  closePlanningProjectModal();planningLoaded=false;await loadPlanningModule(true);openPlanningProject(res.data.id);planningMessage(id?'Proyecto actualizado correctamente.':'Proyecto creado. Ahora agrega actividades.','success');
+}
+
+async function deletePlanningProject() {
+  const project=planningProjects.find(x=>x.id===activePlanningProjectId); if(!project)return;
+  const count=planningActivitiesFor(project.id).length;
+  if(!confirm(`¿Eliminar definitivamente "${project.nombre}"?\n\nSe eliminarán también ${count} actividad(es) y sus dependencias.`))return;
+  const {error}=await client.from('planificacion_proyectos').delete().eq('id',project.id);
+  if(error){planningMessage(error.message||'No fue posible eliminar el proyecto.');return;}
+  activePlanningProjectId=null;planningLoaded=false;await loadPlanningModule(true);showPlanningPortfolio();planningMessage('Proyecto eliminado.','success');
+}
+
+function showPlanningPortfolio() {
+  activePlanningProjectId=null;
+  document.getElementById('planningPortfolioView')?.classList.remove('hidden');
+  document.getElementById('planningProjectDetailView')?.classList.add('hidden');
+  document.getElementById('planningNewProjectButton')?.classList.remove('hidden');
+  renderPlanningProjectList();
+}
+
+function openPlanningProject(id) {
+  activePlanningProjectId=id;
+  document.getElementById('planningPortfolioView')?.classList.add('hidden');
+  document.getElementById('planningProjectDetailView')?.classList.remove('hidden');
+  document.getElementById('planningNewProjectButton')?.classList.add('hidden');
+  renderPlanningProjectDetail();
+}
+
+function renderPlanningProjectDetail() {
+  const p=planningProjects.find(x=>x.id===activePlanningProjectId); if(!p)return;
+  const acts=planningActivitiesFor(p.id); const progress=planningProjectProgress(p.id); const completed=planningProjectCompletedCount(p.id);
+  document.getElementById('planningDetailCode').textContent=`${p.codigo||'—'} · ${planningCategoryLabel(p.categoria)} · ${planningPriorityLabel(p.prioridad)}`;
+  document.getElementById('planningDetailName').textContent=p.nombre||'—';
+  const status=document.getElementById('planningDetailStatus');status.textContent=p.estado||'—';status.className=`planning-project-status ${String(p.estado||'').toLowerCase()}`;
+  document.getElementById('planningDetailDescription').textContent=p.descripcion||'Sin descripción registrada.';
+  document.getElementById('planningDetailResponsible').textContent=p.responsable_nombre||'—';
+  document.getElementById('planningDetailStart').textContent=formatDatePE(p.fecha_inicio);
+  document.getElementById('planningDetailEnd').textContent=formatDatePE(p.fecha_fin);
+  document.getElementById('planningDetailDuration').textContent=`${planningDurationDays(p.fecha_inicio,p.fecha_fin)} días`;
+  document.getElementById('planningDetailUnit').textContent=planningOperationalProjectName(p.proyecto_id);
+  document.getElementById('planningDetailProgress').textContent=`${progress}%`;
+  document.getElementById('planningDetailProgressBar').style.width=`${progress}%`;
+  document.getElementById('planningDetailProgressText').textContent=`${completed} de ${acts.length} actividades completadas`;
+  const objBox=document.getElementById('planningDetailObjectiveBox');objBox.classList.toggle('hidden',!p.objetivo);document.getElementById('planningDetailObjective').textContent=p.objetivo||'';
+  renderPlanningActivityTable(); renderPlanningGantt();
+}
+
+function switchPlanningDetailView(mode) {
+  planningDetailMode=mode==='list'?'list':'gantt';
+  document.querySelectorAll('[data-planning-detail-view]').forEach(b=>b.classList.toggle('active',b.dataset.planningDetailView===planningDetailMode));
+  document.getElementById('planningGanttPanel')?.classList.toggle('hidden',planningDetailMode!=='gantt');
+  document.getElementById('planningListPanel')?.classList.toggle('hidden',planningDetailMode!=='list');
+}
+
+function populatePlanningActivityDependencies(editingId=null,selected=[]) {
+  const select=document.getElementById('planningActivityDependencies'); if(!select)return;
+  select.innerHTML=planningActivitiesFor(activePlanningProjectId).filter(x=>x.id!==editingId).map(x=>`<option value="${x.id}" ${selected.includes(x.id)?'selected':''}>${x.orden}. ${escapeHtml(x.nombre)}</option>`).join('');
+  if(!select.options.length) select.innerHTML='<option disabled>No hay otras actividades</option>';
+}
+
+function updatePlanningActivityTypeFields() {
+  const type=document.getElementById('planningActivityType')?.value||'TAREA';
+  const start=document.getElementById('planningActivityStart'); const end=document.getElementById('planningActivityEnd'); const label=document.getElementById('planningActivityEndLabel');
+  if(type==='HITO'){label.textContent='Fecha del hito *'; if(start?.value)end.value=start.value; end.disabled=true;} else {label.textContent='Fin *';end.disabled=false;}
+}
+
+function openPlanningActivityModal(activity=null) {
+  const project=planningProjects.find(x=>x.id===activePlanningProjectId); if(!project)return;
+  planningActivityFormMessage('');
+  document.getElementById('planningActivityModalTitle').textContent=activity?'Editar actividad':'Nueva actividad';
+  document.getElementById('planningActivityModalSubtitle').textContent=`${project.codigo||''} · ${project.nombre}`;
+  document.getElementById('planningActivityId').value=activity?.id||'';
+  document.getElementById('planningActivityType').value=activity?.tipo||'TAREA';
+  document.getElementById('planningActivityPriority').value=activity?.prioridad||'MEDIA';
+  document.getElementById('planningActivityName').value=activity?.nombre||'';
+  document.getElementById('planningActivityResponsible').value=activity?.responsable_nombre||project.responsable_nombre||'';
+  document.getElementById('planningActivityStatus').value=activity?.estado||'PENDIENTE';
+  document.getElementById('planningActivityStart').value=activity?.fecha_inicio||project.fecha_inicio;
+  document.getElementById('planningActivityEnd').value=activity?.fecha_fin||project.fecha_inicio;
+  document.getElementById('planningActivityProgress').value=activity?.progreso??0;
+  document.getElementById('planningActivityDescription').value=activity?.descripcion||'';
+  document.getElementById('planningActivityNotes').value=activity?.observaciones||'';
+  const deps=activity?planningDependenciesFor(activity.id).map(x=>x.depende_de_actividad_id):[];populatePlanningActivityDependencies(activity?.id||null,deps);updatePlanningActivityTypeFields();
+  const modal=document.getElementById('planningActivityModal');modal?.classList.remove('hidden');modal?.setAttribute('aria-hidden','false');document.body.classList.add('modal-open');
+}
+
+function closePlanningActivityModal(){document.getElementById('planningActivityModal')?.classList.add('hidden');document.getElementById('planningActivityModal')?.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');}
+
+async function savePlanningActivity(event) {
+  event.preventDefault(); planningActivityFormMessage('');
+  const project=planningProjects.find(x=>x.id===activePlanningProjectId); if(!project)return;
+  const id=document.getElementById('planningActivityId').value||null; const type=document.getElementById('planningActivityType').value; const start=document.getElementById('planningActivityStart').value; let end=document.getElementById('planningActivityEnd').value; if(type==='HITO')end=start;
+  const progress=Math.max(0,Math.min(100,Number(document.getElementById('planningActivityProgress').value||0))); let estado=document.getElementById('planningActivityStatus').value; if(progress>=100)estado='COMPLETADO'; else if(progress>0 && estado==='PENDIENTE')estado='EN_PROCESO';
+  const payload={planificacion_proyecto_id:project.id,tipo,nombre:document.getElementById('planningActivityName').value.trim(),descripcion:document.getElementById('planningActivityDescription').value.trim()||null,responsable_nombre:document.getElementById('planningActivityResponsible').value.trim()||null,fecha_inicio:start,fecha_fin:end,progreso:progress,estado,prioridad:document.getElementById('planningActivityPriority').value,observaciones:document.getElementById('planningActivityNotes').value.trim()||null};
+  if(!payload.nombre||!start||!end){planningActivityFormMessage('Completa actividad y fechas.');return;}
+  if(end<start){planningActivityFormMessage('La fecha de fin no puede ser anterior al inicio.');return;}
+  if(start<project.fecha_inicio||end>project.fecha_fin){planningActivityFormMessage(`La actividad debe estar dentro del rango del proyecto (${formatDatePE(project.fecha_inicio)} al ${formatDatePE(project.fecha_fin)}).`);return;}
+  const selected=[...document.getElementById('planningActivityDependencies').selectedOptions].map(o=>o.value).filter(Boolean);
+  const button=document.getElementById('planningActivitySave');const old=button.textContent;button.disabled=true;button.textContent='Guardando…';
+  let res;
+  if(id){res=await client.from('planificacion_actividades').update(payload).eq('id',id).select().single();}
+  else {const order=(planningActivitiesFor(project.id).at(-1)?.orden||0)+1;res=await client.from('planificacion_actividades').insert({...payload,orden:order,created_by:currentProfile?.id||undefined}).select().single();}
+  if(res.error){button.disabled=false;button.textContent=old;console.error(res.error);planningActivityFormMessage(res.error.message||'No fue posible guardar la actividad.');return;}
+  const activityId=res.data.id;
+  const del=await client.from('planificacion_dependencias').delete().eq('actividad_id',activityId); if(del.error){console.error(del.error);}
+  if(selected.length){const ins=await client.from('planificacion_dependencias').insert(selected.map(dep=>({actividad_id:activityId,depende_de_actividad_id:dep})));if(ins.error){button.disabled=false;button.textContent=old;planningActivityFormMessage(ins.error.message||'La actividad se guardó, pero no fue posible guardar sus dependencias.');return;}}
+  button.disabled=false;button.textContent=old;closePlanningActivityModal();planningLoaded=false;await loadPlanningModule(true);activePlanningProjectId=project.id;openPlanningProject(project.id);planningMessage(id?'Actividad actualizada.':'Actividad agregada al Gantt.','success');
+}
+
+async function deletePlanningActivity(id) {
+  const a=planningActivities.find(x=>x.id===id);if(!a)return;if(!confirm(`¿Eliminar la actividad "${a.nombre}"?`))return;
+  const {error}=await client.from('planificacion_actividades').delete().eq('id',id);if(error){planningMessage(error.message||'No fue posible eliminar la actividad.');return;}
+  const projectId=a.planificacion_proyecto_id;planningLoaded=false;await loadPlanningModule(true);activePlanningProjectId=projectId;openPlanningProject(projectId);planningMessage('Actividad eliminada.','success');
+}
+
+async function movePlanningActivity(id,direction) {
+  const rows=planningActivitiesFor(activePlanningProjectId);const idx=rows.findIndex(x=>x.id===id);const otherIdx=direction==='up'?idx-1:idx+1;if(idx<0||otherIdx<0||otherIdx>=rows.length)return;const a=rows[idx],b=rows[otherIdx];
+  const [ra,rb]=await Promise.all([client.from('planificacion_actividades').update({orden:b.orden}).eq('id',a.id),client.from('planificacion_actividades').update({orden:a.orden}).eq('id',b.id)]);if(ra.error||rb.error){planningMessage(ra.error?.message||rb.error?.message||'No fue posible reordenar.');return;}planningLoaded=false;await loadPlanningModule(true);openPlanningProject(activePlanningProjectId);
+}
+
+function renderPlanningActivityTable() {
+  const body=document.getElementById('planningActivityTableBody');if(!body)return;const rows=planningActivitiesFor(activePlanningProjectId);
+  if(!rows.length){body.innerHTML='<tr><td colspan="9" class="table-empty">Aún no existen actividades. Usa “Nueva actividad”.</td></tr>';return;}
+  body.innerHTML=rows.map((a,i)=>{const sit=planningActivitySituation(a);const deps=planningDependencyNames(a.id);return `<tr class="${sit.code==='ATRASADO'?'planning-overdue-row':''}"><td><div class="planning-order-cell"><button type="button" data-move-plan-activity="${a.id}" data-dir="up" ${i===0?'disabled':''}>↑</button><strong>${a.orden}</strong><button type="button" data-move-plan-activity="${a.id}" data-dir="down" ${i===rows.length-1?'disabled':''}>↓</button></div></td><td><strong>${a.tipo==='HITO'?'◆ ':''}${escapeHtml(a.nombre)}</strong><small>${escapeHtml(planningPriorityLabel(a.prioridad))}</small></td><td>${escapeHtml(a.responsable_nombre||'—')}</td><td>${escapeHtml(formatDatePE(a.fecha_inicio))}</td><td>${escapeHtml(formatDatePE(a.fecha_fin))}</td><td>${deps.length?deps.map(escapeHtml).join('<br>'):'—'}</td><td><div class="planning-table-progress"><div><span style="width:${Number(a.progreso||0)}%"></span></div><b>${Number(a.progreso||0)}%</b></div></td><td><span class="planning-situation ${sit.code.toLowerCase()}">${escapeHtml(sit.label)}</span></td><td class="planning-row-actions"><button class="secondary-btn small-btn" type="button" data-edit-plan-activity="${a.id}">Editar</button><button class="induction-delete-btn small-btn" type="button" data-delete-plan-activity="${a.id}">Eliminar</button></td></tr>`;}).join('');
+  body.querySelectorAll('[data-edit-plan-activity]').forEach(b=>b.addEventListener('click',()=>openPlanningActivityModal(planningActivities.find(x=>x.id===b.dataset.editPlanActivity))));
+  body.querySelectorAll('[data-delete-plan-activity]').forEach(b=>b.addEventListener('click',()=>deletePlanningActivity(b.dataset.deletePlanActivity)));
+  body.querySelectorAll('[data-move-plan-activity]').forEach(b=>b.addEventListener('click',()=>movePlanningActivity(b.dataset.movePlanActivity,b.dataset.dir)));
+}
+
+function planningZoomDayWidth() {return planningGanttZoom==='DAY'?30:planningGanttZoom==='WEEK'?9:3.5;}
+
+function buildPlanningGanttHeaders(start,end,dayWidth) {
+  const total=planningDurationDays(planningIsoDate(start),planningIsoDate(end));
+  const segments=[];let cursor=new Date(start);
+  if(planningGanttZoom==='DAY') {
+    for(let i=0;i<total;i++){const d=planningAddDays(start,i);segments.push({label:`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`,days:1});}
+  } else if(planningGanttZoom==='WEEK') {
+    let i=0;while(i<total){const d=planningAddDays(start,i);const days=Math.min(7,total-i);segments.push({label:`${String(d.getDate()).padStart(2,'0')} ${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][d.getMonth()]}`,days});i+=days;}
+  } else {
+    let d=new Date(start);let consumed=0;while(consumed<total){const month=d.getMonth(),year=d.getFullYear();let days=0;while(consumed+days<total){const x=planningAddDays(start,consumed+days);if(x.getMonth()!==month||x.getFullYear()!==year)break;days++;}segments.push({label:`${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][month]} ${year}`,days});consumed+=days;d=planningAddDays(start,consumed);}
+  }
+  return segments.map(s=>`<div class="planning-gantt-header-segment" style="width:${s.days*dayWidth}px">${escapeHtml(s.label)}</div>`).join('');
+}
+
+function renderPlanningGantt() {
+  const host=document.getElementById('planningGantt');const empty=document.getElementById('planningGanttEmpty');if(!host)return;const p=planningProjects.find(x=>x.id===activePlanningProjectId);const rows=planningActivitiesFor(activePlanningProjectId);
+  if(!p||!rows.length){host.innerHTML='';empty?.classList.remove('hidden');return;}empty?.classList.add('hidden');
+  let start=planningParseDate(p.fecha_inicio),end=planningParseDate(p.fecha_fin);const dayWidth=planningZoomDayWidth();const totalDays=planningDurationDays(p.fecha_inicio,p.fecha_fin);const timelineWidth=Math.max(680,totalDays*dayWidth);const today=new Date();today.setHours(0,0,0,0);const todayOffset=Math.round((today-start)/86400000)*dayWidth;const todayVisible=today>=start&&today<=end;
+  const header=buildPlanningGanttHeaders(start,end,dayWidth);
+  const body=rows.map(a=>{const offset=Math.max(0,planningDaysBetween(p.fecha_inicio,a.fecha_inicio))*dayWidth;const days=planningDurationDays(a.fecha_inicio,a.fecha_fin);const width=Math.max(a.tipo==='HITO'?14:18,days*dayWidth);const sit=planningActivitySituation(a);const deps=planningDependencyNames(a.id);return `<div class="planning-gantt-row" data-gantt-activity="${a.id}"><div class="planning-gantt-task"><div class="planning-gantt-task-main"><strong>${a.tipo==='HITO'?'◆ ':''}${escapeHtml(a.nombre)}</strong><small>${escapeHtml(a.responsable_nombre||'Sin responsable')}${deps.length?` · Depende de: ${escapeHtml(deps.join(', '))}`:''}</small></div><span>${Number(a.progreso||0)}%</span></div><div class="planning-gantt-timeline" style="width:${timelineWidth}px">${todayVisible?`<div class="planning-gantt-today-line" style="left:${todayOffset}px"></div>`:''}${a.tipo==='HITO'?`<button class="planning-gantt-milestone ${sit.code.toLowerCase()}" data-gantt-edit="${a.id}" style="left:${offset}px" title="${escapeHtml(a.nombre)} · ${escapeHtml(formatDatePE(a.fecha_inicio))}"></button>`:`<button class="planning-gantt-bar ${sit.code.toLowerCase()}" data-gantt-edit="${a.id}" style="left:${offset}px;width:${width}px" title="${escapeHtml(a.nombre)} · ${escapeHtml(formatDatePE(a.fecha_inicio))} a ${escapeHtml(formatDatePE(a.fecha_fin))}"><span style="width:${Number(a.progreso||0)}%"></span><b>${width>70?`${Number(a.progreso||0)}%`:''}</b></button>`}</div></div>`;}).join('');
+  host.innerHTML=`<div class="planning-gantt-grid"><div class="planning-gantt-left-header">Actividad / responsable</div><div id="planningGanttTimelineScroll" class="planning-gantt-scroll"><div class="planning-gantt-header" style="width:${timelineWidth}px">${header}${todayVisible?`<div class="planning-gantt-today-header" style="left:${todayOffset}px">HOY</div>`:''}</div></div><div class="planning-gantt-body" style="grid-column:1/-1">${body}</div></div>`;
+  host.querySelectorAll('[data-gantt-edit]').forEach(b=>b.addEventListener('click',()=>openPlanningActivityModal(planningActivities.find(x=>x.id===b.dataset.ganttEdit))));
+  setTimeout(()=>{syncPlanningGanttScroll();scrollPlanningGanttToday(false);},0);
+}
+
+function scrollPlanningGanttToday(force=true) {
+  const p=planningProjects.find(x=>x.id===activePlanningProjectId);const scroller=document.getElementById('planningGanttTimelineScroll');if(!p||!scroller)return;const today=new Date();today.setHours(0,0,0,0);const start=planningParseDate(p.fecha_inicio);const end=planningParseDate(p.fecha_fin);if(today<start||today>end){if(force)scroller.scrollLeft=0;return;}const left=Math.max(0,Math.round((today-start)/86400000)*planningZoomDayWidth()-scroller.clientWidth/2);scroller.scrollLeft=left;document.querySelectorAll('.planning-gantt-row .planning-gantt-timeline').forEach(el=>el.parentElement?.querySelector('.planning-gantt-timeline'));const bodyScrollers=document.querySelectorAll('.planning-gantt-timeline');bodyScrollers.forEach(el=>{el.style.transform=`translateX(${-scroller.scrollLeft}px)`;});
+}
+
+// Sincroniza el scroll del encabezado con las líneas de tiempo de cada fila.
+function syncPlanningGanttScroll() {
+  const scroller=document.getElementById('planningGanttTimelineScroll');if(!scroller)return;
+  scroller.addEventListener('scroll',()=>{const x=scroller.scrollLeft;document.querySelectorAll('.planning-gantt-row .planning-gantt-timeline').forEach(el=>{el.style.transform=`translateX(${-x}px)`;});});
+}
+
+// Eventos 17A
+document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
+document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
+document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>openPlanningProjectModal());
+document.getElementById('planningProjectForm')?.addEventListener('submit',savePlanningProject);
+document.getElementById('planningProjectModalClose')?.addEventListener('click',closePlanningProjectModal);
+document.getElementById('planningProjectCancel')?.addEventListener('click',closePlanningProjectModal);
+document.getElementById('planningProjectModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningProjectModal);
+document.getElementById('planningBackButton')?.addEventListener('click',showPlanningPortfolio);
+document.getElementById('planningEditProjectButton')?.addEventListener('click',()=>openPlanningProjectModal(planningProjects.find(x=>x.id===activePlanningProjectId)));
+document.getElementById('planningDeleteProjectButton')?.addEventListener('click',deletePlanningProject);
+document.getElementById('planningAddActivityButton')?.addEventListener('click',()=>openPlanningActivityModal());
+document.getElementById('planningActivityForm')?.addEventListener('submit',savePlanningActivity);
+document.getElementById('planningActivityModalClose')?.addEventListener('click',closePlanningActivityModal);
+document.getElementById('planningActivityCancel')?.addEventListener('click',closePlanningActivityModal);
+document.getElementById('planningActivityModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningActivityModal);
+document.getElementById('planningActivityType')?.addEventListener('change',updatePlanningActivityTypeFields);
+document.getElementById('planningActivityStart')?.addEventListener('change',()=>{if(document.getElementById('planningActivityType')?.value==='HITO')document.getElementById('planningActivityEnd').value=document.getElementById('planningActivityStart').value;});
+document.getElementById('planningActivityProgress')?.addEventListener('input',e=>{const v=Number(e.target.value||0);if(v>=100)document.getElementById('planningActivityStatus').value='COMPLETADO';else if(v>0&&document.getElementById('planningActivityStatus').value==='PENDIENTE')document.getElementById('planningActivityStatus').value='EN_PROCESO';});
+document.querySelectorAll('[data-planning-detail-view]').forEach(b=>b.addEventListener('click',()=>switchPlanningDetailView(b.dataset.planningDetailView)));
+document.querySelectorAll('[data-gantt-zoom]').forEach(b=>b.addEventListener('click',()=>{planningGanttZoom=b.dataset.ganttZoom;document.querySelectorAll('[data-gantt-zoom]').forEach(x=>x.classList.toggle('active',x===b));renderPlanningGantt();setTimeout(syncPlanningGanttScroll,0);}));
+document.getElementById('planningGanttTodayButton')?.addEventListener('click',()=>scrollPlanningGanttToday(true));
+document.getElementById('planningSearch')?.addEventListener('input',renderPlanningProjectList);
+document.getElementById('planningStatusFilter')?.addEventListener('change',renderPlanningProjectList);
+document.getElementById('planningCategoryFilter')?.addEventListener('change',renderPlanningProjectList);
+document.getElementById('planningYearFilter')?.addEventListener('change',renderPlanningProjectList);
+document.getElementById('planningRefreshButton')?.addEventListener('click',()=>{planningLoaded=false;loadPlanningModule(true);});
 
 
 // ============================================================

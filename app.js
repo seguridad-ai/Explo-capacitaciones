@@ -40,6 +40,20 @@ let planningTasksLoaded = false;
 let planningTaskPeriod = 'TODAY';
 let activePlanningTaskId = null;
 
+let planningReminderPreferences = {
+  sonido_habilitado:true,
+  sonido_codigo:'BANCO',
+  volumen:0.55,
+  notificacion_navegador:false,
+  minutos_default:[60,30,10,0]
+};
+let planningReminderTimer = null;
+let planningReminderAudioContext = null;
+let planningReminderQueue = [];
+let planningReminderActive = null;
+let planningReminderChecking = false;
+let planningReminderInitialized = false;
+
 
 function showMessage(message, type = 'error') {
   if (!loginMessage) return;
@@ -85,6 +99,7 @@ function showApp() {
   authScreen?.classList.add('hidden');
   authLoading?.classList.add('hidden');
   appShell?.classList.remove('hidden');
+  setTimeout(()=>initializePlanningReminderEngine(),600);
 }
 
 function showSection(sectionId) {
@@ -1409,6 +1424,17 @@ function openPlanningTaskModal(task=null) {
   document.getElementById('planningTaskDescription').value=task?.descripcion || '';
   document.getElementById('planningTaskNotes').value=task?.observaciones || '';
 
+  const taskReminderMinutes=Array.isArray(task?.recordatorios_minutos)
+    ? task.recordatorios_minutos.map(Number)
+    : [...(planningReminderPreferences.minutos_default || [60,30,10,0])];
+
+  document.getElementById('planningTaskRemindersEnabled').checked=task?.recordatorios_habilitados ?? true;
+  [60,30,10,0].forEach(minutes=>{
+    const el=document.getElementById(`planningTaskReminder${minutes}`);
+    if (el) el.checked=taskReminderMinutes.includes(minutes);
+  });
+  updatePlanningTaskReminderOptions();
+
   populatePlanningTaskAssignees(task?.asignado_a_profile_id || null,task?.responsable_nombre || '');
   updatePlanningTaskWaitingFields();
 
@@ -1482,6 +1508,11 @@ async function savePlanningTask(event) {
     planificacion_proyecto_id:document.getElementById('planningTaskPlanningProject').value || null,
     planificacion_actividad_id:document.getElementById('planningTaskPlanningActivity').value || null,
     observaciones:document.getElementById('planningTaskNotes').value.trim() || null,
+    recordatorios_habilitados:document.getElementById('planningTaskRemindersEnabled')?.checked ?? true,
+    recordatorios_minutos:[60,30,10,0].filter(minutes=>
+      document.getElementById(`planningTaskReminder${minutes}`)?.checked
+    ),
+    pospuesto_hasta:null,
     ultimo_motivo_cambio:id ? 'Datos del pendiente actualizados.' : 'Pendiente creado desde Planificación.'
   };
 
@@ -1719,6 +1750,626 @@ document.getElementById('planningCategoryFilter')?.addEventListener('change',ren
 document.getElementById('planningYearFilter')?.addEventListener('change',renderPlanningProjectList);
 document.getElementById('planningRefreshButton')?.addEventListener('click',()=>{planningLoaded=false;loadPlanningModule(true);});
 
+
+
+// ============================================================
+// ETAPA 17C.1 · RECORDATORIOS SONOROS
+// ============================================================
+
+function planningReminderSettingsMessage(message='',type='error') {
+  const el=document.getElementById('planningReminderSettingsMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function updatePlanningTaskReminderOptions() {
+  const enabled=document.getElementById('planningTaskRemindersEnabled')?.checked ?? true;
+  const box=document.getElementById('planningTaskReminderOptions');
+  box?.classList.toggle('disabled',!enabled);
+  box?.querySelectorAll('input').forEach(input=>{input.disabled=!enabled;});
+}
+
+function planningReminderSeenStorage() {
+  try {
+    return JSON.parse(localStorage.getItem('planningReminderSeen') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function savePlanningReminderSeenStorage(value) {
+  try {
+    localStorage.setItem('planningReminderSeen',JSON.stringify(value || {}));
+  } catch {}
+}
+
+function planningReminderKey(task,slot) {
+  const due=planningTaskDateTime(task);
+  return `${task.id}|${due?.toISOString() || task.fecha_objetivo}|${slot}`;
+}
+
+function planningReminderWasSeen(task,slot) {
+  const store=planningReminderSeenStorage();
+  return !!store[planningReminderKey(task,slot)];
+}
+
+function planningReminderMarkSeen(task,slot) {
+  const store=planningReminderSeenStorage();
+  store[planningReminderKey(task,slot)]=new Date().toISOString();
+
+  // Keep local storage small.
+  const entries=Object.entries(store)
+    .sort((a,b)=>String(b[1]).localeCompare(String(a[1])))
+    .slice(0,300);
+  savePlanningReminderSeenStorage(Object.fromEntries(entries));
+}
+
+function planningReminderUnmarkSeen(task,slot) {
+  const store=planningReminderSeenStorage();
+  delete store[planningReminderKey(task,slot)];
+  savePlanningReminderSeenStorage(store);
+}
+
+function planningReminderSelectedDefaults() {
+  return [60,30,10,0].filter(minutes=>
+    document.getElementById(`planningReminderDefault${minutes}`)?.checked
+  );
+}
+
+function planningReminderSoundLabel(code) {
+  return {
+    BANCO:'Turno bancario · Tin–Ton',
+    CAMPANA:'Campana corta',
+    SUAVE:'Aviso suave',
+    SIN_SONIDO:'Sin sonido'
+  }[code] || 'Turno bancario · Tin–Ton';
+}
+
+function updatePlanningReminderStatusCard() {
+  const title=document.getElementById('planningReminderStatusTitle');
+  const text=document.getElementById('planningReminderStatusText');
+  if (!title || !text) return;
+
+  const enabled=planningReminderPreferences.sonido_habilitado
+    && planningReminderPreferences.sonido_codigo!=='SIN_SONIDO';
+
+  title.textContent=enabled?'Avisos sonoros activos':'Avisos sonoros desactivados';
+
+  const minutes=(planningReminderPreferences.minutos_default || [60,30,10,0])
+    .map(x=>Number(x))
+    .sort((a,b)=>b-a);
+
+  const labels=minutes.map(x=>
+    x===60?'1 h'
+    : x===30?'30 min'
+    : x===10?'10 min'
+    : x===0?'vencimiento'
+    : `${x} min`
+  );
+
+  text.textContent=
+    `${planningReminderSoundLabel(planningReminderPreferences.sonido_codigo)} · `+
+    `${labels.length?labels.join(', '):'sin momentos predeterminados'}`;
+}
+
+async function loadPlanningReminderPreferences() {
+  if (!client || !currentProfile?.id) return;
+
+  const {data,error}=await client.from('planificacion_preferencias_usuario')
+    .select('*')
+    .eq('profile_id',currentProfile.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('No fue posible cargar preferencias de avisos:',error);
+    updatePlanningReminderStatusCard();
+    return;
+  }
+
+  if (data) {
+    planningReminderPreferences={
+      sonido_habilitado:data.sonido_habilitado ?? true,
+      sonido_codigo:data.sonido_codigo || 'BANCO',
+      volumen:Number(data.volumen ?? 0.55),
+      notificacion_navegador:data.notificacion_navegador ?? false,
+      minutos_default:Array.isArray(data.minutos_default)
+        ? data.minutos_default.map(Number)
+        : [60,30,10,0]
+    };
+  }
+
+  updatePlanningReminderStatusCard();
+}
+
+function planningReminderNotificationStatusText() {
+  if (!('Notification' in window)) return 'Este navegador no admite notificaciones';
+  if (Notification.permission==='granted') return 'Notificaciones autorizadas';
+  if (Notification.permission==='denied') return 'Notificaciones bloqueadas por el navegador';
+  return 'Permiso no solicitado';
+}
+
+function updatePlanningBrowserNotificationUi() {
+  const status=document.getElementById('planningBrowserNotificationStatus');
+  const button=document.getElementById('planningBrowserNotificationButton');
+  const check=document.getElementById('planningReminderBrowserEnabled');
+
+  if (status) status.textContent=planningReminderNotificationStatusText();
+
+  if (button) {
+    if (!('Notification' in window)) {
+      button.disabled=true;
+      button.textContent='No compatible';
+    } else if (Notification.permission==='granted') {
+      button.disabled=true;
+      button.textContent='Autorizadas ✓';
+    } else if (Notification.permission==='denied') {
+      button.disabled=true;
+      button.textContent='Bloqueadas';
+    } else {
+      button.disabled=false;
+      button.textContent='Autorizar notificaciones';
+    }
+  }
+
+  if (check) {
+    check.disabled=!('Notification' in window) || Notification.permission==='denied';
+  }
+}
+
+function openPlanningReminderSettings() {
+  planningReminderSettingsMessage('');
+
+  document.getElementById('planningReminderSoundEnabled').checked=
+    planningReminderPreferences.sonido_habilitado ?? true;
+  document.getElementById('planningReminderSoundType').value=
+    planningReminderPreferences.sonido_codigo || 'BANCO';
+
+  const volume=Math.round(Number(planningReminderPreferences.volumen ?? 0.55)*100);
+  document.getElementById('planningReminderVolume').value=String(volume);
+  document.getElementById('planningReminderVolumeLabel').textContent=`${volume}%`;
+
+  const defaults=(planningReminderPreferences.minutos_default || [60,30,10,0]).map(Number);
+  [60,30,10,0].forEach(minutes=>{
+    const el=document.getElementById(`planningReminderDefault${minutes}`);
+    if (el) el.checked=defaults.includes(minutes);
+  });
+
+  document.getElementById('planningReminderBrowserEnabled').checked=
+    planningReminderPreferences.notificacion_navegador ?? false;
+
+  updatePlanningBrowserNotificationUi();
+
+  const modal=document.getElementById('planningReminderSettingsModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningReminderSettings() {
+  const modal=document.getElementById('planningReminderSettingsModal');
+  modal?.classList.add('hidden');
+  modal?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function savePlanningReminderSettings() {
+  if (!client || !currentProfile?.id) return;
+
+  planningReminderSettingsMessage('');
+
+  const sonido_habilitado=document.getElementById('planningReminderSoundEnabled').checked;
+  const sonido_codigo=document.getElementById('planningReminderSoundType').value;
+  const volumen=Number(document.getElementById('planningReminderVolume').value || 55)/100;
+  const notificacion_navegador=document.getElementById('planningReminderBrowserEnabled').checked;
+  const minutos_default=planningReminderSelectedDefaults();
+
+  const payload={
+    profile_id:currentProfile.id,
+    sonido_habilitado,
+    sonido_codigo,
+    volumen,
+    notificacion_navegador,
+    minutos_default
+  };
+
+  const button=document.getElementById('planningReminderSettingsSave');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const {error}=await client.from('planificacion_preferencias_usuario')
+    .upsert(payload,{onConflict:'profile_id'});
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error) {
+    console.error(error);
+    planningReminderSettingsMessage(error.message || 'No fue posible guardar la configuración.');
+    return;
+  }
+
+  planningReminderPreferences={...payload};
+  updatePlanningReminderStatusCard();
+  closePlanningReminderSettings();
+  planningMessage('Configuración de avisos guardada.','success');
+}
+
+async function requestPlanningBrowserNotifications() {
+  if (!('Notification' in window)) {
+    planningReminderSettingsMessage('Este navegador no admite notificaciones.');
+    return;
+  }
+
+  if (Notification.permission==='denied') {
+    planningReminderSettingsMessage(
+      'Las notificaciones están bloqueadas. Debes habilitarlas desde la configuración del navegador.'
+    );
+    return;
+  }
+
+  try {
+    const result=await Notification.requestPermission();
+    updatePlanningBrowserNotificationUi();
+
+    if (result==='granted') {
+      document.getElementById('planningReminderBrowserEnabled').checked=true;
+      planningReminderSettingsMessage('Notificaciones del navegador autorizadas.','success');
+    } else {
+      planningReminderSettingsMessage('No se concedió permiso para notificaciones.');
+    }
+  } catch(err) {
+    console.error(err);
+    planningReminderSettingsMessage('No fue posible solicitar el permiso.');
+  }
+}
+
+function getPlanningReminderAudioContext() {
+  if (!planningReminderAudioContext) {
+    const AudioCtx=window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    planningReminderAudioContext=new AudioCtx();
+  }
+
+  if (planningReminderAudioContext.state==='suspended') {
+    planningReminderAudioContext.resume().catch(()=>{});
+  }
+
+  return planningReminderAudioContext;
+}
+
+function planningReminderTone(ctx,frequency,start,duration,volume) {
+  const oscillator=ctx.createOscillator();
+  const gain=ctx.createGain();
+
+  oscillator.type='sine';
+  oscillator.frequency.setValueAtTime(frequency,start);
+  gain.gain.setValueAtTime(0.0001,start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.001,volume),start+0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001,start+duration);
+
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+
+  oscillator.start(start);
+  oscillator.stop(start+duration+0.03);
+}
+
+function playPlanningReminderSound(code=null,urgent=false) {
+  const soundCode=code || planningReminderPreferences.sonido_codigo || 'BANCO';
+  if (
+    !planningReminderPreferences.sonido_habilitado
+    || soundCode==='SIN_SONIDO'
+  ) return;
+
+  const ctx=getPlanningReminderAudioContext();
+  if (!ctx) return;
+
+  const base=Math.min(0.35,Math.max(0.02,Number(planningReminderPreferences.volumen || 0.55)*0.28));
+  const now=ctx.currentTime+0.03;
+
+  const playBank=(offset=0)=>{
+    planningReminderTone(ctx,880,now+offset,0.17,base);
+    planningReminderTone(ctx,659.25,now+offset+0.24,0.23,base*0.95);
+  };
+
+  if (soundCode==='CAMPANA') {
+    planningReminderTone(ctx,1046.5,now,0.28,base*0.75);
+    planningReminderTone(ctx,1318.5,now+0.16,0.34,base*0.55);
+    if (urgent) {
+      planningReminderTone(ctx,1046.5,now+0.65,0.28,base*0.75);
+      planningReminderTone(ctx,1318.5,now+0.81,0.34,base*0.55);
+    }
+  } else if (soundCode==='SUAVE') {
+    planningReminderTone(ctx,659.25,now,0.22,base*0.55);
+    planningReminderTone(ctx,783.99,now+0.28,0.25,base*0.42);
+    if (urgent) {
+      planningReminderTone(ctx,659.25,now+0.68,0.22,base*0.55);
+      planningReminderTone(ctx,783.99,now+0.96,0.25,base*0.42);
+    }
+  } else {
+    playBank(0);
+    if (urgent) playBank(0.72);
+  }
+}
+
+function planningReminderSlot(task,now=new Date()) {
+  if (!task?.recordatorios_habilitados) return null;
+  if (['COMPLETADO','CANCELADO','EN_ESPERA'].includes(task.estado)) return null;
+
+  const due=planningTaskDateTime(task);
+  if (!due) return null;
+
+  const snooze=task.pospuesto_hasta ? new Date(task.pospuesto_hasta) : null;
+  if (snooze && snooze>now) return null;
+
+  const diffMinutes=(due-now)/60000;
+  const configured=Array.isArray(task.recordatorios_minutos)
+    ? task.recordatorios_minutos.map(Number)
+    : [...(planningReminderPreferences.minutos_default || [60,30,10,0])];
+
+  const has=value=>configured.includes(value);
+
+  if (diffMinutes<=0 && has(0)) {
+    return {slot:'DUE',minutes:0,label:'El plazo venció',urgent:true};
+  }
+
+  if (diffMinutes>0 && diffMinutes<=10 && has(10)) {
+    return {slot:'R10',minutes:10,label:`Vence en ${Math.max(1,Math.ceil(diffMinutes))} min`,urgent:true};
+  }
+
+  if (diffMinutes>10 && diffMinutes<=30 && has(30)) {
+    return {slot:'R30',minutes:30,label:`Vence en ${Math.ceil(diffMinutes)} min`,urgent:false};
+  }
+
+  if (diffMinutes>30 && diffMinutes<=60 && has(60)) {
+    return {slot:'R60',minutes:60,label:`Vence en ${Math.ceil(diffMinutes)} min`,urgent:false};
+  }
+
+  return null;
+}
+
+function planningReminderTaskIsMine(task) {
+  if (!currentProfile?.id || !task) return false;
+  return task.asignado_a_profile_id===currentProfile.id
+    || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+}
+
+async function checkPlanningReminders() {
+  if (
+    planningReminderChecking
+    || !client
+    || !currentProfile?.id
+    || document.visibilityState==='prerender'
+  ) return;
+
+  planningReminderChecking=true;
+
+  try {
+    const {data,error}=await client.from('planificacion_pendientes')
+      .select('id,codigo,titulo,prioridad,estado,asignado_a_profile_id,created_by,responsable_nombre,fecha_objetivo,hora_objetivo,recordatorios_habilitados,recordatorios_minutos,pospuesto_hasta')
+      .in('estado',['PENDIENTE','EN_PROCESO'])
+      .order('fecha_objetivo',{ascending:true});
+
+    if (error) {
+      console.warn('Recordatorios:',error);
+      return;
+    }
+
+    const now=new Date();
+    const candidates=(data || [])
+      .filter(planningReminderTaskIsMine)
+      .map(task=>({task,reminder:planningReminderSlot(task,now)}))
+      .filter(x=>x.reminder && !planningReminderWasSeen(x.task,x.reminder.slot));
+
+    candidates.sort((a,b)=>{
+      const rank={DUE:0,R10:1,R30:2,R60:3};
+      const ar=rank[a.reminder.slot] ?? 9;
+      const br=rank[b.reminder.slot] ?? 9;
+      if (ar!==br) return ar-br;
+      return planningTaskPriorityRank(a.task.prioridad)-planningTaskPriorityRank(b.task.prioridad);
+    });
+
+    for (const item of candidates) {
+      const exists=planningReminderQueue.some(x=>x.task.id===item.task.id && x.reminder.slot===item.reminder.slot)
+        || (
+          planningReminderActive?.task.id===item.task.id
+          && planningReminderActive?.reminder.slot===item.reminder.slot
+        );
+      if (!exists) planningReminderQueue.push(item);
+    }
+
+    showNextPlanningReminder();
+  } finally {
+    planningReminderChecking=false;
+  }
+}
+
+function planningReminderNotificationTitle(item) {
+  return item.reminder.slot==='DUE'
+    ? '⚠️ Pendiente vencido'
+    : '🔔 Pendiente próximo a vencer';
+}
+
+function showPlanningBrowserNotification(item) {
+  if (
+    !planningReminderPreferences.notificacion_navegador
+    || !('Notification' in window)
+    || Notification.permission!=='granted'
+  ) return;
+
+  try {
+    const notification=new Notification(planningReminderNotificationTitle(item),{
+      body:`${item.task.codigo || 'Ticket'} · ${item.task.titulo}\n${item.reminder.label}`,
+      tag:`planning-${item.task.id}-${item.reminder.slot}`,
+      renotify:false
+    });
+
+    notification.onclick=()=>{
+      window.focus();
+      attendPlanningReminder(item,false);
+      notification.close();
+    };
+  } catch(err) {
+    console.warn('Notificación no disponible:',err);
+  }
+}
+
+function showNextPlanningReminder() {
+  if (planningReminderActive || !planningReminderQueue.length) return;
+
+  const item=planningReminderQueue.shift();
+  planningReminderActive=item;
+
+  const layer=document.getElementById('planningReminderCallLayer');
+  const eyebrow=document.getElementById('planningReminderCallEyebrow');
+  const code=document.getElementById('planningReminderCallCode');
+  const title=document.getElementById('planningReminderCallTitle');
+  const meta=document.getElementById('planningReminderCallMeta');
+
+  if (eyebrow) eyebrow.textContent=
+    item.reminder.slot==='DUE'
+      ? '⚠ PENDIENTE VENCIDO'
+      : '🔔 PENDIENTE PRÓXIMO A VENCER';
+
+  if (code) code.textContent=item.task.codigo || 'TK';
+  if (title) title.textContent=item.task.titulo || 'Pendiente';
+  if (meta) meta.textContent=[
+    item.reminder.label,
+    planningPriorityLabel(item.task.prioridad),
+    item.task.hora_objetivo?`Hora ${String(item.task.hora_objetivo).slice(0,5)}`:''
+  ].filter(Boolean).join(' · ');
+
+  layer?.classList.remove('hidden');
+  layer?.classList.toggle('urgent',item.reminder.urgent);
+
+  planningReminderMarkSeen(item.task,item.reminder.slot);
+  playPlanningReminderSound(null,item.reminder.urgent);
+  showPlanningBrowserNotification(item);
+}
+
+function closeActivePlanningReminder(showNext=true) {
+  const layer=document.getElementById('planningReminderCallLayer');
+  layer?.classList.add('hidden');
+  layer?.classList.remove('urgent');
+  planningReminderActive=null;
+  if (showNext) setTimeout(showNextPlanningReminder,180);
+}
+
+async function snoozePlanningReminder() {
+  const item=planningReminderActive;
+  if (!item || !client) return;
+
+  const until=new Date(Date.now()+10*60000);
+  const {error}=await client.from('planificacion_pendientes')
+    .update({
+      pospuesto_hasta:until.toISOString(),
+      ultimo_motivo_cambio:'Aviso sonoro pospuesto por 10 minutos.'
+    })
+    .eq('id',item.task.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  planningReminderUnmarkSeen(item.task,item.reminder.slot);
+
+  const local=planningTaskRecords.find(x=>x.id===item.task.id);
+  if (local) local.pospuesto_hasta=until.toISOString();
+
+  closeActivePlanningReminder();
+  planningMessage(`Aviso de ${item.task.codigo || 'ticket'} pospuesto 10 minutos.`,'success');
+}
+
+async function attendPlanningReminder(item=planningReminderActive,closeToast=true) {
+  if (!item || !client) return;
+
+  const {error}=await client.from('planificacion_pendientes')
+    .update({
+      estado:'EN_PROCESO',
+      pospuesto_hasta:null,
+      ultimo_motivo_cambio:'Atención iniciada desde el aviso de vencimiento.'
+    })
+    .eq('id',item.task.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (closeToast) closeActivePlanningReminder(false);
+
+  planningTasksLoaded=false;
+  planningLoaded=false;
+
+  showSection('planificacion');
+  await loadPlanningModule(true);
+  switchPlanningTab('TASKS');
+  await loadPlanningTasksModule(true);
+
+  const refreshed=planningTaskRecords.find(x=>x.id===item.task.id);
+  if (refreshed) openPlanningTaskModal(refreshed);
+
+  if (closeToast) setTimeout(showNextPlanningReminder,250);
+}
+
+async function initializePlanningReminderEngine() {
+  if (planningReminderInitialized || !client || !currentProfile?.id) return;
+  planningReminderInitialized=true;
+
+  await loadPlanningReminderPreferences();
+
+  const unlock=()=>{
+    const ctx=getPlanningReminderAudioContext();
+    if (ctx?.state==='suspended') ctx.resume().catch(()=>{});
+  };
+  document.addEventListener('pointerdown',unlock,{once:true});
+  document.addEventListener('keydown',unlock,{once:true});
+
+  await checkPlanningReminders();
+
+  if (planningReminderTimer) clearInterval(planningReminderTimer);
+  planningReminderTimer=setInterval(checkPlanningReminders,30000);
+
+  document.addEventListener('visibilitychange',()=>{
+    if (document.visibilityState==='visible') checkPlanningReminders();
+  });
+}
+
+
+// Eventos 17C.1
+document.getElementById('planningTaskRemindersEnabled')?.addEventListener('change',updatePlanningTaskReminderOptions);
+
+document.getElementById('planningReminderSettingsButton')?.addEventListener('click',openPlanningReminderSettings);
+document.getElementById('planningReminderSettingsClose')?.addEventListener('click',closePlanningReminderSettings);
+document.getElementById('planningReminderSettingsCancel')?.addEventListener('click',closePlanningReminderSettings);
+document.getElementById('planningReminderSettingsModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningReminderSettings);
+document.getElementById('planningReminderSettingsSave')?.addEventListener('click',savePlanningReminderSettings);
+
+document.getElementById('planningReminderVolume')?.addEventListener('input',event=>{
+  document.getElementById('planningReminderVolumeLabel').textContent=`${event.target.value}%`;
+});
+
+document.getElementById('planningReminderTestButton')?.addEventListener('click',()=>playPlanningReminderSound());
+document.getElementById('planningReminderModalTestButton')?.addEventListener('click',()=>{
+  const previous={...planningReminderPreferences};
+  planningReminderPreferences={
+    ...planningReminderPreferences,
+    sonido_habilitado:document.getElementById('planningReminderSoundEnabled').checked,
+    sonido_codigo:document.getElementById('planningReminderSoundType').value,
+    volumen:Number(document.getElementById('planningReminderVolume').value || 55)/100
+  };
+  playPlanningReminderSound(null,false);
+  planningReminderPreferences=previous;
+});
+
+document.getElementById('planningBrowserNotificationButton')?.addEventListener('click',requestPlanningBrowserNotifications);
+
+document.getElementById('planningReminderDismissButton')?.addEventListener('click',()=>closeActivePlanningReminder());
+document.getElementById('planningReminderSnoozeButton')?.addEventListener('click',snoozePlanningReminder);
+document.getElementById('planningReminderAttendButton')?.addEventListener('click',()=>attendPlanningReminder());
 
 // Eventos 17B
 document.querySelectorAll('[data-planning-task-period]').forEach(button=>{

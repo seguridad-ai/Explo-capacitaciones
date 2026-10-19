@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17b" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17c1" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -992,6 +992,19 @@
             <article><span>Cumplimiento semanal</span><strong id="planningTaskWeeklyCompliance">0%</strong><small>Completados / tareas de la semana</small></article>
           </div>
 
+          <article class="planning-reminder-status-card">
+            <div class="planning-reminder-status-icon">🔔</div>
+            <div class="planning-reminder-status-main">
+              <span class="eyebrow">AVISOS DE VENCIMIENTO</span>
+              <strong id="planningReminderStatusTitle">Avisos sonoros activos</strong>
+              <p id="planningReminderStatusText">Turno bancario · 60, 30 y 10 min antes + vencimiento</p>
+            </div>
+            <div class="planning-reminder-status-actions">
+              <button id="planningReminderTestButton" class="secondary-btn" type="button">▶ Probar sonido</button>
+              <button id="planningReminderSettingsButton" class="primary-btn" type="button">⚙ Configurar avisos</button>
+            </div>
+          </article>
+
           <article id="planningNextTaskCard" class="planning-next-ticket-card">
             <div class="planning-next-ticket-main">
               <span class="eyebrow">SIGUIENTE PENDIENTE</span>
@@ -1127,6 +1140,27 @@
                   <label class="form-span-2"><span>Motivo de espera</span><textarea id="planningTaskWaitingReason" rows="2" maxlength="1200" placeholder="Qué información o acción está pendiente"></textarea></label>
                 </div>
 
+                <section class="form-span-2 planning-task-reminder-box">
+                  <div class="planning-task-reminder-head">
+                    <div>
+                      <span class="eyebrow">🔔 AVISOS DE VENCIMIENTO</span>
+                      <strong>Recordatorios de este pendiente</strong>
+                      <small>El aviso sonará mientras la aplicación esté abierta. Si autorizas notificaciones del navegador, también aparecerá una notificación cuando estés en otra pestaña.</small>
+                    </div>
+                    <label class="planning-reminder-toggle">
+                      <input id="planningTaskRemindersEnabled" type="checkbox" checked />
+                      <span>Activados</span>
+                    </label>
+                  </div>
+                  <div id="planningTaskReminderOptions" class="planning-task-reminder-options">
+                    <label><input id="planningTaskReminder60" type="checkbox" checked /><span>1 hora antes</span></label>
+                    <label><input id="planningTaskReminder30" type="checkbox" checked /><span>30 min antes</span></label>
+                    <label><input id="planningTaskReminder10" type="checkbox" checked /><span>10 min antes</span></label>
+                    <label><input id="planningTaskReminder0" type="checkbox" checked /><span>Al vencimiento</span></label>
+                  </div>
+                  <small class="planning-reminder-time-note">Si no registras una hora objetivo, el sistema considera el vencimiento a las 23:59 del día seleccionado.</small>
+                </section>
+
                 <label class="form-span-2"><span>Descripción</span><textarea id="planningTaskDescription" rows="3" maxlength="2400"></textarea></label>
                 <label class="form-span-2"><span>Observaciones</span><textarea id="planningTaskNotes" rows="2" maxlength="1800"></textarea></label>
               </div>
@@ -1164,6 +1198,80 @@
             </div>
             <div id="planningTaskRescheduleMessage" class="form-message"></div>
             <div class="modal-actions"><button id="planningTaskRescheduleCancel" class="secondary-btn" type="button">Cancelar</button><button id="planningTaskRescheduleSave" class="primary-btn" type="button">Reprogramar</button></div>
+          </div>
+        </div>
+
+        <div id="planningReminderSettingsModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-reminder-settings-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">ETAPA 17C.1 · AVISOS</span>
+                <h3>Configuración de recordatorios</h3>
+                <p class="modal-subtitle">Define cómo quieres que la plataforma te avise antes del vencimiento.</p>
+              </div>
+              <button id="planningReminderSettingsClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="planning-reminder-settings-grid">
+              <section class="planning-reminder-setting-section">
+                <span class="eyebrow">SONIDO</span>
+                <label class="planning-reminder-switch-row">
+                  <div><strong>Activar sonido</strong><small>Reproduce un llamado corto cuando corresponda un aviso.</small></div>
+                  <input id="planningReminderSoundEnabled" type="checkbox" checked />
+                </label>
+
+                <label>
+                  <span>Tipo de sonido</span>
+                  <select id="planningReminderSoundType">
+                    <option value="BANCO">Turno bancario · Tin–Ton</option>
+                    <option value="CAMPANA">Campana corta</option>
+                    <option value="SUAVE">Aviso suave</option>
+                    <option value="SIN_SONIDO">Sin sonido</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Volumen <strong id="planningReminderVolumeLabel">55%</strong></span>
+                  <input id="planningReminderVolume" type="range" min="0" max="100" step="5" value="55" />
+                </label>
+
+                <button id="planningReminderModalTestButton" class="secondary-btn" type="button">▶ Probar sonido seleccionado</button>
+              </section>
+
+              <section class="planning-reminder-setting-section">
+                <span class="eyebrow">MOMENTOS DE AVISO</span>
+                <div class="planning-reminder-default-options">
+                  <label><input id="planningReminderDefault60" type="checkbox" checked /><span>1 hora antes</span></label>
+                  <label><input id="planningReminderDefault30" type="checkbox" checked /><span>30 minutos antes</span></label>
+                  <label><input id="planningReminderDefault10" type="checkbox" checked /><span>10 minutos antes</span></label>
+                  <label><input id="planningReminderDefault0" type="checkbox" checked /><span>Al vencimiento</span></label>
+                </div>
+                <small>Estos valores se aplicarán como predeterminados al crear nuevos pendientes. Cada ticket puede personalizarse.</small>
+              </section>
+
+              <section class="planning-reminder-setting-section form-span-2">
+                <span class="eyebrow">NOTIFICACIONES DEL NAVEGADOR</span>
+                <div class="planning-browser-notification-row">
+                  <div>
+                    <strong id="planningBrowserNotificationStatus">Permiso no solicitado</strong>
+                    <small>Permite mostrar el aviso aunque estés trabajando en otra pestaña del navegador.</small>
+                  </div>
+                  <button id="planningBrowserNotificationButton" class="secondary-btn" type="button">Autorizar notificaciones</button>
+                </div>
+                <label class="planning-reminder-switch-row">
+                  <div><strong>Mostrar notificación del navegador</strong><small>Se usa junto con el aviso interno de la plataforma.</small></div>
+                  <input id="planningReminderBrowserEnabled" type="checkbox" />
+                </label>
+              </section>
+            </div>
+
+            <div id="planningReminderSettingsMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="planningReminderSettingsCancel" class="secondary-btn" type="button">Cancelar</button>
+              <button id="planningReminderSettingsSave" class="primary-btn" type="button">Guardar configuración</button>
+            </div>
           </div>
         </div>
 
@@ -3805,6 +3913,26 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17b"></script>
+  <script src="app.js?v=20261019-17c1"></script>
+
+  <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
+    <article class="planning-reminder-call-card">
+      <div class="planning-reminder-call-pulse">🔔</div>
+      <div class="planning-reminder-call-main">
+        <span id="planningReminderCallEyebrow" class="eyebrow">PENDIENTE PRÓXIMO A VENCER</span>
+        <div class="planning-reminder-call-title">
+          <strong id="planningReminderCallCode">TK-—</strong>
+          <h3 id="planningReminderCallTitle">Pendiente</h3>
+        </div>
+        <p id="planningReminderCallMeta">—</p>
+      </div>
+      <div class="planning-reminder-call-actions">
+        <button id="planningReminderAttendButton" class="primary-btn" type="button">Atender</button>
+        <button id="planningReminderSnoozeButton" class="secondary-btn" type="button">Posponer 10 min</button>
+        <button id="planningReminderDismissButton" class="planning-reminder-dismiss-btn" type="button">×</button>
+      </div>
+    </article>
+  </div>
+
 </body>
 </html>

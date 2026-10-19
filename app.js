@@ -35,6 +35,7 @@ let planningDetailMode = 'gantt';
 let planningModuleTab = 'PROJECTS';
 let planningTaskRecords = [];
 let planningTaskHistory = [];
+let planningTaskFollowups = [];
 let planningAssignableUsers = [];
 let planningTasksLoaded = false;
 let planningTaskPeriod = 'TODAY';
@@ -1070,6 +1071,280 @@ function populatePlanningTaskActivities(projectId,selectedId=null) {
 function updatePlanningTaskWaitingFields() {
   const waiting=document.getElementById('planningTaskStatus')?.value==='EN_ESPERA';
   document.getElementById('planningTaskWaitingFields')?.classList.toggle('hidden',!waiting);
+
+  if (waiting) {
+    const date=document.getElementById('planningTaskFollowupDate');
+    const time=document.getElementById('planningTaskFollowupTime');
+
+    if (date && !date.value) {
+      const tomorrow=new Date();
+      tomorrow.setDate(tomorrow.getDate()+1);
+      date.value=planningIsoDate(tomorrow);
+    }
+    if (time && !time.value) time.value='09:00';
+  }
+}
+
+
+function planningFollowupDateTime(task) {
+  if (!task?.fecha_seguimiento) return null;
+  const time=task.hora_seguimiento ? String(task.hora_seguimiento).slice(0,5) : '09:00';
+  const dt=new Date(`${task.fecha_seguimiento}T${time}:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function planningFollowupSituation(task,now=new Date()) {
+  if (task?.estado!=='EN_ESPERA' || !task?.fecha_seguimiento) {
+    return {code:'SIN_SEGUIMIENTO',label:'Sin seguimiento'};
+  }
+
+  const when=planningFollowupDateTime(task);
+  if (!when) return {code:'SIN_SEGUIMIENTO',label:'Sin seguimiento'};
+
+  const diff=(when-now)/60000;
+  if (diff<=0) {
+    const overdue=Math.abs(diff);
+    if (overdue>=1440) return {code:'SEGUIMIENTO_VENCIDO',label:`Seguimiento vencido hace ${Math.floor(overdue/1440)} día(s)`};
+    if (overdue>=60) return {code:'SEGUIMIENTO_VENCIDO',label:`Seguimiento vencido hace ${Math.floor(overdue/60)} h`};
+    return {code:'SEGUIMIENTO_VENCIDO',label:'Seguimiento pendiente ahora'};
+  }
+  if (diff<=10) return {code:'SEGUIMIENTO_10',label:`Seguimiento en ${Math.max(1,Math.ceil(diff))} min`};
+  if (diff<=30) return {code:'SEGUIMIENTO_30',label:`Seguimiento en ${Math.ceil(diff)} min`};
+
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const followDay=new Date(when.getFullYear(),when.getMonth(),when.getDate());
+  if (followDay.getTime()===today.getTime()) return {code:'SEGUIMIENTO_HOY',label:`Seguimiento hoy · ${String(task.hora_seguimiento || '09:00').slice(0,5)}`};
+
+  return {code:'SEGUIMIENTO_PROGRAMADO',label:`Seguimiento ${formatDatePE(task.fecha_seguimiento)}`};
+}
+
+function planningFollowupDueToday(task) {
+  if (task?.estado!=='EN_ESPERA' || !task?.fecha_seguimiento) return false;
+  const now=new Date();
+  const when=planningFollowupDateTime(task);
+  if (!when) return false;
+  const endToday=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59,999);
+  return when<=endToday;
+}
+
+function renderPlanningFollowupQueue() {
+  const panel=document.getElementById('planningFollowupQueuePanel');
+  const list=document.getElementById('planningFollowupQueueList');
+  const count=document.getElementById('planningFollowupQueueCount');
+  if (!panel || !list || !count) return;
+
+  const mine=planningTaskRecords
+    .filter(planningTaskTaskIsMineForFollowup)
+    .filter(task=>task.estado==='EN_ESPERA' && task.fecha_seguimiento)
+    .filter(planningFollowupDueToday)
+    .sort((a,b)=>{
+      const ad=planningFollowupDateTime(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const bd=planningFollowupDateTime(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (ad!==bd) return ad-bd;
+      return planningTaskPriorityRank(a.prioridad)-planningTaskPriorityRank(b.prioridad);
+    });
+
+  count.textContent=String(mine.length);
+  panel.classList.toggle('hidden',mine.length===0);
+
+  if (!mine.length) {
+    list.innerHTML='';
+    return;
+  }
+
+  list.innerHTML=mine.slice(0,6).map(task=>{
+    const state=planningFollowupSituation(task);
+    return `
+      <article class="planning-followup-queue-item ${state.code.toLowerCase()}">
+        <div class="planning-followup-queue-time">
+          <strong>${escapeHtml(task.hora_seguimiento ? String(task.hora_seguimiento).slice(0,5) : '09:00')}</strong>
+          <small>${escapeHtml(formatDatePE(task.fecha_seguimiento))}</small>
+        </div>
+        <div class="planning-followup-queue-main">
+          <span>${escapeHtml(task.codigo || 'TK')}</span>
+          <strong>${escapeHtml(task.titulo || 'Pendiente')}</strong>
+          <p>Esperando de: ${escapeHtml(task.esperando_de || '—')} · ${escapeHtml(state.label)}</p>
+        </div>
+        <button class="task-action-followup" type="button" data-followup-queue="${task.id}">Registrar seguimiento</button>
+      </article>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-followup-queue]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningFollowupModal(button.dataset.followupQueue));
+  });
+}
+
+function planningTaskTaskIsMineForFollowup(task) {
+  if (!currentProfile?.id || !task) return false;
+  return task.asignado_a_profile_id===currentProfile.id
+    || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+}
+
+function renderPlanningTaskFollowupHistory(taskId) {
+  const container=document.getElementById('planningTaskFollowupHistoryList');
+  if (!container) return;
+
+  const rows=planningTaskFollowups.filter(x=>x.pendiente_id===taskId);
+  if (!rows.length) {
+    container.innerHTML='<div class="meeting-empty-note">Todavía no se han registrado seguimientos para este ticket.</div>';
+    return;
+  }
+
+  const labels={
+    SIN_RESPUESTA:'Sin respuesta',
+    CONTACTADO:'Contactado · continúa pendiente',
+    INFORMACION_RECIBIDA:'Información recibida',
+    RESUELTO:'Resuelto',
+    OTRO:'Otro'
+  };
+
+  container.innerHTML=rows.map(row=>`
+    <article class="planning-followup-history-item">
+      <div class="planning-followup-history-icon">📞</div>
+      <div>
+        <div class="planning-followup-history-head">
+          <strong>${escapeHtml(labels[row.resultado] || row.resultado || 'Seguimiento')}</strong>
+          <span>${row.created_at ? new Date(row.created_at).toLocaleString('es-PE') : '—'}</span>
+        </div>
+        ${row.contacto?`<p><b>Contacto:</b> ${escapeHtml(row.contacto)}</p>`:''}
+        <p>${escapeHtml(row.observacion || '')}</p>
+        <small>
+          Estado resultante: ${escapeHtml(planningTaskStatusLabel(row.estado_resultante))}
+          ${row.proxima_fecha?` · Próximo seguimiento: ${escapeHtml(formatDatePE(row.proxima_fecha))}${row.proxima_hora?` ${escapeHtml(String(row.proxima_hora).slice(0,5))}`:''}`:''}
+        </small>
+      </div>
+    </article>
+  `).join('');
+}
+
+function planningFollowupResultHelpText(result) {
+  return {
+    SIN_RESPUESTA:'Se mantiene EN ESPERA. Debes programar la próxima llamada.',
+    CONTACTADO:'Se mantiene EN ESPERA. Debes programar el próximo seguimiento.',
+    INFORMACION_RECIBIDA:'El ticket volverá automáticamente a EN PROCESO.',
+    RESUELTO:'El ticket quedará COMPLETADO.',
+    OTRO:'Se mantiene EN ESPERA. Debes programar el próximo seguimiento.'
+  }[result] || '';
+}
+
+function updatePlanningFollowupResultFields() {
+  const result=document.getElementById('planningFollowupResult')?.value || 'SIN_RESPUESTA';
+  const waiting=['SIN_RESPUESTA','CONTACTADO','OTRO'].includes(result);
+  document.getElementById('planningFollowupNextFields')?.classList.toggle('hidden',!waiting);
+
+  const help=document.getElementById('planningFollowupResultHelp');
+  if (help) help.textContent=planningFollowupResultHelpText(result);
+}
+
+function planningFollowupModalMessage(message='',type='error') {
+  const el=document.getElementById('planningFollowupModalMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function openPlanningFollowupModal(taskOrId) {
+  const task=typeof taskOrId==='string'
+    ? planningTaskRecords.find(x=>x.id===taskOrId)
+    : taskOrId;
+
+  if (!task || task.estado!=='EN_ESPERA') return;
+  activePlanningTaskId=task.id;
+  planningFollowupModalMessage('');
+
+  document.getElementById('planningFollowupTaskId').value=task.id;
+  document.getElementById('planningFollowupModalTitle').textContent=`Seguimiento · ${task.codigo || ''}`;
+  document.getElementById('planningFollowupModalSubtitle').textContent=task.titulo || 'Pendiente';
+  document.getElementById('planningFollowupTaskCode').textContent=task.codigo || '—';
+  document.getElementById('planningFollowupWaitingFor').textContent=task.esperando_de || '—';
+  document.getElementById('planningFollowupScheduledAt').textContent=
+    task.fecha_seguimiento
+      ? `${formatDatePE(task.fecha_seguimiento)} · ${String(task.hora_seguimiento || '09:00').slice(0,5)}`
+      : '—';
+
+  document.getElementById('planningFollowupResult').value='SIN_RESPUESTA';
+  document.getElementById('planningFollowupContact').value=task.esperando_de || '';
+  document.getElementById('planningFollowupObservation').value='';
+
+  const tomorrow=new Date();
+  tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('planningFollowupNextDate').value=planningIsoDate(tomorrow);
+  document.getElementById('planningFollowupNextTime').value=task.hora_seguimiento
+    ? String(task.hora_seguimiento).slice(0,5)
+    : '09:00';
+
+  updatePlanningFollowupResultFields();
+
+  const modal=document.getElementById('planningFollowupModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningFollowupModal() {
+  document.getElementById('planningFollowupModal')?.classList.add('hidden');
+  document.getElementById('planningFollowupModal')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function savePlanningFollowup() {
+  const taskId=document.getElementById('planningFollowupTaskId')?.value;
+  const task=planningTaskRecords.find(x=>x.id===taskId);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  const result=document.getElementById('planningFollowupResult').value;
+  const contact=document.getElementById('planningFollowupContact').value.trim() || null;
+  const observation=document.getElementById('planningFollowupObservation').value.trim();
+  const remainsWaiting=['SIN_RESPUESTA','CONTACTADO','OTRO'].includes(result);
+  const nextDate=remainsWaiting ? (document.getElementById('planningFollowupNextDate').value || null) : null;
+  const nextTime=remainsWaiting ? (document.getElementById('planningFollowupNextTime').value || null) : null;
+
+  if (!observation) {
+    planningFollowupModalMessage('Registra el resultado u observación del seguimiento.');
+    return;
+  }
+
+  if (remainsWaiting && !nextDate) {
+    planningFollowupModalMessage('Programa la fecha del próximo seguimiento.');
+    return;
+  }
+
+  if (remainsWaiting) {
+    const nextDt=new Date(`${nextDate}T${nextTime || '09:00'}:00`);
+    if (nextDt<=new Date()) {
+      planningFollowupModalMessage('El próximo seguimiento debe quedar programado para una fecha/hora futura.');
+      return;
+    }
+  }
+
+  const button=document.getElementById('planningFollowupSaveButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Registrando…';
+
+  const {data,error}=await client.rpc('registrar_planificacion_seguimiento',{
+    p_pendiente_id:taskId,
+    p_resultado:result,
+    p_contacto:contact,
+    p_observacion:observation,
+    p_proxima_fecha:nextDate,
+    p_proxima_hora:nextTime
+  });
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    planningFollowupModalMessage(data?.error || error?.message || 'No fue posible registrar el seguimiento.');
+    return;
+  }
+
+  closePlanningFollowupModal();
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  planningMessage(data.message || 'Seguimiento registrado correctamente.','success');
 }
 
 function updatePlanningTaskStats() {
@@ -1085,6 +1360,7 @@ function updatePlanningTaskStats() {
   ).length;
   const inProgress=rows.filter(x=>x.estado==='EN_PROCESO').length;
   const waiting=rows.filter(x=>x.estado==='EN_ESPERA').length;
+  const followupsToday=rows.filter(x=>planningTaskTaskIsMineForFollowup(x) && planningFollowupDueToday(x)).length;
 
   const completedWeek=rows.filter(x=>{
     if (x.estado!=='COMPLETADO' || !x.completado_at) return false;
@@ -1104,6 +1380,7 @@ function updatePlanningTaskStats() {
     planningTaskTodayCount:todayCount,
     planningTaskInProgressCount:inProgress,
     planningTaskWaitingCount:waiting,
+    planningTaskFollowupDueCount:followupsToday,
     planningTaskCompletedWeekCount:completedWeek,
     planningTaskWeeklyCompliance:`${compliance}%`
   };
@@ -1112,25 +1389,44 @@ function updatePlanningTaskStats() {
     const el=document.getElementById(id);
     if (el) el.textContent=String(value);
   });
+
+  renderPlanningFollowupQueue();
 }
 
 function planningTaskNextCandidate() {
   if (!currentProfile) return null;
 
-  const today=planningIsoDate(new Date());
+  const now=new Date();
   const candidates=planningTaskRecords.filter(task=>{
     if (['COMPLETADO','CANCELADO'].includes(task.estado)) return false;
+
     const mine=task.asignado_a_profile_id===currentProfile.id
       || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
     if (!mine) return false;
 
     if (task.estado==='EN_ESPERA') {
-      return !!task.fecha_seguimiento && task.fecha_seguimiento<=today;
+      const follow=planningFollowupDateTime(task);
+      return !!follow && follow<=now;
     }
     return true;
   });
 
-  return planningTaskSortRows(candidates)[0] || null;
+  return [...candidates].sort((a,b)=>{
+    const aFollow=a.estado==='EN_ESPERA' ? planningFollowupDateTime(a) : null;
+    const bFollow=b.estado==='EN_ESPERA' ? planningFollowupDateTime(b) : null;
+    const aDue=aFollow || planningTaskDateTime(a);
+    const bDue=bFollow || planningTaskDateTime(b);
+
+    const aOverdue=aDue && aDue<=now ? 0 : 1;
+    const bOverdue=bDue && bDue<=now ? 0 : 1;
+    if (aOverdue!==bOverdue) return aOverdue-bOverdue;
+
+    const ap=planningTaskPriorityRank(a.prioridad);
+    const bp=planningTaskPriorityRank(b.prioridad);
+    if (ap!==bp) return ap-bp;
+
+    return (aDue?.getTime() ?? Number.MAX_SAFE_INTEGER)-(bDue?.getTime() ?? Number.MAX_SAFE_INTEGER);
+  })[0] || null;
 }
 
 function renderPlanningNextTask() {
@@ -1151,18 +1447,27 @@ function renderPlanningNextTask() {
     return;
   }
 
-  const situation=planningTaskSituation(next);
+  const situation=next.estado==='EN_ESPERA'
+    ? planningFollowupSituation(next)
+    : planningTaskSituation(next);
+
   code.textContent=next.codigo || 'TK';
   title.textContent=next.titulo || 'Pendiente';
   meta.textContent=[
     planningPriorityLabel(next.prioridad),
     situation.label,
-    next.responsable_nombre,
-    next.hora_objetivo?`Hora ${String(next.hora_objetivo).slice(0,5)}`:''
+    next.estado==='EN_ESPERA' ? `Esperando de: ${next.esperando_de || 'tercero'}` : next.responsable_nombre,
+    next.estado==='EN_ESPERA'
+      ? `Seguimiento ${String(next.hora_seguimiento || '09:00').slice(0,5)}`
+      : (next.hora_objetivo?`Hora ${String(next.hora_objetivo).slice(0,5)}`:'')
   ].filter(Boolean).join(' · ');
+
   button.disabled=false;
   button.dataset.taskId=next.id;
-  button.textContent=next.estado==='EN_PROCESO'?'Continuar atención':'Atender siguiente';
+  button.textContent=
+    next.estado==='EN_ESPERA' ? 'Realizar seguimiento'
+    : next.estado==='EN_PROCESO' ? 'Continuar atención'
+    : 'Atender siguiente';
 }
 
 function planningTaskPeriodLabel() {
@@ -1254,7 +1559,8 @@ function renderPlanningTaskList() {
           ${waiting?`
             <div class="planning-ticket-waiting">
               <strong>En espera de:</strong> ${escapeHtml(task.esperando_de || 'tercero')}
-              ${task.fecha_seguimiento?` · Próximo seguimiento: ${escapeHtml(formatDatePE(task.fecha_seguimiento))}`:''}
+              ${task.fecha_seguimiento?` · Próximo seguimiento: ${escapeHtml(formatDatePE(task.fecha_seguimiento))} ${escapeHtml(String(task.hora_seguimiento || '09:00').slice(0,5))}`:''}
+              ${task.fecha_seguimiento?`<span class="planning-followup-inline-state ${planningFollowupSituation(task).code.toLowerCase()}">${escapeHtml(planningFollowupSituation(task).label)}</span>`:''}
               ${task.motivo_espera?`<small>${escapeHtml(task.motivo_espera)}</small>`:''}
             </div>
           `:''}
@@ -1263,6 +1569,7 @@ function renderPlanningTaskList() {
         <div class="planning-ticket-actions">
           ${canManage && task.estado==='PENDIENTE'?`<button class="task-action-start" type="button" data-task-start="${task.id}">Iniciar</button>`:''}
           ${canManage && ['PENDIENTE','EN_PROCESO'].includes(task.estado)?`<button class="task-action-wait" type="button" data-task-wait="${task.id}">En espera</button>`:''}
+          ${canManage && task.estado==='EN_ESPERA'?`<button class="task-action-followup" type="button" data-task-followup="${task.id}">Seguimiento</button>`:''}
           ${canManage && !['COMPLETADO','CANCELADO'].includes(task.estado)?`<button class="task-action-reschedule" type="button" data-task-reschedule="${task.id}">Reprogramar</button>`:''}
           ${canManage && !['COMPLETADO','CANCELADO'].includes(task.estado)?`<button class="task-action-complete" type="button" data-task-complete="${task.id}">Completar</button>`:''}
           <button class="secondary-btn small-btn" type="button" data-task-edit="${task.id}">${canManage?'Editar':'Ver'}</button>
@@ -1284,6 +1591,10 @@ function renderPlanningTaskList() {
       updatePlanningTaskWaitingFields();
       setTimeout(()=>document.getElementById('planningTaskWaitingFor')?.focus(),50);
     });
+  });
+
+  container.querySelectorAll('[data-task-followup]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningFollowupModal(button.dataset.taskFollowup));
   });
 
   container.querySelectorAll('[data-task-reschedule]').forEach(button=>{
@@ -1312,10 +1623,11 @@ async function loadPlanningTasksModule(force=false) {
     updatePlanningTaskStats();
     renderPlanningNextTask();
     renderPlanningTaskList();
+    renderPlanningFollowupQueue();
     return;
   }
 
-  const [tasks,history,users]=await Promise.all([
+  const [tasks,history,followups,users]=await Promise.all([
     client.from('planificacion_pendientes')
       .select('*')
       .order('fecha_objetivo',{ascending:true})
@@ -1323,10 +1635,13 @@ async function loadPlanningTasksModule(force=false) {
     client.from('planificacion_pendiente_historial')
       .select('*')
       .order('changed_at',{ascending:false}),
+    client.from('planificacion_pendiente_seguimientos')
+      .select('*')
+      .order('created_at',{ascending:false}),
     client.rpc('planificacion_usuarios_asignables')
   ]);
 
-  const error=tasks.error || history.error || users.error;
+  const error=tasks.error || history.error || followups.error || users.error;
   if (error) {
     console.error(error);
     planningMessage(
@@ -1337,12 +1652,14 @@ async function loadPlanningTasksModule(force=false) {
 
   planningTaskRecords=tasks.data || [];
   planningTaskHistory=history.data || [];
+  planningTaskFollowups=followups.data || [];
   planningAssignableUsers=users.data || [];
   planningTasksLoaded=true;
 
   updatePlanningTaskStats();
   renderPlanningNextTask();
   renderPlanningTaskList();
+  renderPlanningFollowupQueue();
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -1420,7 +1737,17 @@ function openPlanningTaskModal(task=null) {
 
   document.getElementById('planningTaskWaitingFor').value=task?.esperando_de || '';
   document.getElementById('planningTaskFollowupDate').value=task?.fecha_seguimiento || '';
+  document.getElementById('planningTaskFollowupTime').value=task?.hora_seguimiento ? String(task.hora_seguimiento).slice(0,5) : '';
   document.getElementById('planningTaskWaitingReason').value=task?.motivo_espera || '';
+
+  const followupReminderMinutes=Array.isArray(task?.seguimiento_recordatorios_minutos)
+    ? task.seguimiento_recordatorios_minutos.map(Number)
+    : [30,10,0];
+  [30,10,0].forEach(minutes=>{
+    const el=document.getElementById(`planningFollowupReminder${minutes}`);
+    if (el) el.checked=followupReminderMinutes.includes(minutes);
+  });
+
   document.getElementById('planningTaskDescription').value=task?.descripcion || '';
   document.getElementById('planningTaskNotes').value=task?.observaciones || '';
 
@@ -1447,7 +1774,11 @@ function openPlanningTaskModal(task=null) {
 
   const historySection=document.getElementById('planningTaskHistorySection');
   historySection?.classList.toggle('hidden',!task);
-  if (task) renderPlanningTaskHistory(task.id);
+  document.getElementById('planningTaskFollowupHistorySection')?.classList.toggle('hidden',!task);
+  if (task) {
+    renderPlanningTaskHistory(task.id);
+    renderPlanningTaskFollowupHistory(task.id);
+  }
 
   const modal=document.getElementById('planningTaskModal');
   modal?.classList.remove('hidden');
@@ -1504,6 +1835,11 @@ async function savePlanningTask(event) {
     esperando_de:estado==='EN_ESPERA' ? (document.getElementById('planningTaskWaitingFor').value.trim() || null) : null,
     motivo_espera:estado==='EN_ESPERA' ? (document.getElementById('planningTaskWaitingReason').value.trim() || null) : null,
     fecha_seguimiento:estado==='EN_ESPERA' ? (document.getElementById('planningTaskFollowupDate').value || null) : null,
+    hora_seguimiento:estado==='EN_ESPERA' ? (document.getElementById('planningTaskFollowupTime').value || null) : null,
+    seguimiento_recordatorios_minutos:estado==='EN_ESPERA'
+      ? [30,10,0].filter(minutes=>document.getElementById(`planningFollowupReminder${minutes}`)?.checked)
+      : [30,10,0],
+    seguimiento_pospuesto_hasta:null,
     proyecto_id:document.getElementById('planningTaskOperationalProject').value || null,
     planificacion_proyecto_id:document.getElementById('planningTaskPlanningProject').value || null,
     planificacion_actividad_id:document.getElementById('planningTaskPlanningActivity').value || null,
@@ -1523,6 +1859,11 @@ async function savePlanningTask(event) {
 
   if (estado==='EN_ESPERA' && !payload.esperando_de) {
     planningTaskFormMessage('Indica de quién o de qué área estás esperando una respuesta o acción.');
+    return;
+  }
+
+  if (estado==='EN_ESPERA' && !payload.fecha_seguimiento) {
+    planningTaskFormMessage('Programa la fecha del próximo seguimiento.');
     return;
   }
 
@@ -1566,6 +1907,8 @@ async function quickUpdatePlanningTask(id,status,reason) {
     payload.esperando_de=null;
     payload.motivo_espera=null;
     payload.fecha_seguimiento=null;
+    payload.hora_seguimiento=null;
+    payload.seguimiento_pospuesto_hasta=null;
   }
 
   const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',id);
@@ -1700,6 +2043,11 @@ async function attendNextPlanningTask() {
   const task=planningTaskRecords.find(x=>x.id===id);
   if (!task) return;
 
+  if (task.estado==='EN_ESPERA') {
+    openPlanningFollowupModal(task);
+    return;
+  }
+
   if (task.estado==='PENDIENTE') {
     const {error}=await client.from('planificacion_pendientes').update({
       estado:'EN_PROCESO',
@@ -1785,8 +2133,10 @@ function savePlanningReminderSeenStorage(value) {
 }
 
 function planningReminderKey(task,slot) {
-  const due=planningTaskDateTime(task);
-  return `${task.id}|${due?.toISOString() || task.fecha_objetivo}|${slot}`;
+  const followupSlot=String(slot || '').startsWith('F') || slot==='FOLLOWUP_DUE';
+  const due=followupSlot ? planningFollowupDateTime(task) : planningTaskDateTime(task);
+  const fallback=followupSlot ? task.fecha_seguimiento : task.fecha_objetivo;
+  return `${task.id}|${due?.toISOString() || fallback || ''}|${slot}`;
 }
 
 function planningReminderWasSeen(task,slot) {
@@ -2130,6 +2480,35 @@ function planningReminderSlot(task,now=new Date()) {
   return null;
 }
 
+
+function planningFollowupReminderSlot(task,now=new Date()) {
+  if (task?.estado!=='EN_ESPERA' || !task?.fecha_seguimiento) return null;
+
+  const when=planningFollowupDateTime(task);
+  if (!when) return null;
+
+  const snooze=task.seguimiento_pospuesto_hasta ? new Date(task.seguimiento_pospuesto_hasta) : null;
+  if (snooze && snooze>now) return null;
+
+  const configured=Array.isArray(task.seguimiento_recordatorios_minutos)
+    ? task.seguimiento_recordatorios_minutos.map(Number)
+    : [30,10,0];
+
+  const diffMinutes=(when-now)/60000;
+  const has=value=>configured.includes(value);
+
+  if (diffMinutes<=0 && has(0)) {
+    return {slot:'FOLLOWUP_DUE',minutes:0,label:'Seguimiento pendiente ahora',urgent:true,type:'FOLLOWUP'};
+  }
+  if (diffMinutes>0 && diffMinutes<=10 && has(10)) {
+    return {slot:'F10',minutes:10,label:`Seguimiento en ${Math.max(1,Math.ceil(diffMinutes))} min`,urgent:true,type:'FOLLOWUP'};
+  }
+  if (diffMinutes>10 && diffMinutes<=30 && has(30)) {
+    return {slot:'F30',minutes:30,label:`Seguimiento en ${Math.ceil(diffMinutes)} min`,urgent:false,type:'FOLLOWUP'};
+  }
+  return null;
+}
+
 function planningReminderTaskIsMine(task) {
   if (!currentProfile?.id || !task) return false;
   return task.asignado_a_profile_id===currentProfile.id
@@ -2148,8 +2527,8 @@ async function checkPlanningReminders() {
 
   try {
     const {data,error}=await client.from('planificacion_pendientes')
-      .select('id,codigo,titulo,prioridad,estado,asignado_a_profile_id,created_by,responsable_nombre,fecha_objetivo,hora_objetivo,recordatorios_habilitados,recordatorios_minutos,pospuesto_hasta')
-      .in('estado',['PENDIENTE','EN_PROCESO'])
+      .select('id,codigo,titulo,prioridad,estado,asignado_a_profile_id,created_by,responsable_nombre,fecha_objetivo,hora_objetivo,recordatorios_habilitados,recordatorios_minutos,pospuesto_hasta,esperando_de,motivo_espera,fecha_seguimiento,hora_seguimiento,seguimiento_recordatorios_minutos,seguimiento_pospuesto_hasta')
+      .in('estado',['PENDIENTE','EN_PROCESO','EN_ESPERA'])
       .order('fecha_objetivo',{ascending:true});
 
     if (error) {
@@ -2160,11 +2539,16 @@ async function checkPlanningReminders() {
     const now=new Date();
     const candidates=(data || [])
       .filter(planningReminderTaskIsMine)
-      .map(task=>({task,reminder:planningReminderSlot(task,now)}))
+      .map(task=>({
+        task,
+        reminder:task.estado==='EN_ESPERA'
+          ? planningFollowupReminderSlot(task,now)
+          : planningReminderSlot(task,now)
+      }))
       .filter(x=>x.reminder && !planningReminderWasSeen(x.task,x.reminder.slot));
 
     candidates.sort((a,b)=>{
-      const rank={DUE:0,R10:1,R30:2,R60:3};
+      const rank={FOLLOWUP_DUE:0,DUE:0,F10:1,R10:1,F30:2,R30:2,R60:3};
       const ar=rank[a.reminder.slot] ?? 9;
       const br=rank[b.reminder.slot] ?? 9;
       if (ar!==br) return ar-br;
@@ -2187,6 +2571,11 @@ async function checkPlanningReminders() {
 }
 
 function planningReminderNotificationTitle(item) {
+  if (item.reminder.type==='FOLLOWUP') {
+    return item.reminder.slot==='FOLLOWUP_DUE'
+      ? '📞 Seguimiento pendiente'
+      : '📞 Próximo seguimiento';
+  }
   return item.reminder.slot==='DUE'
     ? '⚠️ Pendiente vencido'
     : '🔔 Pendiente próximo a vencer';
@@ -2200,8 +2589,12 @@ function showPlanningBrowserNotification(item) {
   ) return;
 
   try {
+    const body=item.reminder.type==='FOLLOWUP'
+      ? `${item.task.codigo || 'Ticket'} · ${item.task.titulo}\nEsperando de: ${item.task.esperando_de || 'tercero'} · ${item.reminder.label}`
+      : `${item.task.codigo || 'Ticket'} · ${item.task.titulo}\n${item.reminder.label}`;
+
     const notification=new Notification(planningReminderNotificationTitle(item),{
-      body:`${item.task.codigo || 'Ticket'} · ${item.task.titulo}\n${item.reminder.label}`,
+      body,
       tag:`planning-${item.task.id}-${item.reminder.slot}`,
       renotify:false
     });
@@ -2227,22 +2620,36 @@ function showNextPlanningReminder() {
   const code=document.getElementById('planningReminderCallCode');
   const title=document.getElementById('planningReminderCallTitle');
   const meta=document.getElementById('planningReminderCallMeta');
+  const isFollowup=item.reminder.type==='FOLLOWUP';
 
-  if (eyebrow) eyebrow.textContent=
-    item.reminder.slot==='DUE'
-      ? '⚠ PENDIENTE VENCIDO'
-      : '🔔 PENDIENTE PRÓXIMO A VENCER';
+  if (eyebrow) {
+    eyebrow.textContent=isFollowup
+      ? (item.reminder.slot==='FOLLOWUP_DUE' ? '📞 SEGUIMIENTO PROGRAMADO' : '📞 PRÓXIMO SEGUIMIENTO')
+      : (item.reminder.slot==='DUE' ? '⚠ PENDIENTE VENCIDO' : '🔔 PENDIENTE PRÓXIMO A VENCER');
+  }
 
   if (code) code.textContent=item.task.codigo || 'TK';
   if (title) title.textContent=item.task.titulo || 'Pendiente';
-  if (meta) meta.textContent=[
-    item.reminder.label,
-    planningPriorityLabel(item.task.prioridad),
-    item.task.hora_objetivo?`Hora ${String(item.task.hora_objetivo).slice(0,5)}`:''
-  ].filter(Boolean).join(' · ');
+  if (meta) {
+    meta.textContent=isFollowup
+      ? [
+          item.reminder.label,
+          `Esperando de: ${item.task.esperando_de || 'tercero'}`,
+          `Hora ${String(item.task.hora_seguimiento || '09:00').slice(0,5)}`
+        ].filter(Boolean).join(' · ')
+      : [
+          item.reminder.label,
+          planningPriorityLabel(item.task.prioridad),
+          item.task.hora_objetivo?`Hora ${String(item.task.hora_objetivo).slice(0,5)}`:''
+        ].filter(Boolean).join(' · ');
+  }
+
+  const attendButton=document.getElementById('planningReminderAttendButton');
+  if (attendButton) attendButton.textContent=isFollowup?'Registrar seguimiento':'Atender';
 
   layer?.classList.remove('hidden');
   layer?.classList.toggle('urgent',item.reminder.urgent);
+  layer?.classList.toggle('followup',isFollowup);
 
   planningReminderMarkSeen(item.task,item.reminder.slot);
   playPlanningReminderSound(null,item.reminder.urgent);
@@ -2253,6 +2660,7 @@ function closeActivePlanningReminder(showNext=true) {
   const layer=document.getElementById('planningReminderCallLayer');
   layer?.classList.add('hidden');
   layer?.classList.remove('urgent');
+  layer?.classList.remove('followup');
   planningReminderActive=null;
   if (showNext) setTimeout(showNextPlanningReminder,180);
 }
@@ -2262,11 +2670,20 @@ async function snoozePlanningReminder() {
   if (!item || !client) return;
 
   const until=new Date(Date.now()+10*60000);
+  const isFollowup=item.reminder.type==='FOLLOWUP';
+
+  const payload=isFollowup
+    ? {
+        seguimiento_pospuesto_hasta:until.toISOString(),
+        ultimo_motivo_cambio:'Llamado de seguimiento pospuesto por 10 minutos.'
+      }
+    : {
+        pospuesto_hasta:until.toISOString(),
+        ultimo_motivo_cambio:'Aviso sonoro pospuesto por 10 minutos.'
+      };
+
   const {error}=await client.from('planificacion_pendientes')
-    .update({
-      pospuesto_hasta:until.toISOString(),
-      ultimo_motivo_cambio:'Aviso sonoro pospuesto por 10 minutos.'
-    })
+    .update(payload)
     .eq('id',item.task.id);
 
   if (error) {
@@ -2277,27 +2694,22 @@ async function snoozePlanningReminder() {
   planningReminderUnmarkSeen(item.task,item.reminder.slot);
 
   const local=planningTaskRecords.find(x=>x.id===item.task.id);
-  if (local) local.pospuesto_hasta=until.toISOString();
+  if (local) {
+    if (isFollowup) local.seguimiento_pospuesto_hasta=until.toISOString();
+    else local.pospuesto_hasta=until.toISOString();
+  }
 
   closeActivePlanningReminder();
-  planningMessage(`Aviso de ${item.task.codigo || 'ticket'} pospuesto 10 minutos.`,'success');
+  planningMessage(
+    `${isFollowup?'Seguimiento':'Aviso'} de ${item.task.codigo || 'ticket'} pospuesto 10 minutos.`,
+    'success'
+  );
 }
 
 async function attendPlanningReminder(item=planningReminderActive,closeToast=true) {
   if (!item || !client) return;
 
-  const {error}=await client.from('planificacion_pendientes')
-    .update({
-      estado:'EN_PROCESO',
-      pospuesto_hasta:null,
-      ultimo_motivo_cambio:'Atención iniciada desde el aviso de vencimiento.'
-    })
-    .eq('id',item.task.id);
-
-  if (error) {
-    console.error(error);
-    return;
-  }
+  const isFollowup=item.reminder.type==='FOLLOWUP';
 
   if (closeToast) closeActivePlanningReminder(false);
 
@@ -2309,8 +2721,29 @@ async function attendPlanningReminder(item=planningReminderActive,closeToast=tru
   switchPlanningTab('TASKS');
   await loadPlanningTasksModule(true);
 
-  const refreshed=planningTaskRecords.find(x=>x.id===item.task.id);
-  if (refreshed) openPlanningTaskModal(refreshed);
+  const refreshed=planningTaskRecords.find(x=>x.id===item.task.id) || item.task;
+
+  if (isFollowup) {
+    openPlanningFollowupModal(refreshed);
+  } else {
+    const {error}=await client.from('planificacion_pendientes')
+      .update({
+        estado:'EN_PROCESO',
+        pospuesto_hasta:null,
+        ultimo_motivo_cambio:'Atención iniciada desde el aviso de vencimiento.'
+      })
+      .eq('id',item.task.id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    planningTasksLoaded=false;
+    await loadPlanningTasksModule(true);
+    const updated=planningTaskRecords.find(x=>x.id===item.task.id) || refreshed;
+    openPlanningTaskModal(updated);
+  }
 
   if (closeToast) setTimeout(showNextPlanningReminder,250);
 }
@@ -2370,6 +2803,13 @@ document.getElementById('planningBrowserNotificationButton')?.addEventListener('
 document.getElementById('planningReminderDismissButton')?.addEventListener('click',()=>closeActivePlanningReminder());
 document.getElementById('planningReminderSnoozeButton')?.addEventListener('click',snoozePlanningReminder);
 document.getElementById('planningReminderAttendButton')?.addEventListener('click',()=>attendPlanningReminder());
+
+// Eventos 17C.2
+document.getElementById('planningFollowupResult')?.addEventListener('change',updatePlanningFollowupResultFields);
+document.getElementById('planningFollowupModalClose')?.addEventListener('click',closePlanningFollowupModal);
+document.getElementById('planningFollowupModalCancel')?.addEventListener('click',closePlanningFollowupModal);
+document.getElementById('planningFollowupModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningFollowupModal);
+document.getElementById('planningFollowupSaveButton')?.addEventListener('click',savePlanningFollowup);
 
 // Eventos 17B
 document.querySelectorAll('[data-planning-task-period]').forEach(button=>{

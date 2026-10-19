@@ -6016,3 +6016,394 @@ body.modal-open{
     align-items:stretch;
   }
 }
+
+
+/* ============================================================
+   ETAPA 17C.2 · SEGUIMIENTOS DE TAREAS EN ESPERA
+   ============================================================ */
+
+.planning-task-stats{
+  grid-template-columns:repeat(7,minmax(0,1fr));
+}
+
+.planning-task-stats .task-stat-followup strong{
+  color:#6a3fc7;
+}
+
+.planning-followup-queue-panel{
+  border:1px solid #ddd5f3;
+  border-radius:15px;
+  background:#fbfaff;
+  margin-bottom:15px;
+  padding:14px 16px;
+  box-shadow:0 5px 18px rgba(52,39,90,.04);
+}
+
+.planning-followup-queue-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.planning-followup-queue-head h3{
+  margin:3px 0 0;
+  color:#26334a;
+  font-size:14px;
+}
+
+.planning-followup-queue-head p{
+  margin:4px 0 0;
+  color:#7a8799;
+  font-size:8.5px;
+}
+
+.planning-followup-count{
+  min-width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:#6a3fc7;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+}
+
+.planning-followup-queue-list{
+  display:grid;
+  gap:8px;
+}
+
+.planning-followup-queue-item{
+  display:grid;
+  grid-template-columns:90px minmax(0,1fr) auto;
+  gap:11px;
+  align-items:center;
+  border:1px solid #e0daef;
+  border-left:4px solid #6a3fc7;
+  border-radius:10px;
+  background:#fff;
+  padding:10px 11px;
+}
+
+.planning-followup-queue-item.seguimiento_vencido{
+  border-left-color:#c00000;
+  background:#fffafa;
+}
+
+.planning-followup-queue-item.seguimiento_10{
+  border-left-color:#d57900;
+}
+
+.planning-followup-queue-time{
+  text-align:center;
+  border-radius:9px;
+  background:#f5f1ff;
+  padding:8px;
+}
+
+.planning-followup-queue-time strong,
+.planning-followup-queue-time small{
+  display:block;
+}
+
+.planning-followup-queue-time strong{
+  color:#5c36af;
+  font-size:15px;
+}
+
+.planning-followup-queue-time small{
+  margin-top:3px;
+  color:#82799b;
+  font-size:7px;
+}
+
+.planning-followup-queue-main>span{
+  color:#c00000;
+  font-size:7.5px;
+  font-weight:850;
+}
+
+.planning-followup-queue-main>strong{
+  display:block;
+  margin-top:2px;
+  color:#26364c;
+  font-size:10px;
+}
+
+.planning-followup-queue-main>p{
+  margin:4px 0 0;
+  color:#6c798b;
+  font-size:8px;
+}
+
+.task-action-followup{
+  min-height:34px;
+  border:0;
+  border-radius:8px;
+  padding:0 11px;
+  background:#6a3fc7;
+  color:#fff;
+  font-size:8px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.planning-followup-inline-state{
+  display:inline-flex;
+  margin-left:7px;
+  border-radius:999px;
+  padding:3px 6px;
+  font-size:7px;
+  font-weight:850;
+}
+
+.planning-followup-inline-state.seguimiento_vencido{
+  background:#ffe2e2;
+  color:#b00000;
+}
+
+.planning-followup-inline-state.seguimiento_10{
+  background:#fff0dc;
+  color:#965900;
+}
+
+.planning-followup-inline-state.seguimiento_30,
+.planning-followup-inline-state.seguimiento_hoy{
+  background:#eee9ff;
+  color:#6034bd;
+}
+
+.planning-followup-inline-state.seguimiento_programado{
+  background:#eef2f7;
+  color:#5c687b;
+}
+
+.planning-followup-reminder-box{
+  border-top:1px solid #e3dcf6;
+  margin-top:3px;
+  padding-top:10px;
+}
+
+.planning-followup-reminder-box strong{
+  display:block;
+  margin-top:3px;
+  color:#493d68;
+  font-size:9px;
+}
+
+.planning-followup-reminder-box>small{
+  display:block;
+  margin-top:7px;
+  color:#807694;
+  font-size:7.5px;
+}
+
+.planning-followup-reminder-options{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+  margin-top:8px;
+}
+
+.planning-followup-reminder-options label{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:7px!important;
+  border:1px solid #ded7ed;
+  border-radius:8px;
+  background:#fff;
+  padding:8px;
+}
+
+.planning-followup-reminder-options input{
+  width:17px!important;
+  height:17px;
+  accent-color:#6a3fc7;
+}
+
+.planning-followup-reminder-options span{
+  color:#5f5576!important;
+  font-size:8px!important;
+}
+
+.planning-followup-modal-card{
+  width:min(760px,calc(100vw - 24px))!important;
+  max-width:760px!important;
+}
+
+.planning-followup-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px;
+  margin-bottom:14px;
+}
+
+.planning-followup-summary article{
+  border:1px solid #dfe4ec;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:10px 11px;
+}
+
+.planning-followup-summary span,
+.planning-followup-summary strong{
+  display:block;
+}
+
+.planning-followup-summary span{
+  color:#7e8999;
+  font-size:7.5px;
+}
+
+.planning-followup-summary strong{
+  margin-top:4px;
+  color:#27364b;
+  font-size:9px;
+}
+
+.planning-followup-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.planning-followup-form-grid label>span{
+  color:#56657a;
+  font-size:8px;
+  font-weight:800;
+}
+
+.planning-followup-form-grid input,
+.planning-followup-form-grid select,
+.planning-followup-form-grid textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.planning-followup-next-fields{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  border:1px solid #ddd6ef;
+  border-radius:9px;
+  background:#faf8ff;
+  padding:10px;
+}
+
+.planning-followup-result-help{
+  margin-top:11px;
+  border:1px solid #e1dbef;
+  border-radius:9px;
+  background:#faf8ff;
+  color:#665a7c;
+  padding:9px 11px;
+  font-size:8.5px;
+}
+
+.planning-followup-history-list{
+  display:grid;
+  gap:8px;
+}
+
+.planning-followup-history-item{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  gap:9px;
+  border-bottom:1px solid #edf0f4;
+  padding:8px 0;
+}
+
+.planning-followup-history-item:last-child{
+  border-bottom:0;
+}
+
+.planning-followup-history-icon{
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  background:#f0ebff;
+  font-size:14px;
+}
+
+.planning-followup-history-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.planning-followup-history-head strong{
+  color:#3a4658;
+  font-size:8.5px;
+}
+
+.planning-followup-history-head span{
+  color:#929dac;
+  font-size:7px;
+}
+
+.planning-followup-history-item p{
+  margin:4px 0;
+  color:#65748a;
+  font-size:8px;
+}
+
+.planning-followup-history-item small{
+  color:#8a96a6;
+  font-size:7.3px;
+}
+
+.planning-reminder-call-layer.followup .planning-reminder-call-card{
+  border-color:#d6c7f4;
+  border-left-color:#6a3fc7;
+}
+
+.planning-reminder-call-layer.followup .planning-reminder-call-pulse{
+  background:#eee8ff;
+}
+
+@media(max-width:1250px){
+  .planning-task-stats{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+}
+
+@media(max-width:760px){
+  .planning-task-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .planning-followup-queue-item{
+    grid-template-columns:78px 1fr;
+  }
+
+  .planning-followup-queue-item .task-action-followup{
+    grid-column:1/-1;
+    width:100%;
+  }
+
+  .planning-followup-reminder-options{
+    grid-template-columns:1fr;
+  }
+
+  .planning-followup-summary{
+    grid-template-columns:1fr;
+  }
+
+  .planning-followup-next-fields{
+    grid-template-columns:1fr;
+  }
+
+  .planning-followup-history-head{
+    flex-direction:column;
+    gap:2px;
+  }
+}

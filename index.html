@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17c1" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17c2" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -988,6 +988,7 @@
             <article><span>Para hoy</span><strong id="planningTaskTodayCount">0</strong><small>Pendientes del día</small></article>
             <article><span>En proceso</span><strong id="planningTaskInProgressCount">0</strong><small>Actualmente atendidos</small></article>
             <article><span>En espera</span><strong id="planningTaskWaitingCount">0</strong><small>Dependen de terceros</small></article>
+            <article class="task-stat-followup"><span>Seguimientos hoy</span><strong id="planningTaskFollowupDueCount">0</strong><small>Llamadas por realizar</small></article>
             <article><span>Completados semana</span><strong id="planningTaskCompletedWeekCount">0</strong><small>Últimos 7 días</small></article>
             <article><span>Cumplimiento semanal</span><strong id="planningTaskWeeklyCompliance">0%</strong><small>Completados / tareas de la semana</small></article>
           </div>
@@ -1015,6 +1016,18 @@
               <p id="planningNextTaskMeta">Tu bandeja está al día.</p>
             </div>
             <button id="planningAttendNextButton" class="primary-btn" type="button" disabled>Atender siguiente</button>
+          </article>
+
+          <article id="planningFollowupQueuePanel" class="planning-followup-queue-panel hidden">
+            <div class="planning-followup-queue-head">
+              <div>
+                <span class="eyebrow">📞 COLA DE SEGUIMIENTOS</span>
+                <h3>Seguimientos por realizar</h3>
+                <p>Tickets EN ESPERA cuyo seguimiento ya corresponde o está próximo.</p>
+              </div>
+              <span id="planningFollowupQueueCount" class="planning-followup-count">0</span>
+            </div>
+            <div id="planningFollowupQueueList" class="planning-followup-queue-list"></div>
           </article>
 
           <div class="planning-task-time-tabs">
@@ -1135,9 +1148,23 @@
                 <label class="form-span-2"><span>Actividad Gantt vinculada</span><select id="planningTaskPlanningActivity"><option value="">Ninguna</option></select></label>
 
                 <div id="planningTaskWaitingFields" class="form-span-2 planning-task-waiting-fields hidden">
-                  <label><span>Esperando respuesta / acción de</span><input id="planningTaskWaitingFor" maxlength="180" placeholder="Persona, área, cliente o proyecto" /></label>
-                  <label><span>Próximo seguimiento</span><input id="planningTaskFollowupDate" type="date" /></label>
+                  <label><span>Esperando respuesta / acción de *</span><input id="planningTaskWaitingFor" maxlength="180" placeholder="Persona, área, cliente o proyecto" /></label>
+                  <label><span>Próximo seguimiento *</span><input id="planningTaskFollowupDate" type="date" /></label>
+                  <label><span>Hora de seguimiento</span><input id="planningTaskFollowupTime" type="time" /></label>
                   <label class="form-span-2"><span>Motivo de espera</span><textarea id="planningTaskWaitingReason" rows="2" maxlength="1200" placeholder="Qué información o acción está pendiente"></textarea></label>
+
+                  <section class="form-span-2 planning-followup-reminder-box">
+                    <div>
+                      <span class="eyebrow">🔔 LLAMADO DE SEGUIMIENTO</span>
+                      <strong>¿Cuándo debe avisarme?</strong>
+                    </div>
+                    <div class="planning-followup-reminder-options">
+                      <label><input id="planningFollowupReminder30" type="checkbox" checked /><span>30 min antes</span></label>
+                      <label><input id="planningFollowupReminder10" type="checkbox" checked /><span>10 min antes</span></label>
+                      <label><input id="planningFollowupReminder0" type="checkbox" checked /><span>A la hora del seguimiento</span></label>
+                    </div>
+                    <small>Si no indicas hora, el seguimiento se considerará a las 09:00 del día seleccionado.</small>
+                  </section>
                 </div>
 
                 <section class="form-span-2 planning-task-reminder-box">
@@ -1172,6 +1199,13 @@
                 <div id="planningTaskHistoryList" class="planning-task-history-list"></div>
               </section>
 
+              <section id="planningTaskFollowupHistorySection" class="planning-task-history-section hidden">
+                <div class="meeting-editor-section-head">
+                  <div><span class="meeting-section-number">📞</span><div><h4>Historial de seguimientos</h4><p>Contactos realizados, resultados y próximas llamadas programadas.</p></div></div>
+                </div>
+                <div id="planningTaskFollowupHistoryList" class="planning-task-followup-history-list"></div>
+              </section>
+
               <div id="planningTaskFormMessage" class="form-message"></div>
 
               <div class="modal-actions">
@@ -1180,6 +1214,68 @@
                 <button id="planningTaskSave" class="primary-btn" type="submit">Guardar pendiente</button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <div id="planningFollowupModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-followup-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">📞 REGISTRAR SEGUIMIENTO</span>
+                <h3 id="planningFollowupModalTitle">Seguimiento de pendiente</h3>
+                <p id="planningFollowupModalSubtitle" class="modal-subtitle">Registra qué ocurrió y define la siguiente acción.</p>
+              </div>
+              <button id="planningFollowupModalClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <input id="planningFollowupTaskId" type="hidden" />
+
+            <div class="planning-followup-summary">
+              <article><span>Ticket</span><strong id="planningFollowupTaskCode">—</strong></article>
+              <article><span>Esperando de</span><strong id="planningFollowupWaitingFor">—</strong></article>
+              <article><span>Seguimiento programado</span><strong id="planningFollowupScheduledAt">—</strong></article>
+            </div>
+
+            <div class="form-grid planning-followup-form-grid">
+              <label>
+                <span>Resultado del seguimiento *</span>
+                <select id="planningFollowupResult">
+                  <option value="SIN_RESPUESTA">Sin respuesta</option>
+                  <option value="CONTACTADO">Contactado, continúa pendiente</option>
+                  <option value="INFORMACION_RECIBIDA">Información / respuesta recibida</option>
+                  <option value="RESUELTO">Asunto resuelto</option>
+                  <option value="OTRO">Otro, continúa en espera</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Contacto realizado con</span>
+                <input id="planningFollowupContact" maxlength="180" placeholder="Persona, área o cliente" />
+              </label>
+
+              <label class="form-span-2">
+                <span>Resultado / observación *</span>
+                <textarea id="planningFollowupObservation" rows="4" maxlength="1800" placeholder="Ej. Se llamó al responsable; indicó que enviará el acta mañana a primera hora."></textarea>
+              </label>
+
+              <div id="planningFollowupNextFields" class="form-span-2 planning-followup-next-fields">
+                <label><span>Próximo seguimiento *</span><input id="planningFollowupNextDate" type="date" /></label>
+                <label><span>Hora</span><input id="planningFollowupNextTime" type="time" /></label>
+              </div>
+            </div>
+
+            <div id="planningFollowupModalMessage" class="form-message"></div>
+
+            <div class="planning-followup-result-help">
+              <strong>Resultado del ticket:</strong>
+              <span id="planningFollowupResultHelp">Se mantiene EN ESPERA y se programa la próxima llamada.</span>
+            </div>
+
+            <div class="modal-actions">
+              <button id="planningFollowupModalCancel" class="secondary-btn" type="button">Cancelar</button>
+              <button id="planningFollowupSaveButton" class="primary-btn" type="button">Registrar seguimiento</button>
+            </div>
           </div>
         </div>
 
@@ -3913,7 +4009,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17c1"></script>
+  <script src="app.js?v=20261019-17c2"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

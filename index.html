@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17c2" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17c3" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -1006,6 +1006,12 @@
             </div>
           </article>
 
+          <div class="planning-task-mode-tabs">
+            <button class="active" type="button" data-planning-task-mode="QUEUE">☑ Bandeja</button>
+            <button type="button" data-planning-task-mode="RECURRENCES">↻ Recurrencias</button>
+          </div>
+
+          <div id="planningTaskQueueView">
           <article id="planningNextTaskCard" class="planning-next-ticket-card">
             <div class="planning-next-ticket-main">
               <span class="eyebrow">SIGUIENTE PENDIENTE</span>
@@ -1086,6 +1092,162 @@
 
           <div id="planningTaskList" class="planning-task-list">
             <div class="training-library-empty">Cargando pendientes…</div>
+          </div>
+          </div>
+
+          <div id="planningRecurrenceView" class="hidden">
+            <div class="planning-recurrence-stats">
+              <article><span>Recurrencias activas</span><strong id="planningRecurrenceActiveCount">0</strong><small>Generan tickets automáticamente</small></article>
+              <article><span>Pausadas</span><strong id="planningRecurrencePausedCount">0</strong><small>No generan nuevos tickets</small></article>
+              <article><span>Próximos 7 días</span><strong id="planningRecurrenceNextWeekCount">0</strong><small>Tickets recurrentes programados</small></article>
+              <article><span>Tickets generados</span><strong id="planningRecurrenceGeneratedCount">0</strong><small>Visibles en tu bandeja</small></article>
+            </div>
+
+            <article class="panel planning-recurrence-toolbar-panel">
+              <div class="planning-recurrence-toolbar">
+                <input id="planningRecurrenceSearch" type="search" placeholder="Buscar recurrencia, responsable, proyecto..." />
+                <select id="planningRecurrenceStatusFilter">
+                  <option value="ALL">Todas</option>
+                  <option value="ACTIVE">Activas</option>
+                  <option value="PAUSED">Pausadas</option>
+                </select>
+                <select id="planningRecurrenceFrequencyFilter">
+                  <option value="ALL">Todas las frecuencias</option>
+                  <option value="DIARIA">Diaria</option>
+                  <option value="SEMANAL">Semanal</option>
+                  <option value="MENSUAL">Mensual</option>
+                  <option value="TRIMESTRAL">Trimestral</option>
+                  <option value="ANUAL">Anual</option>
+                  <option value="PERSONALIZADA">Personalizada</option>
+                </select>
+                <button id="planningRecurrenceGenerateButton" class="secondary-btn" type="button">↻ Generar ahora</button>
+                <button id="planningRecurrenceNewButton" class="primary-btn" type="button">＋ Nueva recurrencia</button>
+              </div>
+            </article>
+
+            <div class="planning-library-headline">
+              <div><span class="eyebrow">TAREAS AUTOMÁTICAS</span><h3>Reglas de recurrencia</h3></div>
+              <span id="planningRecurrenceResultCount" class="schedule-result-count">0 recurrencias</span>
+            </div>
+
+            <div id="planningRecurrenceList" class="planning-recurrence-list">
+              <div class="training-library-empty">Cargando recurrencias…</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="planningRecurrenceModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-recurrence-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">PLANIFICACIÓN · RECURRENCIA</span>
+                <h3 id="planningRecurrenceModalTitle">Nueva recurrencia</h3>
+                <p id="planningRecurrenceModalSubtitle" class="modal-subtitle">Define una tarea que se generará automáticamente.</p>
+              </div>
+              <button id="planningRecurrenceModalClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <form id="planningRecurrenceForm" novalidate>
+              <input id="planningRecurrenceId" type="hidden" />
+
+              <div class="form-grid planning-recurrence-form-grid">
+                <label class="form-span-2"><span>Tarea recurrente *</span><input id="planningRecurrenceTitle" maxlength="260" placeholder="Ej. Solicitar indicadores mensuales a las áreas" /></label>
+
+                <label><span>Categoría *</span>
+                  <select id="planningRecurrenceCategory">
+                    <option value="PERSONAL">Personal</option><option value="SIG" selected>SIG</option><option value="SST">SST</option>
+                    <option value="AMBIENTAL">Ambiental</option><option value="CALIDAD">Calidad</option><option value="AUDITORIA">Auditoría</option>
+                    <option value="INDICADORES">Indicadores</option><option value="COMITE_SST">Comité SST</option><option value="CAPACITACION">Capacitación</option>
+                    <option value="CLIENTE">Cliente</option><option value="OPERACIONES">Operaciones</option><option value="OTRO">Otro</option>
+                  </select>
+                </label>
+
+                <label><span>Origen *</span>
+                  <select id="planningRecurrenceOrigin">
+                    <option value="PERSONAL">Personal</option><option value="GANTT">Gantt / proyecto</option><option value="COMITE_SST">Comité SST</option>
+                    <option value="CAPACITACION">Capacitación</option><option value="AUDITORIA">Auditoría</option><option value="INDICADORES">Indicadores</option>
+                    <option value="CLIENTE">Cliente</option><option value="PROYECTO">Proyecto</option><option value="OTRO">Otro</option>
+                  </select>
+                </label>
+
+                <label><span>Prioridad *</span>
+                  <select id="planningRecurrencePriority"><option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select>
+                </label>
+
+                <label><span>Responsable *</span><select id="planningRecurrenceAssignee"></select></label>
+                <label id="planningRecurrenceManualAssigneeField" class="hidden"><span>Responsable manual *</span><input id="planningRecurrenceAssigneeManual" maxlength="180" placeholder="Apellidos y nombres / área" /></label>
+
+                <section class="form-span-2 planning-recurrence-rule-box">
+                  <div class="planning-recurrence-rule-head"><span class="eyebrow">↻ REGLA DE REPETICIÓN</span><strong id="planningRecurrenceRulePreview">Se repetirá mensualmente.</strong></div>
+                  <div class="planning-recurrence-rule-grid">
+                    <label><span>Frecuencia *</span>
+                      <select id="planningRecurrenceFrequency">
+                        <option value="DIARIA">Diaria</option><option value="SEMANAL">Semanal</option><option value="MENSUAL" selected>Mensual</option>
+                        <option value="TRIMESTRAL">Trimestral</option><option value="ANUAL">Anual</option><option value="PERSONALIZADA">Personalizada</option>
+                      </select>
+                    </label>
+                    <label id="planningRecurrenceIntervalField"><span>Repetir cada</span><input id="planningRecurrenceInterval" type="number" min="1" max="365" value="1" /></label>
+                    <label id="planningRecurrenceCustomUnitField" class="hidden"><span>Unidad</span>
+                      <select id="planningRecurrenceCustomUnit"><option value="DIAS">Días</option><option value="SEMANAS">Semanas</option><option value="MESES">Meses</option></select>
+                    </label>
+                    <label id="planningRecurrenceMonthDayField"><span>Día del mes</span><input id="planningRecurrenceMonthDay" type="number" min="1" max="31" value="1" /></label>
+                  </div>
+
+                  <div id="planningRecurrenceWeekdays" class="planning-recurrence-weekdays hidden">
+                    <span>Días de la semana</span>
+                    <div>
+                      <label><input type="checkbox" value="1" /><span>Lun</span></label>
+                      <label><input type="checkbox" value="2" /><span>Mar</span></label>
+                      <label><input type="checkbox" value="3" /><span>Mié</span></label>
+                      <label><input type="checkbox" value="4" /><span>Jue</span></label>
+                      <label><input type="checkbox" value="5" /><span>Vie</span></label>
+                      <label><input type="checkbox" value="6" /><span>Sáb</span></label>
+                      <label><input type="checkbox" value="7" /><span>Dom</span></label>
+                    </div>
+                  </div>
+                </section>
+
+                <label><span>Fecha de inicio *</span><input id="planningRecurrenceStartDate" type="date" /></label>
+                <label><span>Fecha de término</span><input id="planningRecurrenceEndDate" type="date" /></label>
+                <label><span>Hora objetivo</span><input id="planningRecurrenceDueTime" type="time" /></label>
+                <label><span>Crear tickets con anticipación</span>
+                  <select id="planningRecurrenceLeadDays"><option value="0">El mismo día</option><option value="1">1 día antes</option><option value="7" selected>7 días antes</option><option value="14">14 días antes</option><option value="30">30 días antes</option><option value="60">60 días antes</option></select>
+                </label>
+
+                <label><span>Proyecto operativo</span><select id="planningRecurrenceOperationalProject"><option value="">Ninguno / corporativo</option></select></label>
+                <label><span>Proyecto Gantt</span><select id="planningRecurrencePlanningProject"><option value="">Ninguno</option></select></label>
+                <label class="form-span-2"><span>Actividad Gantt vinculada</span><select id="planningRecurrencePlanningActivity"><option value="">Ninguna</option></select></label>
+
+                <section class="form-span-2 planning-recurrence-reminder-box">
+                  <div class="planning-recurrence-reminder-head">
+                    <div><span class="eyebrow">🔔 AVISOS DE CADA TICKET</span><strong>Recordatorios de vencimiento</strong></div>
+                    <label class="planning-reminder-toggle"><input id="planningRecurrenceRemindersEnabled" type="checkbox" checked /><span>Activados</span></label>
+                  </div>
+                  <div id="planningRecurrenceReminderOptions" class="planning-task-reminder-options">
+                    <label><input id="planningRecurrenceReminder60" type="checkbox" checked /><span>1 hora antes</span></label>
+                    <label><input id="planningRecurrenceReminder30" type="checkbox" checked /><span>30 min antes</span></label>
+                    <label><input id="planningRecurrenceReminder10" type="checkbox" checked /><span>10 min antes</span></label>
+                    <label><input id="planningRecurrenceReminder0" type="checkbox" checked /><span>Al vencimiento</span></label>
+                  </div>
+                </section>
+
+                <label class="form-span-2"><span>Descripción / instrucciones</span><textarea id="planningRecurrenceDescription" rows="3" maxlength="2400"></textarea></label>
+
+                <label class="form-span-2 planning-recurrence-active-toggle">
+                  <input id="planningRecurrenceActive" type="checkbox" checked />
+                  <div><strong>Recurrencia activa</strong><small>Al desactivarla se conserva el historial, pero no se generan nuevos tickets.</small></div>
+                </label>
+              </div>
+
+              <div id="planningRecurrenceFormMessage" class="form-message"></div>
+
+              <div class="modal-actions">
+                <button id="planningRecurrenceDeleteButton" class="danger-outline-btn hidden" type="button">Eliminar</button>
+                <button id="planningRecurrenceCancel" class="secondary-btn" type="button">Cancelar</button>
+                <button id="planningRecurrenceSave" class="primary-btn" type="submit">Guardar recurrencia</button>
+              </div>
+            </form>
           </div>
         </div>
 
@@ -4009,7 +4171,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17c2"></script>
+  <script src="app.js?v=20261019-17c3"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

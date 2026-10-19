@@ -6407,3 +6407,442 @@ body.modal-open{
     gap:2px;
   }
 }
+
+/* ============================================================
+   ETAPA 17C.3 · RECURRENCIAS DE PENDIENTES
+   ============================================================ */
+
+.planning-task-mode-tabs{
+  display:flex;
+  gap:8px;
+  margin:0 0 15px;
+  border-bottom:1px solid #dde4ec;
+}
+
+.planning-task-mode-tabs button{
+  border:0;
+  border-bottom:3px solid transparent;
+  background:transparent;
+  color:#68768a;
+  padding:10px 16px;
+  font-size:9px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.planning-task-mode-tabs button.active{
+  color:#c00000;
+  border-bottom-color:#c00000;
+}
+
+.planning-recurrence-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:15px;
+}
+
+.planning-recurrence-stats article{
+  border:1px solid #dce3eb;
+  border-radius:13px;
+  background:#fff;
+  padding:14px 15px;
+  box-shadow:0 5px 18px rgba(28,45,68,.04);
+}
+
+.planning-recurrence-stats span,
+.planning-recurrence-stats small{
+  display:block;
+  color:#78869a;
+  font-size:8px;
+}
+
+.planning-recurrence-stats strong{
+  display:block;
+  margin:4px 0 2px;
+  color:#17263c;
+  font-size:23px;
+}
+
+.planning-recurrence-toolbar-panel{
+  margin-bottom:16px;
+}
+
+.planning-recurrence-toolbar{
+  display:grid;
+  grid-template-columns:minmax(260px,1fr) 145px 170px auto auto;
+  gap:8px;
+}
+
+.planning-recurrence-list{
+  display:grid;
+  gap:11px;
+}
+
+.planning-recurrence-card{
+  display:grid;
+  grid-template-columns:118px minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  border:1px solid #dce3eb;
+  border-left:4px solid #6f42c1;
+  border-radius:13px;
+  background:#fff;
+  padding:14px;
+}
+
+.planning-recurrence-card.paused{
+  border-left-color:#9aa4b1;
+  background:#fafbfc;
+  opacity:.85;
+}
+
+.planning-recurrence-card-code{
+  min-height:88px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  border-radius:11px;
+  background:#f4f0ff;
+  text-align:center;
+}
+
+.planning-recurrence-card.paused .planning-recurrence-card-code{
+  background:#f1f3f5;
+}
+
+.planning-recurrence-card-code>span{
+  font-size:20px;
+}
+
+.planning-recurrence-card-code>strong{
+  margin-top:4px;
+  color:#50319f;
+  font-size:10px;
+}
+
+.planning-recurrence-card.paused .planning-recurrence-card-code>strong{
+  color:#687484;
+}
+
+.planning-recurrence-card-code>small{
+  margin-top:4px;
+  color:#7d719b;
+  font-size:7px;
+  font-weight:900;
+}
+
+.planning-recurrence-card-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+
+.planning-recurrence-frequency,
+.planning-recurrence-status,
+.planning-ticket-recurring{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:4px 7px;
+  font-size:7px;
+  font-weight:900;
+}
+
+.planning-recurrence-frequency,
+.planning-ticket-recurring{
+  background:#eee9ff;
+  color:#5e37ba;
+}
+
+.planning-recurrence-status.active{
+  background:#e5f7ea;
+  color:#0c7833;
+}
+
+.planning-recurrence-status.paused{
+  background:#edf0f3;
+  color:#6f7986;
+}
+
+.planning-recurrence-card-main h4{
+  margin:7px 0 0;
+  color:#17263c;
+  font-size:14px;
+}
+
+.planning-recurrence-pattern{
+  margin:4px 0 0;
+  color:#5f3ab0;
+  font-size:9px;
+  font-weight:800;
+}
+
+.planning-recurrence-description{
+  margin:5px 0 0;
+  color:#6d7a8e;
+  font-size:8.5px;
+  line-height:1.45;
+}
+
+.planning-recurrence-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px 14px;
+  margin-top:9px;
+  color:#65748a;
+  font-size:8px;
+}
+
+.planning-recurrence-next{
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr;
+  gap:8px;
+  margin-top:10px;
+}
+
+.planning-recurrence-next>div{
+  border:1px solid #e2e6ec;
+  border-radius:8px;
+  background:#fafbfd;
+  padding:7px 9px;
+}
+
+.planning-recurrence-next span,
+.planning-recurrence-next strong{
+  display:block;
+}
+
+.planning-recurrence-next span{
+  color:#8490a1;
+  font-size:7px;
+}
+
+.planning-recurrence-next strong{
+  margin-top:3px;
+  color:#39475b;
+  font-size:8px;
+}
+
+.planning-recurrence-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:5px;
+  max-width:330px;
+}
+
+.planning-recurrence-modal-card{
+  width:min(1040px,calc(100vw - 24px))!important;
+  max-width:1040px!important;
+  max-height:94vh;
+  overflow:auto;
+}
+
+.planning-recurrence-form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.planning-recurrence-form-grid label>span{
+  color:#526179;
+  font-size:8px;
+  font-weight:800;
+}
+
+.planning-recurrence-form-grid input,
+.planning-recurrence-form-grid select,
+.planning-recurrence-form-grid textarea{
+  width:100%;
+  border:1px solid #ccd6e2;
+  border-radius:8px;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.planning-recurrence-rule-box{
+  border:1px solid #ddd6ef;
+  border-radius:11px;
+  background:#faf8ff;
+  padding:12px;
+}
+
+.planning-recurrence-rule-head strong{
+  display:block;
+  margin-top:4px;
+  color:#503f78;
+  font-size:9.5px;
+}
+
+.planning-recurrence-rule-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:9px;
+  margin-top:10px;
+}
+
+.planning-recurrence-weekdays{
+  margin-top:10px;
+}
+
+.planning-recurrence-weekdays>span{
+  display:block;
+  margin-bottom:6px;
+  color:#5d5276;
+  font-size:8px;
+  font-weight:800;
+}
+
+.planning-recurrence-weekdays>div{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.planning-recurrence-weekdays label{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:5px!important;
+  border:1px solid #ddd5ef;
+  border-radius:8px;
+  background:#fff;
+  padding:7px 9px;
+  cursor:pointer;
+}
+
+.planning-recurrence-weekdays input{
+  width:16px!important;
+  height:16px;
+  accent-color:#6a3fc7;
+}
+
+.planning-recurrence-weekdays span{
+  color:#5c5272!important;
+  font-size:8px!important;
+}
+
+.planning-recurrence-reminder-box{
+  border:1px solid #e5dcae;
+  border-radius:11px;
+  background:#fffdf6;
+  padding:12px;
+}
+
+.planning-recurrence-reminder-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+
+.planning-recurrence-reminder-head strong{
+  display:block;
+  margin-top:4px;
+  color:#4f4937;
+  font-size:9px;
+}
+
+.planning-recurrence-active-toggle{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center;
+  gap:10px!important;
+  border:1px solid #dce3eb;
+  border-radius:10px;
+  background:#f9fbfd;
+  padding:10px 12px;
+}
+
+.planning-recurrence-active-toggle input{
+  width:20px!important;
+  height:20px;
+  accent-color:#c00000;
+}
+
+.planning-recurrence-active-toggle strong,
+.planning-recurrence-active-toggle small{
+  display:block;
+}
+
+.planning-recurrence-active-toggle strong{
+  color:#34445a;
+  font-size:9px;
+}
+
+.planning-recurrence-active-toggle small{
+  margin-top:3px;
+  color:#7e8a9a;
+  font-size:7.5px;
+}
+
+@media(max-width:1250px){
+  .planning-recurrence-toolbar{
+    grid-template-columns:1fr 1fr 1fr;
+  }
+
+  .planning-recurrence-toolbar input{
+    grid-column:1/-1;
+  }
+
+  .planning-recurrence-card{
+    grid-template-columns:105px 1fr;
+  }
+
+  .planning-recurrence-card-actions{
+    grid-column:1/-1;
+    max-width:none;
+    justify-content:flex-start;
+  }
+}
+
+@media(max-width:800px){
+  .planning-recurrence-stats{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .planning-recurrence-toolbar{
+    grid-template-columns:1fr;
+  }
+
+  .planning-recurrence-toolbar input{
+    grid-column:auto;
+  }
+
+  .planning-recurrence-card{
+    grid-template-columns:1fr;
+  }
+
+  .planning-recurrence-card-actions{
+    grid-column:auto;
+  }
+
+  .planning-recurrence-card-code{
+    min-height:58px;
+  }
+
+  .planning-recurrence-next{
+    grid-template-columns:1fr;
+  }
+
+  .planning-recurrence-rule-grid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media(max-width:520px){
+  .planning-task-mode-tabs{
+    overflow-x:auto;
+  }
+
+  .planning-task-mode-tabs button{
+    white-space:nowrap;
+  }
+
+  .planning-recurrence-stats,
+  .planning-recurrence-rule-grid{
+    grid-template-columns:1fr;
+  }
+}

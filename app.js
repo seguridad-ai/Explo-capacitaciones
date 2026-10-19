@@ -36,10 +36,15 @@ let planningModuleTab = 'PROJECTS';
 let planningTaskRecords = [];
 let planningTaskHistory = [];
 let planningTaskFollowups = [];
+let planningRecurrences = [];
 let planningAssignableUsers = [];
 let planningTasksLoaded = false;
 let planningTaskPeriod = 'TODAY';
+let planningTaskMode = 'QUEUE';
 let activePlanningTaskId = null;
+let activePlanningRecurrenceId = null;
+let planningRecurrenceLastGeneration = 0;
+let planningRecurrenceTimer = null;
 
 let planningReminderPreferences = {
   sonido_habilitado:true,
@@ -591,10 +596,15 @@ function switchPlanningTab(tab) {
   const topButton=document.getElementById('planningNewProjectButton');
   if (topButton) {
     topButton.classList.remove('hidden');
-    topButton.textContent=projects?'＋ Nuevo proyecto':'＋ Nuevo pendiente';
+    topButton.textContent=projects
+      ? '＋ Nuevo proyecto'
+      : (planningTaskMode==='RECURRENCES'?'＋ Nueva recurrencia':'＋ Nuevo pendiente');
   }
 
-  if (!projects) loadPlanningTasksModule();
+  if (!projects) {
+    loadPlanningTasksModule();
+    switchPlanningTaskMode(planningTaskMode);
+  }
 }
 
 function openPlanningProjectModal(project=null) {
@@ -1540,6 +1550,7 @@ function renderPlanningTaskList() {
               <div class="planning-ticket-badges">
                 <span class="planning-ticket-priority ${String(task.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(task.prioridad))}</span>
                 <span class="planning-ticket-status ${String(task.estado||'').toLowerCase()}">${escapeHtml(planningTaskStatusLabel(task.estado))}</span>
+                ${task.recurrencia_id?'<span class="planning-ticket-recurring">↻ Recurrente</span>':''}
                 <span class="planning-ticket-situation ${situation.code.toLowerCase()}">${escapeHtml(situation.label)}</span>
               </div>
               <h4>${escapeHtml(task.titulo || 'Pendiente')}</h4>
@@ -1624,10 +1635,14 @@ async function loadPlanningTasksModule(force=false) {
     renderPlanningNextTask();
     renderPlanningTaskList();
     renderPlanningFollowupQueue();
+    updatePlanningRecurrenceStats();
+    renderPlanningRecurrenceList();
     return;
   }
 
-  const [tasks,history,followups,users]=await Promise.all([
+  await ensurePlanningRecurrenceTickets(force);
+
+  const [tasks,history,followups,recurrences,users]=await Promise.all([
     client.from('planificacion_pendientes')
       .select('*')
       .order('fecha_objetivo',{ascending:true})
@@ -1638,10 +1653,13 @@ async function loadPlanningTasksModule(force=false) {
     client.from('planificacion_pendiente_seguimientos')
       .select('*')
       .order('created_at',{ascending:false}),
+    client.from('planificacion_recurrencias')
+      .select('*')
+      .order('created_at',{ascending:false}),
     client.rpc('planificacion_usuarios_asignables')
   ]);
 
-  const error=tasks.error || history.error || followups.error || users.error;
+  const error=tasks.error || history.error || followups.error || recurrences.error || users.error;
   if (error) {
     console.error(error);
     planningMessage(
@@ -1653,6 +1671,7 @@ async function loadPlanningTasksModule(force=false) {
   planningTaskRecords=tasks.data || [];
   planningTaskHistory=history.data || [];
   planningTaskFollowups=followups.data || [];
+  planningRecurrences=recurrences.data || [];
   planningAssignableUsers=users.data || [];
   planningTasksLoaded=true;
 
@@ -1660,6 +1679,8 @@ async function loadPlanningTasksModule(force=false) {
   renderPlanningNextTask();
   renderPlanningTaskList();
   renderPlanningFollowupQueue();
+  updatePlanningRecurrenceStats();
+  renderPlanningRecurrenceList();
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -2071,8 +2092,10 @@ async function attendNextPlanningTask() {
 document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
 document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
-  if (planningModuleTab==='TASKS') openPlanningTaskModal();
-  else openPlanningProjectModal();
+  if (planningModuleTab==='TASKS') {
+    if (planningTaskMode==='RECURRENCES') openPlanningRecurrenceModal();
+    else openPlanningTaskModal();
+  } else openPlanningProjectModal();
 });
 document.getElementById('planningProjectForm')?.addEventListener('submit',savePlanningProject);
 document.getElementById('planningProjectModalClose')?.addEventListener('click',closePlanningProjectModal);
@@ -2098,6 +2121,663 @@ document.getElementById('planningCategoryFilter')?.addEventListener('change',ren
 document.getElementById('planningYearFilter')?.addEventListener('change',renderPlanningProjectList);
 document.getElementById('planningRefreshButton')?.addEventListener('click',()=>{planningLoaded=false;loadPlanningModule(true);});
 
+
+
+// ============================================================
+// ETAPA 17C.3 · RECURRENCIAS DE PENDIENTES
+// ============================================================
+
+async function ensurePlanningRecurrenceTickets(force=false) {
+  if (!client || !currentProfile?.id) return;
+
+  const now=Date.now();
+  if (!force && planningRecurrenceLastGeneration && now-planningRecurrenceLastGeneration<5*60*1000) return;
+
+  const {data,error}=await client.rpc('generar_planificacion_pendientes_recurrentes');
+  if (error) {
+    console.warn('No fue posible procesar recurrencias:',error);
+    return;
+  }
+
+  planningRecurrenceLastGeneration=now;
+
+  if (Number(data?.insertados || 0)>0) {
+    planningTasksLoaded=false;
+  }
+}
+
+function switchPlanningTaskMode(mode) {
+  planningTaskMode=mode==='RECURRENCES'?'RECURRENCES':'QUEUE';
+  const queue=planningTaskMode==='QUEUE';
+
+  document.querySelectorAll('[data-planning-task-mode]').forEach(button=>{
+    button.classList.toggle('active',button.dataset.planningTaskMode===planningTaskMode);
+  });
+
+  document.getElementById('planningTaskQueueView')?.classList.toggle('hidden',!queue);
+  document.getElementById('planningRecurrenceView')?.classList.toggle('hidden',queue);
+
+  const topButton=document.getElementById('planningNewProjectButton');
+  if (topButton && planningModuleTab==='TASKS') {
+    topButton.textContent=queue?'＋ Nuevo pendiente':'＋ Nueva recurrencia';
+  }
+
+  if (!queue) {
+    updatePlanningRecurrenceStats();
+    renderPlanningRecurrenceList();
+  }
+}
+
+function planningRecurrenceFormMessage(message='',type='error') {
+  const el=document.getElementById('planningRecurrenceFormMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningRecurrenceCanManage(row) {
+  if (!row || !currentProfile) return false;
+  if (currentProfile.rol_codigo==='ADMIN') return true;
+  return row.created_by===currentProfile.id;
+}
+
+function planningRecurrenceFrequencyLabel(value) {
+  return {
+    DIARIA:'Diaria',
+    SEMANAL:'Semanal',
+    MENSUAL:'Mensual',
+    TRIMESTRAL:'Trimestral',
+    ANUAL:'Anual',
+    PERSONALIZADA:'Personalizada'
+  }[value] || value || '—';
+}
+
+function planningRecurrenceWeekdayLabel(value) {
+  return {1:'Lun',2:'Mar',3:'Mié',4:'Jue',5:'Vie',6:'Sáb',7:'Dom'}[Number(value)] || '';
+}
+
+function planningRecurrencePatternLabel(row) {
+  if (!row) return '—';
+
+  const interval=Math.max(1,Number(row.intervalo || 1));
+  const days=Array.isArray(row.dias_semana) ? row.dias_semana.map(Number).sort((a,b)=>a-b) : [];
+  const dayNames=days.map(planningRecurrenceWeekdayLabel).filter(Boolean).join(', ');
+  const dayMonth=Number(row.dia_mes || planningParseDate(row.fecha_inicio)?.getDate() || 1);
+
+  if (row.frecuencia==='DIARIA') {
+    return interval===1?'Todos los días':`Cada ${interval} días`;
+  }
+
+  if (row.frecuencia==='SEMANAL') {
+    const base=interval===1?'Cada semana':`Cada ${interval} semanas`;
+    return `${base}${dayNames?` · ${dayNames}`:''}`;
+  }
+
+  if (row.frecuencia==='MENSUAL') {
+    const base=interval===1?'Cada mes':`Cada ${interval} meses`;
+    return `${base} · día ${dayMonth}`;
+  }
+
+  if (row.frecuencia==='TRIMESTRAL') {
+    return `${interval===1?'Cada trimestre':`Cada ${interval} trimestres`} · día ${dayMonth}`;
+  }
+
+  if (row.frecuencia==='ANUAL') {
+    const date=planningParseDate(row.fecha_inicio);
+    const when=date
+      ? date.toLocaleDateString('es-PE',{day:'2-digit',month:'long'})
+      : 'fecha de inicio';
+    return `${interval===1?'Cada año':`Cada ${interval} años`} · ${when}`;
+  }
+
+  if (row.frecuencia==='PERSONALIZADA') {
+    const unit=row.personalizada_unidad || 'DIAS';
+    if (unit==='DIAS') return `Cada ${interval} día${interval===1?'':'s'}`;
+    if (unit==='SEMANAS') return `Cada ${interval} semana${interval===1?'':'s'}${dayNames?` · ${dayNames}`:''}`;
+    return `Cada ${interval} mes${interval===1?'':'es'} · día ${dayMonth}`;
+  }
+
+  return planningRecurrenceFrequencyLabel(row.frecuencia);
+}
+
+function planningRecurrenceGeneratedTasks(id) {
+  return planningTaskRecords.filter(task=>task.recurrencia_id===id);
+}
+
+function planningRecurrenceNextTask(row) {
+  const today=planningIsoDate(new Date());
+  return planningRecurrenceGeneratedTasks(row.id)
+    .filter(task=>task.fecha_recurrencia && task.fecha_recurrencia>=today && !['COMPLETADO','CANCELADO'].includes(task.estado))
+    .sort((a,b)=>String(a.fecha_recurrencia).localeCompare(String(b.fecha_recurrencia)))[0] || null;
+}
+
+function updatePlanningRecurrenceStats() {
+  const active=planningRecurrences.filter(x=>x.activo).length;
+  const paused=planningRecurrences.length-active;
+  const today=planningParseDate(planningIsoDate(new Date()));
+  const next7=planningAddDays(today,7);
+
+  const future7=planningTaskRecords.filter(task=>{
+    if (!task.recurrencia_id || !task.fecha_recurrencia) return false;
+    const d=planningParseDate(task.fecha_recurrencia);
+    return d && d>=today && d<=next7 && !['CANCELADO'].includes(task.estado);
+  }).length;
+
+  const generated=planningTaskRecords.filter(task=>!!task.recurrencia_id).length;
+
+  const values={
+    planningRecurrenceActiveCount:active,
+    planningRecurrencePausedCount:paused,
+    planningRecurrenceNextWeekCount:future7,
+    planningRecurrenceGeneratedCount:generated
+  };
+
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderPlanningRecurrenceList() {
+  const container=document.getElementById('planningRecurrenceList');
+  if (!container) return;
+
+  const q=(document.getElementById('planningRecurrenceSearch')?.value || '').trim().toLowerCase();
+  const status=document.getElementById('planningRecurrenceStatusFilter')?.value || 'ALL';
+  const frequency=document.getElementById('planningRecurrenceFrequencyFilter')?.value || 'ALL';
+
+  let rows=planningRecurrences.filter(row=>{
+    if (status==='ACTIVE' && !row.activo) return false;
+    if (status==='PAUSED' && row.activo) return false;
+    if (frequency!=='ALL' && row.frecuencia!==frequency) return false;
+
+    const hay=[
+      row.codigo,row.titulo,row.descripcion,row.responsable_nombre,
+      planningRecurrencePatternLabel(row),
+      row.proyecto_id?planningOperationalProjectName(row.proyecto_id):'',
+      row.planificacion_proyecto_id?planningTaskPlanningProjectName({planificacion_proyecto_id:row.planificacion_proyecto_id}):''
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  const count=document.getElementById('planningRecurrenceResultCount');
+  if (count) count.textContent=`${rows.length} recurrencia${rows.length===1?'':'s'}`;
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No se encontraron recurrencias.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(row=>{
+    const canManage=planningRecurrenceCanManage(row);
+    const generated=planningRecurrenceGeneratedTasks(row.id);
+    const next=planningRecurrenceNextTask(row);
+    const project=row.proyecto_id?planningOperationalProjectName(row.proyecto_id):'Corporativo / sin proyecto';
+    const statusClass=row.activo?'active':'paused';
+
+    return `
+      <article class="planning-recurrence-card ${statusClass}">
+        <div class="planning-recurrence-card-code">
+          <span>↻</span>
+          <strong>${escapeHtml(row.codigo || 'REC')}</strong>
+          <small>${row.activo?'ACTIVA':'PAUSADA'}</small>
+        </div>
+
+        <div class="planning-recurrence-card-main">
+          <div class="planning-recurrence-card-badges">
+            <span class="planning-ticket-priority ${String(row.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(row.prioridad))}</span>
+            <span class="planning-recurrence-frequency">${escapeHtml(planningRecurrenceFrequencyLabel(row.frecuencia))}</span>
+            <span class="planning-recurrence-status ${statusClass}">${row.activo?'ACTIVA':'PAUSADA'}</span>
+          </div>
+          <h4>${escapeHtml(row.titulo || 'Recurrencia')}</h4>
+          <p class="planning-recurrence-pattern">${escapeHtml(planningRecurrencePatternLabel(row))}</p>
+          ${row.descripcion?`<p class="planning-recurrence-description">${escapeHtml(row.descripcion)}</p>`:''}
+
+          <div class="planning-recurrence-meta">
+            <span>Responsable: <strong>${escapeHtml(row.responsable_nombre || '—')}</strong></span>
+            <span>Inicio: <strong>${escapeHtml(formatDatePE(row.fecha_inicio))}</strong></span>
+            ${row.fecha_fin?`<span>Fin: <strong>${escapeHtml(formatDatePE(row.fecha_fin))}</strong></span>`:''}
+            <span>Hora: <strong>${escapeHtml(String(row.hora_objetivo || '23:59').slice(0,5))}</strong></span>
+            <span>${escapeHtml(project)}</span>
+          </div>
+
+          <div class="planning-recurrence-next">
+            <div><span>Próximo ticket</span><strong>${next?`${escapeHtml(formatDatePE(next.fecha_objetivo || next.fecha_recurrencia))}${next.hora_objetivo?` · ${escapeHtml(String(next.hora_objetivo).slice(0,5))}`:''}`:'Sin próxima ocurrencia generada'}</strong></div>
+            <div><span>Tickets generados</span><strong>${generated.length}</strong></div>
+            <div><span>Anticipación</span><strong>${Number(row.anticipacion_dias||0)} día(s)</strong></div>
+          </div>
+        </div>
+
+        <div class="planning-recurrence-card-actions">
+          ${canManage?`<button class="secondary-btn small-btn" type="button" data-recurrence-edit="${row.id}">Editar</button>`:''}
+          ${canManage?`<button class="secondary-btn small-btn" type="button" data-recurrence-regenerate="${row.id}">Actualizar próximos</button>`:''}
+          ${canManage?`<button class="${row.activo?'task-action-wait':'task-action-start'}" type="button" data-recurrence-toggle="${row.id}">${row.activo?'Pausar':'Reactivar'}</button>`:''}
+          ${canManage?`<button class="induction-delete-btn small-btn" type="button" data-recurrence-delete="${row.id}">Eliminar</button>`:''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-recurrence-edit]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningRecurrenceModal(
+      planningRecurrences.find(x=>x.id===button.dataset.recurrenceEdit)
+    ));
+  });
+
+  container.querySelectorAll('[data-recurrence-regenerate]').forEach(button=>{
+    button.addEventListener('click',()=>regeneratePlanningRecurrence(button.dataset.recurrenceRegenerate));
+  });
+
+  container.querySelectorAll('[data-recurrence-toggle]').forEach(button=>{
+    button.addEventListener('click',()=>togglePlanningRecurrence(button.dataset.recurrenceToggle));
+  });
+
+  container.querySelectorAll('[data-recurrence-delete]').forEach(button=>{
+    button.addEventListener('click',()=>deletePlanningRecurrence(button.dataset.recurrenceDelete));
+  });
+}
+
+function populatePlanningRecurrenceAssignees(selectedId=null,responsibleName='') {
+  const select=document.getElementById('planningRecurrenceAssignee');
+  if (!select) return;
+
+  const me=planningAssignableUsers.find(x=>x.id===currentProfile?.id);
+  const rows=planningAssignableUsers
+    .filter(x=>x.id!==currentProfile?.id)
+    .map(x=>`<option value="${x.id}">${escapeHtml(x.nombre || 'Usuario')}${x.cargo?` · ${escapeHtml(x.cargo)}`:''}</option>`)
+    .join('');
+
+  select.innerHTML=
+    `${currentProfile?.id?`<option value="${currentProfile.id}">Yo mismo${me?.nombre?` · ${escapeHtml(me.nombre)}`:''}</option>`:''}`+
+    rows+
+    '<option value="MANUAL">Responsable sin usuario del sistema</option>';
+
+  if (selectedId && [...select.options].some(o=>o.value===selectedId)) {
+    select.value=selectedId;
+  } else if (!selectedId && responsibleName && currentProfile && responsibleName!==planningProfileDisplayName(currentProfile)) {
+    select.value='MANUAL';
+  } else if (currentProfile?.id) {
+    select.value=currentProfile.id;
+  } else {
+    select.value='MANUAL';
+  }
+
+  document.getElementById('planningRecurrenceAssigneeManual').value=
+    select.value==='MANUAL' ? (responsibleName || '') : '';
+  togglePlanningRecurrenceManualAssignee();
+}
+
+function togglePlanningRecurrenceManualAssignee() {
+  const manual=document.getElementById('planningRecurrenceAssignee')?.value==='MANUAL';
+  document.getElementById('planningRecurrenceManualAssigneeField')?.classList.toggle('hidden',!manual);
+}
+
+function selectedPlanningRecurrenceAssignee() {
+  const value=document.getElementById('planningRecurrenceAssignee')?.value || 'MANUAL';
+  if (value==='MANUAL') {
+    return {id:null,name:document.getElementById('planningRecurrenceAssigneeManual')?.value.trim() || ''};
+  }
+
+  const user=planningAssignableUsers.find(x=>x.id===value);
+  if (user) return {id:user.id,name:user.nombre || 'Usuario'};
+  if (value===currentProfile?.id) return {id:currentProfile.id,name:planningProfileDisplayName(currentProfile) || 'Usuario'};
+  return {id:null,name:''};
+}
+
+function populatePlanningRecurrenceProjects() {
+  const operational=document.getElementById('planningRecurrenceOperationalProject');
+  const planning=document.getElementById('planningRecurrencePlanningProject');
+  if (operational) {
+    const current=operational.value;
+    operational.innerHTML='<option value="">Ninguno / corporativo</option>'+
+      planningOperationalProjects.filter(x=>x.activo!==false).map(row=>
+        `<option value="${row.id}">${escapeHtml(row.nombre)}${row.cliente?` · ${escapeHtml(row.cliente)}`:''}</option>`
+      ).join('');
+    if ([...operational.options].some(o=>o.value===current)) operational.value=current;
+  }
+
+  if (planning) {
+    const current=planning.value;
+    planning.innerHTML='<option value="">Ninguno</option>'+
+      planningProjects.filter(x=>x.estado!=='CANCELADO').map(row=>
+        `<option value="${row.id}">${escapeHtml(row.codigo || '')} · ${escapeHtml(row.nombre)}</option>`
+      ).join('');
+    if ([...planning.options].some(o=>o.value===current)) planning.value=current;
+  }
+}
+
+function populatePlanningRecurrenceActivities(projectId,selectedId=null) {
+  const select=document.getElementById('planningRecurrencePlanningActivity');
+  if (!select) return;
+  const rows=projectId ? planningActivitiesFor(projectId).filter(x=>x.estado!=='CANCELADO') : [];
+  select.innerHTML='<option value="">Ninguna</option>'+rows.map(row=>
+    `<option value="${row.id}">${row.tipo==='HITO'?'◆ ':''}${escapeHtml(row.nombre)}</option>`
+  ).join('');
+  if (selectedId && [...select.options].some(o=>o.value===selectedId)) select.value=selectedId;
+}
+
+function selectedPlanningRecurrenceWeekdays() {
+  return [...document.querySelectorAll('#planningRecurrenceWeekdays input[type="checkbox"]:checked')]
+    .map(input=>Number(input.value))
+    .filter(x=>x>=1 && x<=7);
+}
+
+function setPlanningRecurrenceWeekdays(days=[]) {
+  const selected=(Array.isArray(days)?days:[]).map(Number);
+  document.querySelectorAll('#planningRecurrenceWeekdays input[type="checkbox"]').forEach(input=>{
+    input.checked=selected.includes(Number(input.value));
+  });
+}
+
+function planningRecurrenceFormPattern() {
+  return {
+    frecuencia:document.getElementById('planningRecurrenceFrequency')?.value || 'MENSUAL',
+    intervalo:Number(document.getElementById('planningRecurrenceInterval')?.value || 1),
+    personalizada_unidad:document.getElementById('planningRecurrenceCustomUnit')?.value || null,
+    dias_semana:selectedPlanningRecurrenceWeekdays(),
+    dia_mes:Number(document.getElementById('planningRecurrenceMonthDay')?.value || 1),
+    fecha_inicio:document.getElementById('planningRecurrenceStartDate')?.value || planningIsoDate(new Date())
+  };
+}
+
+function updatePlanningRecurrenceRuleFields() {
+  const frequency=document.getElementById('planningRecurrenceFrequency')?.value || 'MENSUAL';
+  const unit=document.getElementById('planningRecurrenceCustomUnit')?.value || 'DIAS';
+  const weekly=frequency==='SEMANAL' || (frequency==='PERSONALIZADA' && unit==='SEMANAS');
+  const monthly=['MENSUAL','TRIMESTRAL'].includes(frequency) || (frequency==='PERSONALIZADA' && unit==='MESES');
+  const custom=frequency==='PERSONALIZADA';
+
+  document.getElementById('planningRecurrenceCustomUnitField')?.classList.toggle('hidden',!custom);
+  document.getElementById('planningRecurrenceWeekdays')?.classList.toggle('hidden',!weekly);
+  document.getElementById('planningRecurrenceMonthDayField')?.classList.toggle('hidden',!monthly);
+
+  if (weekly && !selectedPlanningRecurrenceWeekdays().length) {
+    const start=planningParseDate(document.getElementById('planningRecurrenceStartDate')?.value || planningIsoDate(new Date()));
+    if (start) {
+      const jsDay=start.getDay();
+      const isoDay=jsDay===0?7:jsDay;
+      const input=document.querySelector(`#planningRecurrenceWeekdays input[value="${isoDay}"]`);
+      if (input) input.checked=true;
+    }
+  }
+
+  const preview=document.getElementById('planningRecurrenceRulePreview');
+  if (preview) preview.textContent=planningRecurrencePatternLabel(planningRecurrenceFormPattern());
+}
+
+function updatePlanningRecurrenceReminderOptions() {
+  const enabled=document.getElementById('planningRecurrenceRemindersEnabled')?.checked ?? true;
+  const box=document.getElementById('planningRecurrenceReminderOptions');
+  box?.classList.toggle('disabled',!enabled);
+  box?.querySelectorAll('input').forEach(input=>{input.disabled=!enabled;});
+}
+
+function syncPlanningRecurrenceFromActivity() {
+  const id=document.getElementById('planningRecurrencePlanningActivity')?.value;
+  const activity=planningActivities.find(x=>x.id===id);
+  if (!activity) return;
+
+  const title=document.getElementById('planningRecurrenceTitle');
+  if (title && !title.value.trim()) title.value=activity.nombre || '';
+  document.getElementById('planningRecurrenceOrigin').value='GANTT';
+
+  if (activity.responsable_nombre) {
+    const match=planningAssignableUsers.find(x=>
+      String(x.nombre || '').trim().toLowerCase()===String(activity.responsable_nombre || '').trim().toLowerCase()
+    );
+    if (match) document.getElementById('planningRecurrenceAssignee').value=match.id;
+    else {
+      document.getElementById('planningRecurrenceAssignee').value='MANUAL';
+      document.getElementById('planningRecurrenceAssigneeManual').value=activity.responsable_nombre;
+    }
+    togglePlanningRecurrenceManualAssignee();
+  }
+}
+
+function openPlanningRecurrenceModal(row=null) {
+  activePlanningRecurrenceId=row?.id || null;
+  planningRecurrenceFormMessage('');
+  populatePlanningRecurrenceProjects();
+
+  document.getElementById('planningRecurrenceId').value=row?.id || '';
+  document.getElementById('planningRecurrenceModalTitle').textContent=row?'Editar recurrencia':'Nueva recurrencia';
+  document.getElementById('planningRecurrenceModalSubtitle').textContent=row
+    ? `${row.codigo || ''} · ${row.activo?'ACTIVA':'PAUSADA'}`
+    : 'Define una tarea que se generará automáticamente.';
+
+  document.getElementById('planningRecurrenceTitle').value=row?.titulo || '';
+  document.getElementById('planningRecurrenceCategory').value=row?.categoria || 'SIG';
+  document.getElementById('planningRecurrenceOrigin').value=row?.origen || 'PERSONAL';
+  document.getElementById('planningRecurrencePriority').value=row?.prioridad || 'MEDIA';
+  populatePlanningRecurrenceAssignees(row?.asignado_a_profile_id || null,row?.responsable_nombre || '');
+
+  document.getElementById('planningRecurrenceFrequency').value=row?.frecuencia || 'MENSUAL';
+  document.getElementById('planningRecurrenceInterval').value=String(row?.intervalo || 1);
+  document.getElementById('planningRecurrenceCustomUnit').value=row?.personalizada_unidad || 'DIAS';
+  document.getElementById('planningRecurrenceMonthDay').value=String(row?.dia_mes || planningParseDate(row?.fecha_inicio || planningIsoDate(new Date()))?.getDate() || 1);
+  setPlanningRecurrenceWeekdays(row?.dias_semana || []);
+
+  const today=planningIsoDate(new Date());
+  document.getElementById('planningRecurrenceStartDate').value=row?.fecha_inicio || today;
+  document.getElementById('planningRecurrenceEndDate').value=row?.fecha_fin || '';
+  document.getElementById('planningRecurrenceDueTime').value=row?.hora_objetivo ? String(row.hora_objetivo).slice(0,5) : '09:00';
+  document.getElementById('planningRecurrenceLeadDays').value=String(row?.anticipacion_dias ?? 7);
+
+  document.getElementById('planningRecurrenceOperationalProject').value=row?.proyecto_id || '';
+  document.getElementById('planningRecurrencePlanningProject').value=row?.planificacion_proyecto_id || '';
+  populatePlanningRecurrenceActivities(row?.planificacion_proyecto_id || '',row?.planificacion_actividad_id || null);
+
+  const reminders=Array.isArray(row?.recordatorios_minutos)
+    ? row.recordatorios_minutos.map(Number)
+    : [...(planningReminderPreferences.minutos_default || [60,30,10,0])];
+  document.getElementById('planningRecurrenceRemindersEnabled').checked=row?.recordatorios_habilitados ?? true;
+  [60,30,10,0].forEach(minutes=>{
+    const el=document.getElementById(`planningRecurrenceReminder${minutes}`);
+    if (el) el.checked=reminders.includes(minutes);
+  });
+  updatePlanningRecurrenceReminderOptions();
+
+  document.getElementById('planningRecurrenceDescription').value=row?.descripcion || '';
+  document.getElementById('planningRecurrenceActive').checked=row?.activo ?? true;
+  document.getElementById('planningRecurrenceDeleteButton')?.classList.toggle('hidden',!row || !planningRecurrenceCanManage(row));
+
+  const canManage=row?planningRecurrenceCanManage(row):true;
+  document.querySelectorAll('#planningRecurrenceForm input,#planningRecurrenceForm textarea,#planningRecurrenceForm select').forEach(el=>{
+    if (el.id!=='planningRecurrenceId') el.disabled=!canManage;
+  });
+  document.getElementById('planningRecurrenceSave')?.classList.toggle('hidden',!canManage);
+
+  updatePlanningRecurrenceRuleFields();
+
+  const modal=document.getElementById('planningRecurrenceModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningRecurrenceModal() {
+  document.getElementById('planningRecurrenceModal')?.classList.add('hidden');
+  document.getElementById('planningRecurrenceModal')?.setAttribute('aria-hidden','true');
+  activePlanningRecurrenceId=null;
+  document.body.classList.remove('modal-open');
+}
+
+async function savePlanningRecurrence(event) {
+  event.preventDefault();
+  planningRecurrenceFormMessage('');
+
+  const id=document.getElementById('planningRecurrenceId').value || null;
+  const assignee=selectedPlanningRecurrenceAssignee();
+  const frequency=document.getElementById('planningRecurrenceFrequency').value;
+  const customUnit=document.getElementById('planningRecurrenceCustomUnit').value;
+  const weekdays=selectedPlanningRecurrenceWeekdays();
+  const needsWeekdays=frequency==='SEMANAL' || (frequency==='PERSONALIZADA' && customUnit==='SEMANAS');
+  const needsMonthDay=['MENSUAL','TRIMESTRAL'].includes(frequency) || (frequency==='PERSONALIZADA' && customUnit==='MESES');
+
+  const payload={
+    titulo:document.getElementById('planningRecurrenceTitle').value.trim(),
+    descripcion:document.getElementById('planningRecurrenceDescription').value.trim() || null,
+    categoria:document.getElementById('planningRecurrenceCategory').value,
+    origen:document.getElementById('planningRecurrenceOrigin').value,
+    prioridad:document.getElementById('planningRecurrencePriority').value,
+    asignado_a_profile_id:assignee.id,
+    responsable_nombre:assignee.name,
+    proyecto_id:document.getElementById('planningRecurrenceOperationalProject').value || null,
+    planificacion_proyecto_id:document.getElementById('planningRecurrencePlanningProject').value || null,
+    planificacion_actividad_id:document.getElementById('planningRecurrencePlanningActivity').value || null,
+    frecuencia:frequency,
+    intervalo:Math.max(1,Number(document.getElementById('planningRecurrenceInterval').value || 1)),
+    personalizada_unidad:frequency==='PERSONALIZADA'?customUnit:null,
+    dias_semana:needsWeekdays?weekdays:[],
+    dia_mes:needsMonthDay?Math.min(31,Math.max(1,Number(document.getElementById('planningRecurrenceMonthDay').value || 1))):null,
+    fecha_inicio:document.getElementById('planningRecurrenceStartDate').value,
+    fecha_fin:document.getElementById('planningRecurrenceEndDate').value || null,
+    hora_objetivo:document.getElementById('planningRecurrenceDueTime').value || null,
+    anticipacion_dias:Number(document.getElementById('planningRecurrenceLeadDays').value || 0),
+    recordatorios_habilitados:document.getElementById('planningRecurrenceRemindersEnabled').checked,
+    recordatorios_minutos:[60,30,10,0].filter(minutes=>document.getElementById(`planningRecurrenceReminder${minutes}`)?.checked),
+    activo:document.getElementById('planningRecurrenceActive').checked
+  };
+
+  if (!payload.titulo || !payload.responsable_nombre || !payload.fecha_inicio) {
+    planningRecurrenceFormMessage('Completa tarea recurrente, responsable y fecha de inicio.');
+    return;
+  }
+
+  if (needsWeekdays && !weekdays.length) {
+    planningRecurrenceFormMessage('Selecciona al menos un día de la semana.');
+    return;
+  }
+
+  if (payload.fecha_fin && payload.fecha_fin<payload.fecha_inicio) {
+    planningRecurrenceFormMessage('La fecha de término no puede ser anterior a la fecha de inicio.');
+    return;
+  }
+
+  const button=document.getElementById('planningRecurrenceSave');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const result=id
+    ? await client.from('planificacion_recurrencias').update(payload).eq('id',id).select().single()
+    : await client.from('planificacion_recurrencias').insert({...payload,created_by:currentProfile?.id || undefined}).select().single();
+
+  if (result.error) {
+    button.disabled=false;
+    button.textContent=old;
+    console.error(result.error);
+    planningRecurrenceFormMessage(result.error.message || 'No fue posible guardar la recurrencia.');
+    return;
+  }
+
+  const saved=result.data;
+  const rpc=id?'regenerar_planificacion_recurrencia':'generar_planificacion_recurrencia';
+  const args=id ? {p_recurrencia_id:saved.id} : {p_recurrencia_id:saved.id,p_hasta:null};
+  const generated=await client.rpc(rpc,args);
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (generated.error || generated.data?.ok===false) {
+    console.warn('Recurrencia guardada, pero no fue posible generar próximos tickets:',generated.error || generated.data);
+  }
+
+  closePlanningRecurrenceModal();
+  planningTasksLoaded=false;
+  planningRecurrenceLastGeneration=0;
+  await loadPlanningTasksModule(true);
+  switchPlanningTaskMode('RECURRENCES');
+  planningMessage(id?'Recurrencia actualizada y próximos tickets sincronizados.':'Recurrencia creada y tickets programados.','success');
+}
+
+async function regeneratePlanningRecurrence(id) {
+  const row=planningRecurrences.find(x=>x.id===id);
+  if (!row || !planningRecurrenceCanManage(row)) return;
+
+  const {data,error}=await client.rpc('regenerar_planificacion_recurrencia',{p_recurrencia_id:id});
+  if (error || data?.ok===false) {
+    planningMessage(data?.error || error?.message || 'No fue posible actualizar los próximos tickets.');
+    return;
+  }
+
+  planningTasksLoaded=false;
+  planningRecurrenceLastGeneration=Date.now();
+  await loadPlanningTasksModule(true);
+  switchPlanningTaskMode('RECURRENCES');
+  planningMessage(`Próximos tickets actualizados: ${Number(data?.insertados || 0)} generado(s).`,'success');
+}
+
+async function togglePlanningRecurrence(id) {
+  const row=planningRecurrences.find(x=>x.id===id);
+  if (!row || !planningRecurrenceCanManage(row)) return;
+
+  const next=!row.activo;
+  const action=next?'reactivar':'pausar';
+  if (!confirm(`¿${action.charAt(0).toUpperCase()+action.slice(1)} ${row.codigo || 'esta recurrencia'}?`)) return;
+
+  const {error}=await client.from('planificacion_recurrencias').update({activo:next}).eq('id',id);
+  if (error) {
+    planningMessage(error.message || `No fue posible ${action} la recurrencia.`);
+    return;
+  }
+
+  const synced=await client.rpc('regenerar_planificacion_recurrencia',{p_recurrencia_id:id});
+  if (synced.error) console.warn(synced.error);
+
+  planningTasksLoaded=false;
+  planningRecurrenceLastGeneration=0;
+  await loadPlanningTasksModule(true);
+  switchPlanningTaskMode('RECURRENCES');
+  planningMessage(next?'Recurrencia reactivada.':'Recurrencia pausada; no se generarán nuevos tickets.','success');
+}
+
+async function generatePlanningRecurrencesNow() {
+  const button=document.getElementById('planningRecurrenceGenerateButton');
+  const old=button?.textContent;
+  if (button) {button.disabled=true;button.textContent='Generando…';}
+
+  planningRecurrenceLastGeneration=0;
+  const {data,error}=await client.rpc('generar_planificacion_pendientes_recurrentes');
+
+  if (button) {button.disabled=false;button.textContent=old || '↻ Generar ahora';}
+
+  if (error || data?.ok===false) {
+    planningMessage(data?.error || error?.message || 'No fue posible procesar las recurrencias.');
+    return;
+  }
+
+  planningRecurrenceLastGeneration=Date.now();
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  switchPlanningTaskMode('RECURRENCES');
+  planningMessage(`Recurrencias procesadas. ${Number(data?.insertados || 0)} ticket(s) nuevo(s).`,'success');
+}
+
+async function deletePlanningRecurrence(id) {
+  const row=planningRecurrences.find(x=>x.id===id);
+  if (!row || !planningRecurrenceCanManage(row)) return;
+
+  if (!confirm(
+    `¿Eliminar ${row.codigo || 'esta recurrencia'}?\n\n`+
+    `${row.titulo}\n\n`+
+    'Los tickets históricos se conservarán. Los próximos tickets pendientes de esta regla serán retirados.'
+  )) return;
+
+  const {data,error}=await client.rpc('eliminar_planificacion_recurrencia',{p_recurrencia_id:id});
+  if (error || data?.ok===false) {
+    planningMessage(data?.error || error?.message || 'No fue posible eliminar la recurrencia.');
+    return;
+  }
+
+  closePlanningRecurrenceModal();
+  planningTasksLoaded=false;
+  planningRecurrenceLastGeneration=0;
+  await loadPlanningTasksModule(true);
+  switchPlanningTaskMode('RECURRENCES');
+  planningMessage('Recurrencia eliminada. Los tickets históricos se conservaron.','success');
+}
 
 
 // ============================================================
@@ -2752,6 +3432,7 @@ async function initializePlanningReminderEngine() {
   if (planningReminderInitialized || !client || !currentProfile?.id) return;
   planningReminderInitialized=true;
 
+  await ensurePlanningRecurrenceTickets();
   await loadPlanningReminderPreferences();
 
   const unlock=()=>{
@@ -2765,6 +3446,9 @@ async function initializePlanningReminderEngine() {
 
   if (planningReminderTimer) clearInterval(planningReminderTimer);
   planningReminderTimer=setInterval(checkPlanningReminders,30000);
+
+  if (planningRecurrenceTimer) clearInterval(planningRecurrenceTimer);
+  planningRecurrenceTimer=setInterval(()=>ensurePlanningRecurrenceTickets(),5*60*1000);
 
   document.addEventListener('visibilitychange',()=>{
     if (document.visibilityState==='visible') checkPlanningReminders();
@@ -2803,6 +3487,51 @@ document.getElementById('planningBrowserNotificationButton')?.addEventListener('
 document.getElementById('planningReminderDismissButton')?.addEventListener('click',()=>closeActivePlanningReminder());
 document.getElementById('planningReminderSnoozeButton')?.addEventListener('click',snoozePlanningReminder);
 document.getElementById('planningReminderAttendButton')?.addEventListener('click',()=>attendPlanningReminder());
+
+// Eventos 17C.3
+document.querySelectorAll('[data-planning-task-mode]').forEach(button=>{
+  button.addEventListener('click',()=>switchPlanningTaskMode(button.dataset.planningTaskMode));
+});
+
+document.getElementById('planningRecurrenceSearch')?.addEventListener('input',renderPlanningRecurrenceList);
+document.getElementById('planningRecurrenceStatusFilter')?.addEventListener('change',renderPlanningRecurrenceList);
+document.getElementById('planningRecurrenceFrequencyFilter')?.addEventListener('change',renderPlanningRecurrenceList);
+document.getElementById('planningRecurrenceGenerateButton')?.addEventListener('click',generatePlanningRecurrencesNow);
+document.getElementById('planningRecurrenceNewButton')?.addEventListener('click',()=>openPlanningRecurrenceModal());
+
+document.getElementById('planningRecurrenceForm')?.addEventListener('submit',savePlanningRecurrence);
+document.getElementById('planningRecurrenceModalClose')?.addEventListener('click',closePlanningRecurrenceModal);
+document.getElementById('planningRecurrenceCancel')?.addEventListener('click',closePlanningRecurrenceModal);
+document.getElementById('planningRecurrenceModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningRecurrenceModal);
+document.getElementById('planningRecurrenceDeleteButton')?.addEventListener('click',()=>{
+  const id=document.getElementById('planningRecurrenceId')?.value;
+  if (id) deletePlanningRecurrence(id);
+});
+
+document.getElementById('planningRecurrenceAssignee')?.addEventListener('change',togglePlanningRecurrenceManualAssignee);
+document.getElementById('planningRecurrencePlanningProject')?.addEventListener('change',event=>{
+  populatePlanningRecurrenceActivities(event.target.value || '');
+});
+document.getElementById('planningRecurrencePlanningActivity')?.addEventListener('change',syncPlanningRecurrenceFromActivity);
+document.getElementById('planningRecurrenceRemindersEnabled')?.addEventListener('change',updatePlanningRecurrenceReminderOptions);
+
+document.getElementById('planningRecurrenceFrequency')?.addEventListener('change',updatePlanningRecurrenceRuleFields);
+document.getElementById('planningRecurrenceCustomUnit')?.addEventListener('change',updatePlanningRecurrenceRuleFields);
+document.getElementById('planningRecurrenceInterval')?.addEventListener('input',updatePlanningRecurrenceRuleFields);
+document.getElementById('planningRecurrenceMonthDay')?.addEventListener('input',updatePlanningRecurrenceRuleFields);
+document.getElementById('planningRecurrenceStartDate')?.addEventListener('change',event=>{
+  const frequency=document.getElementById('planningRecurrenceFrequency')?.value;
+  const unit=document.getElementById('planningRecurrenceCustomUnit')?.value;
+  const usesMonthDay=['MENSUAL','TRIMESTRAL'].includes(frequency) || (frequency==='PERSONALIZADA' && unit==='MESES');
+  if (usesMonthDay && event.target.value) {
+    const day=planningParseDate(event.target.value)?.getDate();
+    if (day) document.getElementById('planningRecurrenceMonthDay').value=String(day);
+  }
+  updatePlanningRecurrenceRuleFields();
+});
+document.querySelectorAll('#planningRecurrenceWeekdays input[type="checkbox"]').forEach(input=>{
+  input.addEventListener('change',updatePlanningRecurrenceRuleFields);
+});
 
 // Eventos 17C.2
 document.getElementById('planningFollowupResult')?.addEventListener('change',updatePlanningFollowupResultFields);

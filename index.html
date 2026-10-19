@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17c4" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17d" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -851,6 +851,7 @@
         <div class="planning-tabs" role="tablist">
           <button id="planningProjectsTab" class="active" type="button">Proyectos y Gantt</button>
           <button id="planningTasksTab" type="button">Pendientes</button>
+          <button id="planningIntegrationsTab" type="button">Integraciones <span id="planningIntegrationBadge" class="planning-integration-tab-badge hidden">0</span></button>
         </div>
 
         <div id="planningProjectsView">
@@ -1190,6 +1191,88 @@
               <div class="training-library-empty">Cargando centro de llamados…</div>
             </div>
           </div>
+        </div>
+
+        <div id="planningIntegrationsView" class="hidden">
+          <div class="planning-integration-summary">
+            <article><span>Módulos conectados</span><strong id="planningIntegrationModuleCount">5</strong><small>Fuentes disponibles</small></article>
+            <article><span>Registros visibles</span><strong id="planningIntegrationVisibleCount">0</strong><small>Elegibles para planificación</small></article>
+            <article><span>Vinculados</span><strong id="planningIntegrationLinkedCount">0</strong><small>Sincronización automática activa</small></article>
+            <article class="integration-pending"><span>Sin vincular</span><strong id="planningIntegrationPendingCount">0</strong><small>Disponibles para crear ticket</small></article>
+          </div>
+
+          <article class="planning-integration-explainer">
+            <div class="planning-integration-explainer-icon">⇄</div>
+            <div>
+              <span class="eyebrow">INTEGRACIÓN AUTOMÁTICA</span>
+              <h3>Conecta otros módulos con tu bandeja de Planificación</h3>
+              <p>Al vincular un registro se crea un ticket. Después, cualquier cambio de fecha, estado o responsable en el módulo origen se sincroniza automáticamente con Planificación.</p>
+            </div>
+            <button id="planningIntegrationRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+          </article>
+
+          <div id="planningIntegrationCards" class="planning-integration-cards">
+            <article class="planning-integration-card" data-integration-module="COMITE_ACUERDO">
+              <div class="planning-integration-card-icon">✓</div>
+              <div class="planning-integration-card-main">
+                <span class="eyebrow">COMITÉ SST</span>
+                <h3>Acuerdos del Comité / Subcomité</h3>
+                <p>Convierte acuerdos con fecha de cumplimiento en tickets y mantiene estado, responsable y vencimiento sincronizados.</p>
+                <div class="planning-integration-card-stats"><span>Visibles <b data-integration-visible>0</b></span><span>Vinculados <b data-integration-linked>0</b></span><span>Sin vincular <b data-integration-pending>0</b></span></div>
+              </div>
+              <div class="planning-integration-card-actions"><button type="button" class="primary-btn" data-integration-sync="COMITE_ACUERDO">Sincronizar visibles</button></div>
+            </article>
+
+            <article class="planning-integration-card" data-integration-module="COMITE_REUNION">
+              <div class="planning-integration-card-icon">▤</div>
+              <div class="planning-integration-card-main">
+                <span class="eyebrow">COMITÉ SST</span>
+                <h3>Reuniones y actas programadas</h3>
+                <p>Crea tickets para reuniones programadas del Comité/Subcomité y actualiza automáticamente fecha, hora y cierre.</p>
+                <div class="planning-integration-card-stats"><span>Visibles <b data-integration-visible>0</b></span><span>Vinculados <b data-integration-linked>0</b></span><span>Sin vincular <b data-integration-pending>0</b></span></div>
+              </div>
+              <div class="planning-integration-card-actions"><button type="button" class="primary-btn" data-integration-sync="COMITE_REUNION">Sincronizar visibles</button></div>
+            </article>
+
+            <article class="planning-integration-card" data-integration-module="COMITE_CAPACITACION">
+              <div class="planning-integration-card-icon">▶</div>
+              <div class="planning-integration-card-main">
+                <span class="eyebrow">COMITÉ SST</span>
+                <h3>Capacitaciones del Comité</h3>
+                <p>Vincula las capacitaciones del Comité SST con Planificación y conserva fecha, expositor y estado sincronizados.</p>
+                <div class="planning-integration-card-stats"><span>Visibles <b data-integration-visible>0</b></span><span>Vinculados <b data-integration-linked>0</b></span><span>Sin vincular <b data-integration-pending>0</b></span></div>
+              </div>
+              <div class="planning-integration-card-actions"><button type="button" class="primary-btn" data-integration-sync="COMITE_CAPACITACION">Sincronizar visibles</button></div>
+            </article>
+
+            <article class="planning-integration-card" data-integration-module="CAPACITACION">
+              <div class="planning-integration-card-icon">▣</div>
+              <div class="planning-integration-card-main">
+                <span class="eyebrow">CAPACITACIONES</span>
+                <h3>Programación de capacitaciones</h3>
+                <p>Genera tickets de las capacitaciones visibles y actualiza automáticamente fecha, responsable, proyecto y cierre.</p>
+                <div class="planning-integration-card-stats"><span>Visibles <b data-integration-visible>0</b></span><span>Vinculados <b data-integration-linked>0</b></span><span>Sin vincular <b data-integration-pending>0</b></span></div>
+              </div>
+              <div class="planning-integration-card-actions"><button type="button" class="primary-btn" data-integration-sync="CAPACITACION">Sincronizar visibles</button></div>
+            </article>
+
+            <article class="planning-integration-card" data-integration-module="INDUCCION">
+              <div class="planning-integration-card-icon">◆</div>
+              <div class="planning-integration-card-main">
+                <span class="eyebrow">INDUCCIONES</span>
+                <h3>Inducciones Lima y proyectos</h3>
+                <p>Planifica las inducciones como tickets y mantiene sincronizados fecha de inicio, proyecto, expositor y cierre.</p>
+                <div class="planning-integration-card-stats"><span>Visibles <b data-integration-visible>0</b></span><span>Vinculados <b data-integration-linked>0</b></span><span>Sin vincular <b data-integration-pending>0</b></span></div>
+              </div>
+              <div class="planning-integration-card-actions"><button type="button" class="primary-btn" data-integration-sync="INDUCCION">Sincronizar visibles</button></div>
+            </article>
+          </div>
+
+          <div class="planning-library-headline">
+            <div><span class="eyebrow">VÍNCULOS ACTIVOS</span><h3>Tickets conectados a otros módulos</h3></div>
+            <span id="planningIntegrationLinkResultCount" class="schedule-result-count">0 vínculos</span>
+          </div>
+          <div id="planningIntegrationLinkList" class="planning-integration-link-list"><div class="training-library-empty">Cargando integraciones…</div></div>
         </div>
 
         <div id="planningRecurrenceModal" class="modal hidden" aria-hidden="true">
@@ -4227,7 +4310,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17c4"></script>
+  <script src="app.js?v=20261019-17d"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

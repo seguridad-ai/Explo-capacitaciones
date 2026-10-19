@@ -42,6 +42,16 @@ let planningTasksLoaded = false;
 let planningTaskPeriod = 'TODAY';
 let planningTaskMode = 'QUEUE';
 let planningAlertCenterFilter = 'ALL';
+let planningIntegrationLinks = [];
+let planningIntegrationSources = {
+  CAPACITACION:[],
+  INDUCCION:[],
+  COMITE_REUNION:[],
+  COMITE_ACUERDO:[],
+  COMITE_CAPACITACION:[],
+  COMITES:[]
+};
+let planningIntegrationsLoaded = false;
 let activePlanningTaskId = null;
 let activePlanningRecurrenceId = null;
 let planningRecurrenceLastGeneration = 0;
@@ -585,26 +595,377 @@ async function loadPlanningModule(force=false) {
   if (activePlanningProjectId && planningProjects.some(x=>x.id===activePlanningProjectId)) renderPlanningProjectDetail();
 }
 
+
+// ============================================================
+// ETAPA 17D · INTEGRACIONES AUTOMÁTICAS
+// ============================================================
+
+function planningIntegrationModuleLabel(module) {
+  return {
+    CAPACITACION:'Capacitación',
+    INDUCCION:'Inducción',
+    COMITE_REUNION:'Reunión Comité SST',
+    COMITE_ACUERDO:'Acuerdo Comité SST',
+    COMITE_CAPACITACION:'Capacitación Comité SST'
+  }[module] || module || 'Origen';
+}
+
+async function loadPlanningIntegrationLinks(force=false) {
+  if (!client) return [];
+  if (planningIntegrationLinks.length && !force) return planningIntegrationLinks;
+
+  const {data,error}=await client.from('planificacion_pendientes')
+    .select('id,codigo,titulo,estado,fecha_objetivo,hora_objetivo,proyecto_id,origen_modulo,origen_registro_id,origen_registro_codigo,origen_sincronizado_at')
+    .not('origen_modulo','is',null)
+    .not('origen_registro_id','is',null)
+    .order('origen_sincronizado_at',{ascending:false});
+
+  if (error) {
+    console.warn('Integraciones Planificación:',error);
+    planningIntegrationLinks=[];
+    return planningIntegrationLinks;
+  }
+
+  planningIntegrationLinks=data || [];
+  return planningIntegrationLinks;
+}
+
+function planningSourceLink(module,id) {
+  return planningIntegrationLinks.find(x=>
+    x.origen_modulo===module && x.origen_registro_id===id
+  ) || null;
+}
+
+function planningSourceButtonHtml(module,id,canManage=true) {
+  if (!canManage || !id) return '';
+  const link=planningSourceLink(module,id);
+  const cls=link?'planning-source-btn linked':'planning-source-btn';
+  const label=link?'✓ Planificado':'＋ Planificar';
+  const title=link
+    ? `Abrir ${link.codigo || 'ticket'} en Planificación`
+    : 'Crear ticket en Planificación';
+  return `<button class="${cls}" type="button" data-planning-source-module="${module}" data-planning-source-id="${id}" title="${escapeHtml(title)}">${label}</button>`;
+}
+
+function bindPlanningSourceButtons(container) {
+  container?.querySelectorAll('[data-planning-source-module]').forEach(button=>{
+    button.addEventListener('click',()=>handlePlanningSourceButton(
+      button.dataset.planningSourceModule,
+      button.dataset.planningSourceId,
+      button
+    ));
+  });
+}
+
+async function handlePlanningSourceButton(module,id,button=null) {
+  const linked=planningSourceLink(module,id);
+  if (linked) {
+    await openPlanningSourceTicket(linked.id);
+    return;
+  }
+  await planPlanningSource(module,id,button);
+}
+
+function planningIntegrationSourceRecords(module) {
+  return planningIntegrationSources[module] || [];
+}
+
+function planningIntegrationSourceEligible(module,row) {
+  if (!row?.id) return false;
+  const state=String(row.estado || '').toUpperCase();
+
+  if (module==='COMITE_ACUERDO') {
+    return state!=='CERRADO' && !!row.fecha_cumplimiento;
+  }
+  if (module==='COMITE_REUNION') {
+    return state!=='CERRADA' && !!row.fecha;
+  }
+  if (module==='COMITE_CAPACITACION') {
+    return state!=='INACTIVA' && !!row.fecha;
+  }
+  if (module==='CAPACITACION') {
+    const normalized=normalizeTrainingState(row.estado);
+    return !['FINALIZADA','CANCELADA'].includes(normalized) && !!row.fecha;
+  }
+  if (module==='INDUCCION') {
+    return state!=='CERRADA' && !!(row.fecha_dia1 || row.fecha);
+  }
+  return false;
+}
+
+function rerenderPlanningSourceModule(module) {
+  if (module==='CAPACITACION') renderScheduleCards();
+  else if (module==='INDUCCION') renderInductions();
+  else if (module==='COMITE_REUNION') renderCommitteeMeetingList();
+  else if (module==='COMITE_ACUERDO') renderCommitteeAgreementTable();
+  else if (module==='COMITE_CAPACITACION') renderCommitteeTrainingList();
+}
+
+async function planPlanningSource(module,id,button=null,{silent=false}={}) {
+  if (!client || !id) return {ok:false};
+
+  const old=button?.textContent;
+  if (button) {
+    button.disabled=true;
+    button.textContent='Vinculando…';
+  }
+
+  const {data,error}=await client.rpc('planificar_desde_origen',{
+    p_modulo:module,
+    p_origen_id:id
+  });
+
+  if (button) {
+    button.disabled=false;
+    button.textContent=old || '＋ Planificar';
+  }
+
+  if (error || data?.ok===false) {
+    const message=data?.error || error?.message || 'No fue posible crear el ticket de Planificación.';
+    console.error('planificar_desde_origen',error,data);
+    if (!silent) {
+      if (module==='CAPACITACION') scheduleMessage(message);
+      else if (module==='INDUCCION') inductionMessage(message);
+      else if (module.startsWith('COMITE_')) committeeMessage(message);
+      else planningMessage(message);
+    }
+    return {ok:false,error:message};
+  }
+
+  await loadPlanningIntegrationLinks(true);
+  planningTasksLoaded=false;
+  planningIntegrationsLoaded=false;
+  if (!silent) rerenderPlanningSourceModule(module);
+
+  if (!silent) {
+    const message=`${data.codigo || 'Ticket'} vinculado a Planificación. Los cambios del origen se sincronizarán automáticamente.`;
+    if (module==='CAPACITACION') scheduleMessage(message,'success');
+    else if (module==='INDUCCION') inductionMessage(message,'success');
+    else if (module.startsWith('COMITE_')) committeeMessage(message,'success');
+    else planningMessage(message,'success');
+  }
+
+  return {ok:true,data};
+}
+
+async function openPlanningSourceTicket(ticketId) {
+  if (!ticketId) return;
+  showSection('planificacion');
+  switchPlanningTab('TASKS');
+  switchPlanningTaskMode('QUEUE');
+  await loadPlanningTasksModule(true);
+  const ticket=planningTaskRecords.find(x=>x.id===ticketId);
+  if (ticket) openPlanningTaskModal(ticket);
+}
+
+function planningIntegrationRecordTitle(module,row) {
+  if (!row) return 'Registro';
+  if (module==='CAPACITACION') return row.tema || row.codigo || 'Capacitación';
+  if (module==='INDUCCION') return row.tema || row.titulo || row.codigo || 'Inducción';
+  if (module==='COMITE_REUNION') return `Acta ${row.numero_acta || 'S/N'}`;
+  if (module==='COMITE_ACUERDO') return row.accion || 'Acuerdo';
+  if (module==='COMITE_CAPACITACION') return row.titulo || row.codigo || 'Capacitación Comité SST';
+  return row.codigo || 'Registro';
+}
+
+function planningIntegrationRecordCode(module,row) {
+  if (!row) return '—';
+  if (module==='COMITE_REUNION') return `Acta ${row.numero_acta || 'S/N'}`;
+  if (module==='COMITE_ACUERDO') {
+    const meeting=planningIntegrationSources.COMITE_REUNION.find(x=>x.id===row.reunion_id);
+    return `Acta ${meeting?.numero_acta || 'S/N'}`;
+  }
+  return row.codigo || '—';
+}
+
+function planningIntegrationRecordDate(module,row) {
+  if (!row) return null;
+  if (module==='COMITE_ACUERDO') return row.fecha_cumplimiento || null;
+  if (module==='INDUCCION') return row.fecha_dia1 || row.fecha || null;
+  return row.fecha || null;
+}
+
+async function loadPlanningIntegrationsDashboard(force=false) {
+  if (!client) return;
+  if (planningIntegrationsLoaded && !force) {
+    renderPlanningIntegrationsDashboard();
+    return;
+  }
+
+  const [links,caps,inductions,meetings,agreements,committeeCaps,committees]=await Promise.all([
+    loadPlanningIntegrationLinks(force),
+    client.from('capacitaciones').select('id,codigo,tema,fecha,estado,responsable_nombre,expositor_nombre,proyecto_id').order('fecha',{ascending:false}).limit(1000),
+    client.from('inducciones').select('id,codigo,tipo,titulo,tema,fecha,fecha_dia1,estado,expositor,proyecto_id').order('fecha',{ascending:false}).limit(1000),
+    client.from('comite_sst_reuniones').select('id,comite_id,numero_acta,tipo_reunion,fecha,hora_inicio,lugar,estado').order('fecha',{ascending:false}).limit(1000),
+    client.from('comite_sst_acuerdos').select('id,reunion_id,comite_id,accion,responsable,fecha_cumplimiento,estado').order('created_at',{ascending:false}).limit(1000),
+    client.from('comite_sst_capacitaciones').select('id,codigo,comite_id,titulo,fecha,estado,expositor').order('fecha',{ascending:false}).limit(1000),
+    client.from('comites_sst').select('id,codigo,tipo,nombre,proyecto_id,estado').order('created_at',{ascending:false}).limit(500)
+  ]);
+
+  const results=[caps,inductions,meetings,agreements,committeeCaps,committees];
+  const firstError=results.find(x=>x.error)?.error;
+  if (firstError) {
+    console.error(firstError);
+    planningMessage(firstError.message || 'No fue posible cargar Integraciones.');
+    return;
+  }
+
+  planningIntegrationSources={
+    CAPACITACION:caps.data || [],
+    INDUCCION:inductions.data || [],
+    COMITE_REUNION:meetings.data || [],
+    COMITE_ACUERDO:agreements.data || [],
+    COMITE_CAPACITACION:committeeCaps.data || [],
+    COMITES:committees.data || []
+  };
+  planningIntegrationLinks=Array.isArray(links)?links:planningIntegrationLinks;
+  planningIntegrationsLoaded=true;
+  renderPlanningIntegrationsDashboard();
+}
+
+function renderPlanningIntegrationsDashboard() {
+  const modules=['COMITE_ACUERDO','COMITE_REUNION','COMITE_CAPACITACION','CAPACITACION','INDUCCION'];
+  let totalVisible=0,totalLinked=0,totalPending=0;
+
+  modules.forEach(module=>{
+    const rows=planningIntegrationSourceRecords(module).filter(row=>planningIntegrationSourceEligible(module,row));
+    const linked=rows.filter(row=>!!planningSourceLink(module,row.id)).length;
+    const pending=Math.max(0,rows.length-linked);
+    totalVisible+=rows.length; totalLinked+=linked; totalPending+=pending;
+
+    const card=document.querySelector(`[data-integration-module="${module}"]`);
+    if (card) {
+      const v=card.querySelector('[data-integration-visible]');
+      const l=card.querySelector('[data-integration-linked]');
+      const p=card.querySelector('[data-integration-pending]');
+      if (v) v.textContent=String(rows.length);
+      if (l) l.textContent=String(linked);
+      if (p) p.textContent=String(pending);
+      card.classList.toggle('complete',rows.length>0 && pending===0);
+    }
+  });
+
+  const values={
+    planningIntegrationVisibleCount:totalVisible,
+    planningIntegrationLinkedCount:totalLinked,
+    planningIntegrationPendingCount:totalPending
+  };
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id); if (el) el.textContent=String(value);
+  });
+
+  const badge=document.getElementById('planningIntegrationBadge');
+  if (badge) {
+    badge.textContent=String(totalPending);
+    badge.classList.toggle('hidden',totalPending===0);
+  }
+
+  renderPlanningIntegrationLinks();
+}
+
+function renderPlanningIntegrationLinks() {
+  const container=document.getElementById('planningIntegrationLinkList');
+  const counter=document.getElementById('planningIntegrationLinkResultCount');
+  if (!container) return;
+
+  const rows=[...planningIntegrationLinks].sort((a,b)=>
+    String(b.origen_sincronizado_at || '').localeCompare(String(a.origen_sincronizado_at || ''))
+  );
+
+  if (counter) counter.textContent=`${rows.length} vínculo${rows.length===1?'':'s'}`;
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">Aún no existen tickets vinculados a otros módulos.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.slice(0,100).map(link=>`
+    <article class="planning-integration-link-card">
+      <div class="planning-integration-link-icon">⇄</div>
+      <div class="planning-integration-link-main">
+        <div><span class="eyebrow">${escapeHtml(planningIntegrationModuleLabel(link.origen_modulo))}</span><h4>${escapeHtml(link.titulo || 'Ticket integrado')}</h4></div>
+        <div class="planning-integration-link-meta">
+          <span>${escapeHtml(link.codigo || 'TK')}</span>
+          ${link.origen_registro_codigo?`<span>Origen: ${escapeHtml(link.origen_registro_codigo)}</span>`:''}
+          <span>${escapeHtml(formatDatePE(link.fecha_objetivo))}</span>
+          <span class="planning-ticket-status ${String(link.estado||'').toLowerCase()}">${escapeHtml(planningTaskStatusLabel(link.estado))}</span>
+          ${link.origen_sincronizado_at?`<span>Sincronizado: ${escapeHtml(new Date(link.origen_sincronizado_at).toLocaleString('es-PE'))}</span>`:''}
+        </div>
+      </div>
+      <button class="secondary-btn" type="button" data-open-integration-ticket="${link.id}">Abrir ticket</button>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('[data-open-integration-ticket]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningSourceTicket(button.dataset.openIntegrationTicket));
+  });
+}
+
+async function syncPlanningIntegrationModule(module,button=null) {
+  const rows=planningIntegrationSourceRecords(module)
+    .filter(row=>planningIntegrationSourceEligible(module,row))
+    .filter(row=>!planningSourceLink(module,row.id));
+
+  if (!rows.length) {
+    planningMessage(`${planningIntegrationModuleLabel(module)}: no hay registros pendientes de vincular.`,'success');
+    return;
+  }
+
+  if (!confirm(`Se crearán ${rows.length} ticket(s) desde ${planningIntegrationModuleLabel(module)}.\n\nDespués quedarán sincronizados automáticamente con el módulo origen. ¿Continuar?`)) return;
+
+  const old=button?.textContent;
+  if (button) {button.disabled=true;button.textContent='Sincronizando…';}
+
+  let ok=0,failed=0;
+  const chunkSize=8;
+  for (let i=0;i<rows.length;i+=chunkSize) {
+    const chunk=rows.slice(i,i+chunkSize);
+    const results=await Promise.all(chunk.map(row=>planPlanningSource(module,row.id,null,{silent:true})));
+    ok+=results.filter(x=>x.ok).length;
+    failed+=results.filter(x=>!x.ok).length;
+  }
+
+  if (button) {button.disabled=false;button.textContent=old || 'Sincronizar visibles';}
+  await loadPlanningIntegrationLinks(true);
+  planningIntegrationsLoaded=false;
+  await loadPlanningIntegrationsDashboard(true);
+  planningTasksLoaded=false;
+
+  planningMessage(
+    `${planningIntegrationModuleLabel(module)}: ${ok} ticket(s) vinculados${failed?` · ${failed} no pudieron vincularse`:''}.`,
+    failed?'error':'success'
+  );
+}
+
 function switchPlanningTab(tab) {
-  planningModuleTab=tab==='TASKS'?'TASKS':'PROJECTS';
+  planningModuleTab=['PROJECTS','TASKS','INTEGRATIONS'].includes(tab) ? tab : 'PROJECTS';
   const projects=planningModuleTab==='PROJECTS';
+  const tasks=planningModuleTab==='TASKS';
+  const integrations=planningModuleTab==='INTEGRATIONS';
 
   document.getElementById('planningProjectsTab')?.classList.toggle('active',projects);
-  document.getElementById('planningTasksTab')?.classList.toggle('active',!projects);
+  document.getElementById('planningTasksTab')?.classList.toggle('active',tasks);
+  document.getElementById('planningIntegrationsTab')?.classList.toggle('active',integrations);
   document.getElementById('planningProjectsView')?.classList.toggle('hidden',!projects);
-  document.getElementById('planningTasksView')?.classList.toggle('hidden',projects);
+  document.getElementById('planningTasksView')?.classList.toggle('hidden',!tasks);
+  document.getElementById('planningIntegrationsView')?.classList.toggle('hidden',!integrations);
 
   const topButton=document.getElementById('planningNewProjectButton');
   if (topButton) {
     topButton.classList.remove('hidden');
     topButton.textContent=projects
       ? '＋ Nuevo proyecto'
-      : (planningTaskMode==='RECURRENCES'?'＋ Nueva recurrencia':'＋ Nuevo pendiente');
+      : tasks
+        ? (planningTaskMode==='RECURRENCES'?'＋ Nueva recurrencia':planningTaskMode==='ALERTS'?'↻ Actualizar centro':'＋ Nuevo pendiente')
+        : '↻ Actualizar integraciones';
   }
 
-  if (!projects) {
+  if (tasks) {
     loadPlanningTasksModule();
     switchPlanningTaskMode(planningTaskMode);
+  }
+
+  if (integrations) {
+    loadPlanningIntegrationsDashboard();
   }
 }
 
@@ -1552,6 +1913,7 @@ function renderPlanningTaskList() {
                 <span class="planning-ticket-priority ${String(task.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(task.prioridad))}</span>
                 <span class="planning-ticket-status ${String(task.estado||'').toLowerCase()}">${escapeHtml(planningTaskStatusLabel(task.estado))}</span>
                 ${task.recurrencia_id?'<span class="planning-ticket-recurring">↻ Recurrente</span>':''}
+                ${task.origen_modulo?'<span class="planning-ticket-integrated">⇄ Integrado</span>':''}
                 <span class="planning-ticket-situation ${situation.code.toLowerCase()}">${escapeHtml(situation.label)}</span>
               </div>
               <h4>${escapeHtml(task.titulo || 'Pendiente')}</h4>
@@ -1563,6 +1925,7 @@ function renderPlanningTaskList() {
             <span>Responsable: <strong>${escapeHtml(task.responsable_nombre || '—')}</strong></span>
             <span>Fecha: <strong>${escapeHtml(formatDatePE(task.fecha_objetivo))}</strong>${task.hora_objetivo?` · ${escapeHtml(String(task.hora_objetivo).slice(0,5))}`:''}</span>
             <span>Origen: ${escapeHtml(planningTaskOriginLabel(task.origen))}</span>
+            ${task.origen_modulo?`<span>Fuente: <strong>${escapeHtml(planningIntegrationModuleLabel(task.origen_modulo))}</strong>${task.origen_registro_codigo?` · ${escapeHtml(task.origen_registro_codigo)}`:''}</span>`:''}
             ${task.proyecto_id?`<span>${escapeHtml(planningTaskOperationalProjectName(task))}</span>`:''}
             ${planName?`<span>Gantt: ${escapeHtml(planName)}</span>`:''}
             ${activityName?`<span>Actividad: ${escapeHtml(activityName)}</span>`:''}
@@ -2091,9 +2454,21 @@ async function attendNextPlanningTask() {
 }
 
 
+// Eventos 17D
+
+document.getElementById('planningIntegrationRefreshButton')?.addEventListener('click',()=>{
+  planningIntegrationsLoaded=false;
+  loadPlanningIntegrationsDashboard(true);
+});
+
+document.querySelectorAll('[data-integration-sync]').forEach(button=>{
+  button.addEventListener('click',()=>syncPlanningIntegrationModule(button.dataset.integrationSync,button));
+});
+
 // Eventos 17A
 document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
+document.getElementById('planningIntegrationsTab')?.addEventListener('click',()=>switchPlanningTab('INTEGRATIONS'));
 document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
   if (planningModuleTab==='TASKS') {
     if (planningTaskMode==='RECURRENCES') {
@@ -2104,6 +2479,9 @@ document.getElementById('planningNewProjectButton')?.addEventListener('click',()
     } else {
       openPlanningTaskModal();
     }
+  } else if (planningModuleTab==='INTEGRATIONS') {
+    planningIntegrationsLoaded=false;
+    loadPlanningIntegrationsDashboard(true);
   } else openPlanningProjectModal();
 });
 document.getElementById('planningProjectForm')?.addEventListener('submit',savePlanningProject);
@@ -5134,6 +5512,7 @@ function renderCommitteeMeetingList() {
         </div>
 
         <div class="committee-meeting-card-actions">
+          ${planningSourceButtonHtml('COMITE_REUNION',record.id,canManage)}
           <button class="committee-manage-btn" type="button" data-committee-meeting-open="${record.id}">${canManage?'Desarrollar':'Ver reunión'}</button>
           <button class="meeting-pdf-outline" type="button" data-committee-meeting-pdf="${record.id}">Acta PDF</button>
           ${canManage && record.estado==='EN_FIRMA' ? `<button class="meeting-share-sign-btn" type="button" data-committee-meeting-share-sign="${record.id}">Compartir firma</button>` : ''}
@@ -5169,6 +5548,7 @@ function renderCommitteeMeetingList() {
   list.querySelectorAll('[data-committee-meeting-delete]').forEach(button=>{
     button.addEventListener('click',()=>deleteCommitteeMeeting(button.dataset.committeeMeetingDelete));
   });
+  bindPlanningSourceButtons(list);
 }
 
 async function loadCommitteeMeetingsModule(force=false) {
@@ -5176,6 +5556,7 @@ async function loadCommitteeMeetingsModule(force=false) {
   if (!committeeModuleLoaded) await loadCommitteeModule(true);
 
   if (committeeMeetingsLoaded && !force) {
+    await loadPlanningIntegrationLinks();
     populateCommitteeMeetingSelectors();
     updateCommitteeMeetingStats();
     renderCommitteeMeetingList();
@@ -5214,6 +5595,7 @@ async function loadCommitteeMeetingsModule(force=false) {
     committeeAgreementsLoaded=false;
   }
 
+  await loadPlanningIntegrationLinks();
   populateCommitteeMeetingSelectors();
   updateCommitteeMeetingStats();
   renderCommitteeMeetingList();
@@ -6194,6 +6576,7 @@ function renderCommitteeAgreementTable() {
         <td><span class="agreement-status-badge ${String(agreement.estado||'').toLowerCase()}">${escapeHtml(committeeAgreementStatusLabel(agreement.estado))}</span></td>
         <td><span class="agreement-evidence-count">${evidenceCount} archivo(s)</span></td>
         <td class="agreement-actions-cell">
+          ${planningSourceButtonHtml('COMITE_ACUERDO',agreement.id,canManage)}
           <button class="committee-manage-btn small-btn" type="button" data-open-agreement="${agreement.id}">${canManage?'Gestionar':'Ver'}</button>
           ${meeting ? `<button class="secondary-btn small-btn" type="button" data-open-agreement-meeting="${meeting.id}">Acta</button>` : ''}
         </td>
@@ -6208,6 +6591,7 @@ function renderCommitteeAgreementTable() {
   body.querySelectorAll('[data-open-agreement-meeting]').forEach(button=>{
     button.addEventListener('click',()=>openCommitteeMeetingEditor(button.dataset.openAgreementMeeting));
   });
+  bindPlanningSourceButtons(body);
 }
 
 async function loadCommitteeAgreementsModule(force=false) {
@@ -6217,6 +6601,7 @@ async function loadCommitteeAgreementsModule(force=false) {
   if (!committeeMeetingsLoaded || force) await loadCommitteeMeetingsModule(true);
 
   if (committeeAgreementsLoaded && !force) {
+    await loadPlanningIntegrationLinks();
     populateCommitteeAgreementSelectors();
     updateCommitteeAgreementStats();
     renderCommitteeAgreementTable();
@@ -6244,6 +6629,7 @@ async function loadCommitteeAgreementsModule(force=false) {
   committeeAgreementHistory=history.data || [];
   committeeAgreementsLoaded=true;
 
+  await loadPlanningIntegrationLinks();
   populateCommitteeAgreementSelectors();
   updateCommitteeAgreementStats();
   renderCommitteeAgreementTable();
@@ -7041,6 +7427,7 @@ function renderCommitteeTrainingList() {
         </div>
 
         <div class="committee-training-card-actions">
+          ${planningSourceButtonHtml('COMITE_CAPACITACION',record.id,canManage)}
           ${canManage && record.estado==='LISTA' && videos.length>0 && questions.length>0 ? `<button class="meeting-share-sign-btn" type="button" data-share-committee-training="${record.id}">Compartir</button>` : ''}
           <button class="evaluation-results-btn" type="button" data-results-committee-training="${record.id}">Resultados</button>
           <button class="committee-manage-btn" type="button" data-open-committee-training="${record.id}">
@@ -7072,6 +7459,7 @@ function renderCommitteeTrainingList() {
   container.querySelectorAll('[data-delete-committee-training]').forEach(button=>{
     button.addEventListener('click',()=>deleteCommitteeTraining(button.dataset.deleteCommitteeTraining));
   });
+  bindPlanningSourceButtons(container);
 }
 
 async function loadCommitteeTrainingsModule(force=false) {
@@ -7079,6 +7467,7 @@ async function loadCommitteeTrainingsModule(force=false) {
   if (!committeeModuleLoaded) await loadCommitteeModule(true);
 
   if (committeeTrainingsLoaded && !force) {
+    await loadPlanningIntegrationLinks();
     populateCommitteeTrainingSelectors();
     updateCommitteeTrainingStats();
     renderCommitteeTrainingList();
@@ -7125,6 +7514,7 @@ async function loadCommitteeTrainingsModule(force=false) {
   committeeTrainingAttempts=attempts.data || [];
   committeeTrainingsLoaded=true;
 
+  await loadPlanningIntegrationLinks();
   populateCommitteeTrainingSelectors();
   updateCommitteeTrainingStats();
   renderCommitteeTrainingList();
@@ -12730,6 +13120,7 @@ function renderScheduleCards() {
         </div>
       </div>
       <div class="training-history-actions">
+        ${planningSourceButtonHtml('CAPACITACION',item.id,canManage)}
         <button class="history-action share" type="button" data-training-whatsapp="${item.id}" ${link ? '' : 'disabled'} title="Compartir por WhatsApp">⌘</button>
         <button class="history-action copy" type="button" data-training-copy="${item.id}" ${link ? '' : 'disabled'} title="Copiar enlace">▣</button>
         <button class="history-detail-btn" type="button" data-training-detail="${item.id}">◉ Ver detalles</button>
@@ -12738,6 +13129,7 @@ function renderScheduleCards() {
       </div>
     </article>`;
   }).join('');
+  bindPlanningSourceButtons(trainingLibraryList);
 }
 
 function renderScheduleModule() {
@@ -12748,7 +13140,7 @@ function renderScheduleModule() {
 
 async function loadScheduleModule(force = false) {
   if (!client) return;
-  if (scheduleRecords.length && !force) { renderScheduleModule(); return; }
+  if (scheduleRecords.length && !force) { await loadPlanningIntegrationLinks(); renderScheduleModule(); return; }
   scheduleMessage('');
   if (trainingLibraryList) trainingLibraryList.innerHTML = '<div class="training-library-empty">Cargando capacitaciones…</div>';
   const [trainings, sites, projects, exams, participants, questions] = await Promise.all([
@@ -12770,6 +13162,7 @@ async function loadScheduleModule(force = false) {
   trainingLibraryExams = exams.error ? [] : (exams.data || []);
   trainingLibraryParticipants = participants.error ? [] : (participants.data || []);
   trainingLibraryQuestions = questions.error ? [] : (questions.data || []);
+  await loadPlanningIntegrationLinks();
   renderScheduleModule();
 }
 
@@ -15264,6 +15657,7 @@ function renderInductions() {
         </div>
       </div>
       <div class="induction-card-actions">
+        ${planningSourceButtonHtml('INDUCCION',item.id,canManage)}
         <button class="induction-results-btn" type="button" data-induction-results="${item.id}">Ver resultados</button>
         ${item.public_token ? `<button class="induction-share-btn" type="button" data-induction-share="${item.id}">Compartir</button>` : ''}
         ${canManage ? `<button class="induction-duplicate-btn" type="button" data-induction-duplicate="${item.id}">Duplicar</button>` : ''}
@@ -15306,6 +15700,7 @@ function renderInductions() {
     await loadInductionModule(true);
     inductionMessage('Inducción eliminada correctamente.','success');
   }));
+  bindPlanningSourceButtons(list);
 }
 
 
@@ -15380,7 +15775,7 @@ async function duplicateInduction(inductionId,button=null) {
 
 async function loadInductionModule(force=false) {
   if (!client) return;
-  if (inductionRecords.length && !force) { renderInductions(); return; }
+  if (inductionRecords.length && !force) { await loadPlanningIntegrationLinks(); renderInductions(); return; }
 
   inductionMessage('');
   const list = document.getElementById('inductionList');
@@ -15401,6 +15796,7 @@ async function loadInductionModule(force=false) {
   inductionRecords = records.data || [];
   inductionSites = sites.data || [];
   inductionProjects = projects.data || [];
+  await loadPlanningIntegrationLinks();
   populateInductionUnitOptions();
   renderInductions();
 }

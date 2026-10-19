@@ -41,6 +41,7 @@ let planningAssignableUsers = [];
 let planningTasksLoaded = false;
 let planningTaskPeriod = 'TODAY';
 let planningTaskMode = 'QUEUE';
+let planningAlertCenterFilter = 'ALL';
 let activePlanningTaskId = null;
 let activePlanningRecurrenceId = null;
 let planningRecurrenceLastGeneration = 0;
@@ -1637,6 +1638,7 @@ async function loadPlanningTasksModule(force=false) {
     renderPlanningFollowupQueue();
     updatePlanningRecurrenceStats();
     renderPlanningRecurrenceList();
+    renderPlanningAlertCenter();
     return;
   }
 
@@ -1681,6 +1683,7 @@ async function loadPlanningTasksModule(force=false) {
   renderPlanningFollowupQueue();
   updatePlanningRecurrenceStats();
   renderPlanningRecurrenceList();
+  renderPlanningAlertCenter();
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -2093,8 +2096,14 @@ document.getElementById('planningProjectsTab')?.addEventListener('click',()=>swi
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
 document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
   if (planningModuleTab==='TASKS') {
-    if (planningTaskMode==='RECURRENCES') openPlanningRecurrenceModal();
-    else openPlanningTaskModal();
+    if (planningTaskMode==='RECURRENCES') {
+      openPlanningRecurrenceModal();
+    } else if (planningTaskMode==='ALERTS') {
+      planningTasksLoaded=false;
+      loadPlanningTasksModule(true);
+    } else {
+      openPlanningTaskModal();
+    }
   } else openPlanningProjectModal();
 });
 document.getElementById('planningProjectForm')?.addEventListener('submit',savePlanningProject);
@@ -2146,25 +2155,519 @@ async function ensurePlanningRecurrenceTickets(force=false) {
   }
 }
 
+
+// ============================================================
+// ETAPA 17C.4 · CENTRO DE LLAMADOS Y ALERTAS
+// ============================================================
+
+function planningAlertTaskIsMine(task) {
+  if (!currentProfile?.id || !task) return false;
+  return task.asignado_a_profile_id===currentProfile.id
+    || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+}
+
+function planningAlertActiveSnooze(task,now=new Date()) {
+  const value=task?.estado==='EN_ESPERA'
+    ? task.seguimiento_pospuesto_hasta
+    : task.pospuesto_hasta;
+  if (!value) return null;
+  const dt=new Date(value);
+  return !Number.isNaN(dt.getTime()) && dt>now ? dt : null;
+}
+
+function planningAlertReferenceDate(task) {
+  return task?.estado==='EN_ESPERA'
+    ? planningFollowupDateTime(task)
+    : planningTaskDateTime(task);
+}
+
+function planningAlertRelativeLabel(date,now=new Date()) {
+  if (!date) return 'Sin fecha';
+  const diff=(date-now)/60000;
+
+  if (diff<=0) {
+    const overdue=Math.abs(diff);
+    if (overdue>=1440) return `Vencido hace ${Math.floor(overdue/1440)} día(s)`;
+    if (overdue>=60) return `Vencido hace ${Math.floor(overdue/60)} h`;
+    return 'Requiere atención ahora';
+  }
+
+  if (diff<60) return `En ${Math.max(1,Math.ceil(diff))} min`;
+  if (diff<1440) return `En ${Math.ceil(diff/60)} h`;
+
+  const days=Math.ceil(diff/1440);
+  return `En ${days} día(s)`;
+}
+
+function planningBuildAlertCenterItems() {
+  const now=new Date();
+  const dayMs=24*60*60*1000;
+
+  return planningTaskRecords
+    .filter(task=>!['COMPLETADO','CANCELADO'].includes(task.estado))
+    .map(task=>{
+      const reference=planningAlertReferenceDate(task);
+      const snoozedUntil=planningAlertActiveSnooze(task,now);
+      const diffMin=reference ? (reference-now)/60000 : null;
+      const followup=task.estado==='EN_ESPERA';
+      const overdue=reference ? reference<=now : false;
+      const due24=reference ? diffMin>0 && diffMin<=1440 : false;
+      const due60=reference ? diffMin>0 && diffMin<=60 : false;
+      const due30=reference ? diffMin>0 && diffMin<=30 : false;
+      const recurring=!!task.recurrencia_id
+        && (
+          !reference
+          || reference.getTime()-now.getTime()<=7*dayMs
+          || reference<=now
+        );
+      const critical=task.prioridad==='CRITICA';
+
+      // El centro solo muestra situaciones que ameritan llamado/alerta.
+      const relevant=
+        !!snoozedUntil
+        || overdue
+        || due24
+        || critical
+        || recurring;
+
+      if (!relevant) return null;
+
+      const flags=new Set();
+      if (overdue) flags.add('OVERDUE');
+      if (followup) flags.add('FOLLOWUP');
+      if (critical) flags.add('CRITICAL');
+      if (recurring) flags.add('RECURRENT');
+      if (snoozedUntil) flags.add('SNOOZED');
+      if (overdue || (followup ? due30 : due60)) flags.add('NOW');
+
+      let score=50;
+      if (snoozedUntil) {
+        score=40;
+      } else if (overdue) {
+        score=0;
+      } else if (followup && due30) {
+        score=1;
+      } else if (!followup && diffMin!==null && diffMin<=10) {
+        score=1;
+      } else if (!followup && due30) {
+        score=2;
+      } else if (!followup && due60) {
+        score=3;
+      } else if (critical && due24) {
+        score=4;
+      } else if (critical) {
+        score=5;
+      } else if (recurring) {
+        score=6;
+      } else {
+        score=7;
+      }
+
+      const recurrence=task.recurrencia_id
+        ? planningRecurrences.find(x=>x.id===task.recurrencia_id)
+        : null;
+
+      let primary='PRÓXIMO';
+      if (snoozedUntil) primary='POSPUESTO';
+      else if (followup && overdue) primary='SEGUIMIENTO';
+      else if (overdue) primary='VENCIDO';
+      else if (followup) primary='SEGUIMIENTO';
+      else if (critical) primary='CRÍTICO';
+      else if (recurring) primary='RECURRENTE';
+
+      return {
+        id:task.id,
+        task,
+        reference,
+        snoozedUntil,
+        diffMin,
+        followup,
+        overdue,
+        critical,
+        recurring,
+        recurrence,
+        flags,
+        score,
+        primary,
+        urgent:overdue || critical || (followup ? due30 : due60),
+        snoozeable:overdue || (followup ? due30 : due60),
+        sortAt:(snoozedUntil || reference)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>{
+      if (a.score!==b.score) return a.score-b.score;
+      const ap=planningTaskPriorityRank(a.task.prioridad);
+      const bp=planningTaskPriorityRank(b.task.prioridad);
+      if (ap!==bp) return ap-bp;
+      return a.sortAt-b.sortAt;
+    });
+}
+
+function planningAlertMatchesFilter(item,filter=planningAlertCenterFilter) {
+  if (filter==='ALL') return true;
+  return item.flags.has(filter);
+}
+
+function planningAlertKindLabel(item) {
+  if (item.snoozedUntil) return '⏸ Pospuesto';
+  if (item.followup && item.overdue) return '📞 Seguimiento pendiente';
+  if (item.followup) return '📞 Seguimiento';
+  if (item.overdue) return '⚠ Vencido';
+  if (item.critical) return '🔴 Crítico';
+  if (item.recurring) return '↻ Recurrente';
+  return '🔔 Próximo';
+}
+
+function planningAlertMetaText(item) {
+  if (item.snoozedUntil) {
+    return `Volverá a llamar ${item.snoozedUntil.toLocaleString('es-PE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`;
+  }
+
+  const base=planningAlertRelativeLabel(item.reference);
+  if (item.followup) {
+    return `${base} · Esperando de: ${item.task.esperando_de || 'tercero'}`;
+  }
+  return base;
+}
+
+function planningAlertBadgeHtml(item) {
+  const parts=[];
+
+  if (item.overdue) parts.push('<span class="planning-alert-mini-badge overdue">VENCIDO</span>');
+  if (item.critical) parts.push('<span class="planning-alert-mini-badge critical">CRÍTICO</span>');
+  if (item.followup) parts.push('<span class="planning-alert-mini-badge followup">SEGUIMIENTO</span>');
+  if (item.recurring) parts.push('<span class="planning-alert-mini-badge recurring">↻ RECURRENTE</span>');
+  if (item.snoozedUntil) parts.push('<span class="planning-alert-mini-badge snoozed">POSPUESTO</span>');
+
+  return parts.join('');
+}
+
+function updatePlanningAlertCenterStats(items=planningBuildAlertCenterItems()) {
+  const nowCount=items.filter(x=>x.flags.has('NOW') && !x.snoozedUntil).length;
+  const criticalCount=items.filter(x=>x.critical).length;
+  const followupCount=items.filter(x=>{
+    if (!x.followup || !x.reference) return false;
+    return x.reference.getTime()-Date.now()<=24*60*60*1000;
+  }).length;
+  const recurringCount=items.filter(x=>x.recurring).length;
+  const snoozedCount=items.filter(x=>!!x.snoozedUntil).length;
+
+  const values={
+    planningAlertNowCount:nowCount,
+    planningAlertCriticalCount:criticalCount,
+    planningAlertFollowupCount:followupCount,
+    planningAlertRecurringCount:recurringCount,
+    planningAlertSnoozedCount:snoozedCount
+  };
+
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+
+  const badge=document.getElementById('planningAlertCenterBadge');
+  const badgeCount=items.filter(x=>
+    !x.snoozedUntil
+    && (x.flags.has('NOW') || (x.critical && (!x.reference || x.reference.getTime()-Date.now()<=24*60*60*1000)))
+  ).length;
+
+  if (badge) {
+    badge.textContent=String(badgeCount);
+    badge.classList.toggle('hidden',badgeCount===0);
+  }
+}
+
+function renderPlanningAlertSpotlight(items) {
+  const code=document.getElementById('planningAlertSpotlightCode');
+  const title=document.getElementById('planningAlertSpotlightTitle');
+  const meta=document.getElementById('planningAlertSpotlightMeta');
+  const attend=document.getElementById('planningAlertSpotlightAttend');
+  const sound=document.getElementById('planningAlertSpotlightSound');
+  const box=document.getElementById('planningAlertSpotlight');
+
+  if (!code || !title || !meta || !attend || !sound || !box) return;
+
+  const item=items.find(x=>!x.snoozedUntil) || items[0] || null;
+
+  if (!item) {
+    code.textContent='—';
+    title.textContent='Sin llamados pendientes';
+    meta.textContent='Tu cola de alertas está al día.';
+    attend.disabled=true;
+    sound.disabled=true;
+    attend.dataset.alertTaskId='';
+    sound.dataset.alertTaskId='';
+    box.classList.remove('urgent','followup','snoozed');
+    return;
+  }
+
+  code.textContent=item.task.codigo || 'TK';
+  title.textContent=item.task.titulo || 'Pendiente';
+  meta.textContent=[
+    planningAlertKindLabel(item),
+    planningAlertMetaText(item),
+    planningPriorityLabel(item.task.prioridad)
+  ].filter(Boolean).join(' · ');
+
+  attend.disabled=false;
+  sound.disabled=false;
+  attend.dataset.alertTaskId=item.task.id;
+  sound.dataset.alertTaskId=item.task.id;
+  attend.textContent=item.followup?'Registrar seguimiento':'Atender ahora';
+
+  box.classList.toggle('urgent',item.urgent && !item.snoozedUntil);
+  box.classList.toggle('followup',item.followup);
+  box.classList.toggle('snoozed',!!item.snoozedUntil);
+}
+
+function renderPlanningAlertCenter() {
+  const container=document.getElementById('planningAlertCenterList');
+  if (!container) return;
+
+  const all=planningBuildAlertCenterItems();
+  updatePlanningAlertCenterStats(all);
+  renderPlanningAlertSpotlight(all);
+
+  const q=(document.getElementById('planningAlertSearch')?.value || '').trim().toLowerCase();
+  const ownership=document.getElementById('planningAlertOwnershipFilter')?.value || 'MINE';
+
+  let rows=all.filter(item=>{
+    if (!planningAlertMatchesFilter(item)) return false;
+    if (ownership==='MINE' && !planningAlertTaskIsMine(item.task)) return false;
+
+    if (!q) return true;
+    const hay=[
+      item.task.codigo,item.task.titulo,item.task.responsable_nombre,
+      item.task.esperando_de,item.task.categoria,item.task.origen,
+      planningTaskOperationalProjectName(item.task),
+      item.recurrence?.codigo,item.recurrence?.titulo
+    ].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+
+  const count=document.getElementById('planningAlertResultCount');
+  if (count) count.textContent=`${rows.length} alerta${rows.length===1?'':'s'}`;
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No hay llamados para este filtro.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(item=>{
+    const task=item.task;
+    const canManage=planningTaskCanManage(task);
+    const referenceText=item.reference
+      ? `${formatDatePE(item.followup?task.fecha_seguimiento:task.fecha_objetivo)} · ${
+          String(
+            item.followup
+              ? (task.hora_seguimiento || '09:00')
+              : (task.hora_objetivo || '23:59')
+          ).slice(0,5)
+        }`
+      : 'Sin fecha';
+
+    return `
+      <article class="planning-alert-center-card ${item.urgent?'urgent':''} ${item.followup?'followup':''} ${item.snoozedUntil?'snoozed':''}">
+        <div class="planning-alert-center-icon">${item.followup?'📞':item.overdue?'⚠️':item.recurring?'↻':'🔔'}</div>
+
+        <div class="planning-alert-center-main">
+          <div class="planning-alert-center-head">
+            <div>
+              <span class="planning-alert-center-code">${escapeHtml(task.codigo || 'TK')}</span>
+              <h4>${escapeHtml(task.titulo || 'Pendiente')}</h4>
+            </div>
+            <div class="planning-alert-center-badges">${planningAlertBadgeHtml(item)}</div>
+          </div>
+
+          <p class="planning-alert-center-callout">${escapeHtml(planningAlertMetaText(item))}</p>
+
+          <div class="planning-alert-center-meta">
+            <span>Responsable: <strong>${escapeHtml(task.responsable_nombre || '—')}</strong></span>
+            <span>${item.followup?'Seguimiento':'Vencimiento'}: <strong>${escapeHtml(referenceText)}</strong></span>
+            ${item.followup?`<span>Esperando de: <strong>${escapeHtml(task.esperando_de || '—')}</strong></span>`:''}
+            ${item.recurrence?`<span>Regla: <strong>${escapeHtml(item.recurrence.codigo || 'REC')}</strong></span>`:''}
+          </div>
+        </div>
+
+        <div class="planning-alert-center-actions">
+          <button class="secondary-btn small-btn" type="button" data-alert-sound="${task.id}">🔊 Sonar</button>
+          ${item.snoozedUntil
+            ? `<button class="task-action-reschedule" type="button" data-alert-unsnooze="${task.id}">Reactivar aviso</button>`
+            : item.snoozeable
+              ? `<button class="task-action-reschedule" type="button" data-alert-snooze="${task.id}">Posponer 10 min</button>`
+              : ''
+          }
+          ${canManage
+            ? `<button class="primary-btn small-btn" type="button" data-alert-attend="${task.id}">${item.followup?'Seguimiento':'Atender'}</button>`
+            : `<button class="secondary-btn small-btn" type="button" data-alert-open="${task.id}">Ver</button>`
+          }
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-alert-sound]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const item=all.find(x=>x.task.id===button.dataset.alertSound);
+      if (item) playPlanningReminderSound(null,item.urgent);
+    });
+  });
+
+  container.querySelectorAll('[data-alert-snooze]').forEach(button=>{
+    button.addEventListener('click',()=>snoozePlanningAlertTask(button.dataset.alertSnooze));
+  });
+
+  container.querySelectorAll('[data-alert-unsnooze]').forEach(button=>{
+    button.addEventListener('click',()=>unsnoozePlanningAlertTask(button.dataset.alertUnsnooze));
+  });
+
+  container.querySelectorAll('[data-alert-attend]').forEach(button=>{
+    button.addEventListener('click',()=>attendPlanningAlertTask(button.dataset.alertAttend));
+  });
+
+  container.querySelectorAll('[data-alert-open]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const task=planningTaskRecords.find(x=>x.id===button.dataset.alertOpen);
+      if (task) {
+        if (task.estado==='EN_ESPERA') openPlanningFollowupModal(task);
+        else openPlanningTaskModal(task);
+      }
+    });
+  });
+}
+
+async function snoozePlanningAlertTask(taskId) {
+  const task=planningTaskRecords.find(x=>x.id===taskId);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  const until=new Date(Date.now()+10*60000);
+  const followup=task.estado==='EN_ESPERA';
+  const payload=followup
+    ? {
+        seguimiento_pospuesto_hasta:until.toISOString(),
+        ultimo_motivo_cambio:'Llamado pospuesto 10 minutos desde el Centro de llamados.'
+      }
+    : {
+        pospuesto_hasta:until.toISOString(),
+        ultimo_motivo_cambio:'Aviso pospuesto 10 minutos desde el Centro de llamados.'
+      };
+
+  const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',taskId);
+  if (error) {
+    planningMessage(error.message || 'No fue posible posponer el aviso.');
+    return;
+  }
+
+  const slots=followup ? ['FOLLOWUP_DUE','F10','F30'] : ['DUE','R10','R30','R60'];
+  slots.forEach(slot=>planningReminderUnmarkSeen(task,slot));
+
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  planningMessage('Llamado pospuesto por 10 minutos.','success');
+}
+
+async function unsnoozePlanningAlertTask(taskId) {
+  const task=planningTaskRecords.find(x=>x.id===taskId);
+  if (!task || !planningTaskCanManage(task)) return;
+
+  const followup=task.estado==='EN_ESPERA';
+  const payload=followup
+    ? {
+        seguimiento_pospuesto_hasta:null,
+        ultimo_motivo_cambio:'Aviso de seguimiento reactivado desde el Centro de llamados.'
+      }
+    : {
+        pospuesto_hasta:null,
+        ultimo_motivo_cambio:'Aviso de vencimiento reactivado desde el Centro de llamados.'
+      };
+
+  const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',taskId);
+  if (error) {
+    planningMessage(error.message || 'No fue posible reactivar el aviso.');
+    return;
+  }
+
+  const slots=followup ? ['FOLLOWUP_DUE','F10','F30'] : ['DUE','R10','R30','R60'];
+  slots.forEach(slot=>planningReminderUnmarkSeen(task,slot));
+
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  checkPlanningReminders();
+  planningMessage('Aviso reactivado.','success');
+}
+
+async function attendPlanningAlertTask(taskId) {
+  const task=planningTaskRecords.find(x=>x.id===taskId);
+  if (!task) return;
+
+  if (task.estado==='EN_ESPERA') {
+    openPlanningFollowupModal(task);
+    return;
+  }
+
+  if (task.estado==='PENDIENTE') {
+    const {error}=await client.from('planificacion_pendientes').update({
+      estado:'EN_PROCESO',
+      pospuesto_hasta:null,
+      ultimo_motivo_cambio:'Atención iniciada desde el Centro de llamados.'
+    }).eq('id',taskId);
+
+    if (error) {
+      planningMessage(error.message || 'No fue posible iniciar el pendiente.');
+      return;
+    }
+
+    planningTasksLoaded=false;
+    await loadPlanningTasksModule(true);
+  }
+
+  const refreshed=planningTaskRecords.find(x=>x.id===taskId) || task;
+  openPlanningTaskModal(refreshed);
+}
+
+function planningAlertSpotlightItem() {
+  const items=planningBuildAlertCenterItems();
+  const id=document.getElementById('planningAlertSpotlightAttend')?.dataset.alertTaskId;
+  return items.find(x=>x.task.id===id) || null;
+}
+
+async function refreshPlanningAlertCenter() {
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  renderPlanningAlertCenter();
+}
+
 function switchPlanningTaskMode(mode) {
-  planningTaskMode=mode==='RECURRENCES'?'RECURRENCES':'QUEUE';
+  planningTaskMode=['QUEUE','RECURRENCES','ALERTS'].includes(mode) ? mode : 'QUEUE';
   const queue=planningTaskMode==='QUEUE';
+  const recurrences=planningTaskMode==='RECURRENCES';
+  const alerts=planningTaskMode==='ALERTS';
 
   document.querySelectorAll('[data-planning-task-mode]').forEach(button=>{
     button.classList.toggle('active',button.dataset.planningTaskMode===planningTaskMode);
   });
 
   document.getElementById('planningTaskQueueView')?.classList.toggle('hidden',!queue);
-  document.getElementById('planningRecurrenceView')?.classList.toggle('hidden',queue);
+  document.getElementById('planningRecurrenceView')?.classList.toggle('hidden',!recurrences);
+  document.getElementById('planningAlertCenterView')?.classList.toggle('hidden',!alerts);
 
   const topButton=document.getElementById('planningNewProjectButton');
   if (topButton && planningModuleTab==='TASKS') {
-    topButton.textContent=queue?'＋ Nuevo pendiente':'＋ Nueva recurrencia';
+    topButton.classList.remove('hidden');
+    topButton.textContent=
+      queue ? '＋ Nuevo pendiente'
+      : recurrences ? '＋ Nueva recurrencia'
+      : '↻ Actualizar centro';
   }
 
-  if (!queue) {
+  if (recurrences) {
     updatePlanningRecurrenceStats();
     renderPlanningRecurrenceList();
+  }
+
+  if (alerts) {
+    renderPlanningAlertCenter();
   }
 }
 
@@ -3247,6 +3750,7 @@ async function checkPlanningReminders() {
     showNextPlanningReminder();
   } finally {
     planningReminderChecking=false;
+    renderPlanningAlertCenter();
   }
 }
 
@@ -3487,6 +3991,31 @@ document.getElementById('planningBrowserNotificationButton')?.addEventListener('
 document.getElementById('planningReminderDismissButton')?.addEventListener('click',()=>closeActivePlanningReminder());
 document.getElementById('planningReminderSnoozeButton')?.addEventListener('click',snoozePlanningReminder);
 document.getElementById('planningReminderAttendButton')?.addEventListener('click',()=>attendPlanningReminder());
+
+// Eventos 17C.4
+document.querySelectorAll('[data-alert-center-filter]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    planningAlertCenterFilter=button.dataset.alertCenterFilter || 'ALL';
+    document.querySelectorAll('[data-alert-center-filter]').forEach(x=>{
+      x.classList.toggle('active',x===button);
+    });
+    renderPlanningAlertCenter();
+  });
+});
+
+document.getElementById('planningAlertSearch')?.addEventListener('input',renderPlanningAlertCenter);
+document.getElementById('planningAlertOwnershipFilter')?.addEventListener('change',renderPlanningAlertCenter);
+document.getElementById('planningAlertRefreshButton')?.addEventListener('click',refreshPlanningAlertCenter);
+
+document.getElementById('planningAlertSpotlightSound')?.addEventListener('click',()=>{
+  const item=planningAlertSpotlightItem();
+  if (item) playPlanningReminderSound(null,item.urgent);
+});
+
+document.getElementById('planningAlertSpotlightAttend')?.addEventListener('click',()=>{
+  const item=planningAlertSpotlightItem();
+  if (item) attendPlanningAlertTask(item.task.id);
+});
 
 // Eventos 17C.3
 document.querySelectorAll('[data-planning-task-mode]').forEach(button=>{

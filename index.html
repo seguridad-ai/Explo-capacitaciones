@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17c3" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17c4" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -1009,6 +1009,7 @@
           <div class="planning-task-mode-tabs">
             <button class="active" type="button" data-planning-task-mode="QUEUE">☑ Bandeja</button>
             <button type="button" data-planning-task-mode="RECURRENCES">↻ Recurrencias</button>
+            <button type="button" data-planning-task-mode="ALERTS">🔔 Centro de llamados <span id="planningAlertCenterBadge" class="planning-alert-tab-badge hidden">0</span></button>
           </div>
 
           <div id="planningTaskQueueView">
@@ -1132,6 +1133,61 @@
 
             <div id="planningRecurrenceList" class="planning-recurrence-list">
               <div class="training-library-empty">Cargando recurrencias…</div>
+            </div>
+          </div>
+
+          <div id="planningAlertCenterView" class="hidden">
+            <div class="planning-alert-center-stats">
+              <article class="urgent"><span>Atención inmediata</span><strong id="planningAlertNowCount">0</strong><small>Vencidos o seguimiento pendiente</small></article>
+              <article class="critical"><span>Críticos</span><strong id="planningAlertCriticalCount">0</strong><small>Prioridad crítica activa</small></article>
+              <article><span>Seguimientos</span><strong id="planningAlertFollowupCount">0</strong><small>Próximas 24 horas</small></article>
+              <article><span>Recurrentes</span><strong id="planningAlertRecurringCount">0</strong><small>Próximos 7 días</small></article>
+              <article class="snoozed"><span>Pospuestos</span><strong id="planningAlertSnoozedCount">0</strong><small>Volverán a llamar</small></article>
+            </div>
+
+            <article id="planningAlertSpotlight" class="planning-alert-spotlight">
+              <div class="planning-alert-spotlight-icon">🔔</div>
+              <div class="planning-alert-spotlight-main">
+                <span class="eyebrow">SIGUIENTE LLAMADO</span>
+                <div class="planning-alert-spotlight-title">
+                  <strong id="planningAlertSpotlightCode">—</strong>
+                  <h3 id="planningAlertSpotlightTitle">Sin llamados pendientes</h3>
+                </div>
+                <p id="planningAlertSpotlightMeta">Tu cola de alertas está al día.</p>
+              </div>
+              <div class="planning-alert-spotlight-actions">
+                <button id="planningAlertSpotlightSound" class="secondary-btn" type="button" disabled>🔊 Sonar ahora</button>
+                <button id="planningAlertSpotlightAttend" class="primary-btn" type="button" disabled>Atender ahora</button>
+              </div>
+            </article>
+
+            <article class="panel planning-alert-toolbar-panel">
+              <div class="planning-alert-filter-tabs">
+                <button class="active" type="button" data-alert-center-filter="ALL">Todos</button>
+                <button type="button" data-alert-center-filter="NOW">Ahora</button>
+                <button type="button" data-alert-center-filter="OVERDUE">Vencidos</button>
+                <button type="button" data-alert-center-filter="FOLLOWUP">Seguimientos</button>
+                <button type="button" data-alert-center-filter="CRITICAL">Críticos</button>
+                <button type="button" data-alert-center-filter="RECURRENT">Recurrentes</button>
+                <button type="button" data-alert-center-filter="SNOOZED">Pospuestos</button>
+              </div>
+              <div class="planning-alert-toolbar-row">
+                <input id="planningAlertSearch" type="search" placeholder="Buscar ticket, pendiente, responsable, proyecto..." />
+                <select id="planningAlertOwnershipFilter">
+                  <option value="MINE">Mis llamados</option>
+                  <option value="ALL">Todos visibles</option>
+                </select>
+                <button id="planningAlertRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+              </div>
+            </article>
+
+            <div class="planning-library-headline">
+              <div><span class="eyebrow">COLA PRIORIZADA</span><h3>Centro de llamados y alertas</h3></div>
+              <span id="planningAlertResultCount" class="schedule-result-count">0 alertas</span>
+            </div>
+
+            <div id="planningAlertCenterList" class="planning-alert-center-list">
+              <div class="training-library-empty">Cargando centro de llamados…</div>
             </div>
           </div>
         </div>
@@ -4171,7 +4227,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17c3"></script>
+  <script src="app.js?v=20261019-17c4"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

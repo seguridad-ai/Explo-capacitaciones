@@ -52,6 +52,8 @@ let planningIntegrationSources = {
   COMITES:[]
 };
 let planningIntegrationsLoaded = false;
+let planningDashboardPeriod = 'MONTH';
+let planningDashboardOwnership = 'MINE';
 let activePlanningTaskId = null;
 let activePlanningRecurrenceId = null;
 let planningRecurrenceLastGeneration = 0;
@@ -596,6 +598,537 @@ async function loadPlanningModule(force=false) {
 }
 
 
+
+// ============================================================
+// ETAPA 17E · DASHBOARD DE PRODUCTIVIDAD
+// ============================================================
+
+function planningDashboardTaskIsMine(task) {
+  if (!currentProfile?.id || !task) return false;
+  return task.asignado_a_profile_id===currentProfile.id
+    || (!task.asignado_a_profile_id && task.created_by===currentProfile.id);
+}
+
+function planningDashboardPeriodBounds(period=planningDashboardPeriod,reference=new Date()) {
+  const now=new Date(reference);
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  let start;
+  let end;
+
+  if (period==='WEEK') {
+    const day=today.getDay() || 7;
+    start=new Date(today);
+    start.setDate(today.getDate()-day+1);
+    end=new Date(start);
+    end.setDate(start.getDate()+6);
+  } else if (period==='QUARTER') {
+    const quarterStart=Math.floor(today.getMonth()/3)*3;
+    start=new Date(today.getFullYear(),quarterStart,1);
+    end=new Date(today.getFullYear(),quarterStart+3,0);
+  } else if (period==='YEAR') {
+    start=new Date(today.getFullYear(),0,1);
+    end=new Date(today.getFullYear(),11,31);
+  } else {
+    start=new Date(today.getFullYear(),today.getMonth(),1);
+    end=new Date(today.getFullYear(),today.getMonth()+1,0);
+  }
+
+  start.setHours(0,0,0,0);
+  end.setHours(23,59,59,999);
+
+  return {start,end,now};
+}
+
+function planningDashboardPeriodLabel(period=planningDashboardPeriod) {
+  const {start,end}=planningDashboardPeriodBounds(period);
+  const fmt=new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'short',year:'numeric'});
+  return `${fmt.format(start)} – ${fmt.format(end)}`;
+}
+
+function planningDashboardScopedTasks() {
+  const ownership=document.getElementById('planningDashboardOwnership')?.value || planningDashboardOwnership || 'MINE';
+  planningDashboardOwnership=ownership;
+
+  return planningTaskRecords.filter(task=>{
+    if (task.estado==='CANCELADO') return false;
+    if (ownership==='MINE') return planningDashboardTaskIsMine(task);
+    return true;
+  });
+}
+
+function planningDashboardTaskDue(task) {
+  return planningTaskDateTime(task);
+}
+
+function planningDashboardTaskCompletedAt(task) {
+  if (!task?.completado_at) return null;
+  const d=new Date(task.completado_at);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function planningDashboardTaskCreatedAt(task) {
+  if (!task?.created_at) return null;
+  const d=new Date(task.created_at);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function planningDashboardIsOnTime(task) {
+  const completed=planningDashboardTaskCompletedAt(task);
+  const due=planningDashboardTaskDue(task);
+  return !!completed && !!due && completed<=due;
+}
+
+function planningDashboardInPeriod(date,start,end) {
+  return !!date && date>=start && date<=end;
+}
+
+function planningDashboardGroup(rows,keyFn) {
+  const map=new Map();
+  rows.forEach(row=>{
+    const key=keyFn(row) || 'Sin especificar';
+    if (!map.has(key)) map.set(key,[]);
+    map.get(key).push(row);
+  });
+  return map;
+}
+
+function planningDashboardPercent(n,d) {
+  return d>0 ? Math.round((n/d)*100) : 0;
+}
+
+function planningDashboardSetText(id,value) {
+  const el=document.getElementById(id);
+  if (el) el.textContent=String(value);
+}
+
+function planningDashboardRenderBars(containerId,items,emptyText='Sin datos para mostrar.') {
+  const container=document.getElementById(containerId);
+  if (!container) return;
+
+  if (!items.length) {
+    container.innerHTML=`<div class="training-library-empty">${escapeHtml(emptyText)}</div>`;
+    return;
+  }
+
+  const max=Math.max(...items.map(x=>Number(x.value||0)),1);
+  container.innerHTML=items.map(item=>{
+    const width=Math.max(3,Math.round((Number(item.value||0)/max)*100));
+    return `
+      <div class="planning-dashboard-bar-row">
+        <div class="planning-dashboard-bar-label">
+          <span>${escapeHtml(item.label)}</span>
+          ${item.sub?`<small>${escapeHtml(item.sub)}</small>`:''}
+        </div>
+        <div class="planning-dashboard-bar-track">
+          <div class="planning-dashboard-bar-fill ${escapeHtml(item.className || '')}" style="width:${width}%"></div>
+        </div>
+        <strong>${escapeHtml(String(item.display ?? item.value ?? 0))}</strong>
+      </div>
+    `;
+  }).join('');
+}
+
+function planningDashboardRenderTrend(scopedTasks) {
+  const container=document.getElementById('planningDashboardTrend');
+  if (!container) return;
+
+  const now=new Date();
+  const rows=[];
+
+  for (let offset=5;offset>=0;offset--) {
+    const start=new Date(now.getFullYear(),now.getMonth()-offset,1);
+    const end=new Date(now.getFullYear(),now.getMonth()-offset+1,0,23,59,59,999);
+    const dueRows=scopedTasks.filter(task=>{
+      const due=planningDashboardTaskDue(task);
+      return planningDashboardInPeriod(due,start,end);
+    });
+    const completed=dueRows.filter(x=>x.estado==='COMPLETADO').length;
+    const onTime=dueRows.filter(x=>x.estado==='COMPLETADO' && planningDashboardIsOnTime(x)).length;
+
+    rows.push({
+      label:start.toLocaleDateString('es-PE',{month:'short'}),
+      programmed:dueRows.length,
+      completed,
+      onTime
+    });
+  }
+
+  const max=Math.max(...rows.flatMap(x=>[x.programmed,x.completed]),1);
+
+  container.innerHTML=`
+    <div class="planning-dashboard-trend-legend">
+      <span><i class="trend-programmed"></i>Programados</span>
+      <span><i class="trend-completed"></i>Completados</span>
+    </div>
+    ${rows.map(row=>`
+      <div class="planning-dashboard-trend-row">
+        <span class="planning-dashboard-trend-month">${escapeHtml(row.label)}</span>
+        <div class="planning-dashboard-trend-bars">
+          <div class="planning-dashboard-trend-track">
+            <div class="planning-dashboard-trend-fill programmed" style="width:${Math.round((row.programmed/max)*100)}%"></div>
+          </div>
+          <div class="planning-dashboard-trend-track">
+            <div class="planning-dashboard-trend-fill completed" style="width:${Math.round((row.completed/max)*100)}%"></div>
+          </div>
+        </div>
+        <strong>${row.completed}/${row.programmed}</strong>
+        <small>${planningDashboardPercent(row.onTime,row.completed)}% a tiempo</small>
+      </div>
+    `).join('')}
+  `;
+}
+
+function planningDashboardRenderStatusMix(periodRows) {
+  const labels={
+    VENCIDO:'Vencidos',
+    PENDIENTE:'Pendientes',
+    EN_PROCESO:'En proceso',
+    EN_ESPERA:'En espera',
+    COMPLETADO:'Completados'
+  };
+  const order=['VENCIDO','PENDIENTE','EN_PROCESO','EN_ESPERA','COMPLETADO'];
+  const now=new Date();
+
+  const counts=Object.fromEntries(order.map(x=>[x,0]));
+  periodRows.forEach(task=>{
+    const due=planningDashboardTaskDue(task);
+    let key=task.estado;
+    if (!['COMPLETADO','CANCELADO'].includes(task.estado) && due && due<now) key='VENCIDO';
+    if (counts[key]===undefined) counts[key]=0;
+    counts[key]++;
+  });
+
+  planningDashboardRenderBars(
+    'planningDashboardStatusMix',
+    order.map(key=>({
+      label:labels[key],
+      value:counts[key] || 0,
+      className:key.toLowerCase()
+    }))
+  );
+}
+
+function planningDashboardRenderWorkload(scopedTasks) {
+  const active=scopedTasks.filter(x=>!['COMPLETADO','CANCELADO'].includes(x.estado));
+  const grouped=planningDashboardGroup(active,x=>x.responsable_nombre || 'Sin responsable');
+  const now=new Date();
+
+  const items=[...grouped.entries()].map(([name,rows])=>({
+    label:name,
+    value:rows.length,
+    overdue:rows.filter(x=>planningDashboardTaskDue(x) && planningDashboardTaskDue(x)<now).length
+  }))
+  .sort((a,b)=>b.value-a.value || b.overdue-a.overdue)
+  .slice(0,8)
+  .map(x=>({
+    label:x.label,
+    value:x.value,
+    sub:x.overdue?`${x.overdue} vencido(s)`:'Sin vencidos',
+    display:x.value
+  }));
+
+  planningDashboardRenderBars('planningDashboardWorkload',items,'No hay carga activa.');
+}
+
+function planningDashboardRenderOverdueCategories(scopedTasks) {
+  const now=new Date();
+  const overdue=scopedTasks.filter(task=>
+    !['COMPLETADO','CANCELADO'].includes(task.estado)
+    && planningDashboardTaskDue(task)
+    && planningDashboardTaskDue(task)<now
+  );
+
+  const grouped=planningDashboardGroup(overdue,x=>planningTaskCategoryLabel(x.categoria));
+  const items=[...grouped.entries()]
+    .map(([name,rows])=>({label:name,value:rows.length}))
+    .sort((a,b)=>b.value-a.value)
+    .slice(0,8);
+
+  planningDashboardRenderBars('planningDashboardOverdueCategories',items,'No hay pendientes vencidos.');
+}
+
+function planningDashboardRenderOrigin(periodRows) {
+  const container=document.getElementById('planningDashboardOriginMix');
+  if (!container) return;
+
+  const counts={MANUAL:0,RECURRENTE:0,INTEGRADO:0};
+  periodRows.forEach(task=>{
+    if (task.origen_modulo) counts.INTEGRADO++;
+    else if (task.recurrencia_id) counts.RECURRENTE++;
+    else counts.MANUAL++;
+  });
+
+  const total=periodRows.length || 0;
+  const items=[
+    ['MANUAL','Creación manual','✎'],
+    ['RECURRENTE','Recurrentes','↻'],
+    ['INTEGRADO','Integrados 17D','⇄']
+  ];
+
+  container.innerHTML=items.map(([key,label,icon])=>`
+    <article class="planning-dashboard-origin-card">
+      <span>${icon}</span>
+      <strong>${counts[key]}</strong>
+      <small>${escapeHtml(label)}</small>
+      <b>${planningDashboardPercent(counts[key],total)}%</b>
+    </article>
+  `).join('');
+}
+
+function planningDashboardAttentionRows(scopedTasks) {
+  const now=new Date();
+  return scopedTasks
+    .filter(task=>{
+      if (['COMPLETADO','CANCELADO'].includes(task.estado)) return false;
+      const due=planningDashboardTaskDue(task);
+      return task.prioridad==='CRITICA' || (due && due<now);
+    })
+    .sort((a,b)=>{
+      const aDue=planningDashboardTaskDue(a);
+      const bDue=planningDashboardTaskDue(b);
+      const aOver=aDue && aDue<now ? 0 : 1;
+      const bOver=bDue && bDue<now ? 0 : 1;
+      if (aOver!==bOver) return aOver-bOver;
+      const ap=planningTaskPriorityRank(a.prioridad);
+      const bp=planningTaskPriorityRank(b.prioridad);
+      if (ap!==bp) return ap-bp;
+      return (aDue?.getTime() ?? Number.MAX_SAFE_INTEGER)-(bDue?.getTime() ?? Number.MAX_SAFE_INTEGER);
+    })
+    .slice(0,6);
+}
+
+function planningDashboardRenderAttention(scopedTasks) {
+  const container=document.getElementById('planningDashboardAttentionList');
+  if (!container) return;
+
+  const rows=planningDashboardAttentionRows(scopedTasks);
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No hay vencidos ni críticos pendientes.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(task=>{
+    const situation=planningTaskSituation(task);
+    return `
+      <article class="planning-dashboard-attention-item ${situation.code==='VENCIDO'?'overdue':''}">
+        <div>
+          <span>${escapeHtml(task.codigo || 'TK')} · ${escapeHtml(planningPriorityLabel(task.prioridad))}</span>
+          <strong>${escapeHtml(task.titulo || 'Pendiente')}</strong>
+          <small>${escapeHtml(situation.label)} · ${escapeHtml(task.responsable_nombre || 'Sin responsable')}</small>
+        </div>
+        <button class="secondary-btn small-btn" type="button" data-dashboard-open-task="${task.id}">Abrir</button>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-dashboard-open-task]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      const task=planningTaskRecords.find(x=>x.id===button.dataset.dashboardOpenTask);
+      if (!task) return;
+      if (task.estado==='EN_ESPERA') openPlanningFollowupModal(task);
+      else openPlanningTaskModal(task);
+    });
+  });
+}
+
+function planningDashboardRenderPerformance(scopedTasks,periodRows,bounds) {
+  const body=document.getElementById('planningDashboardPerformanceBody');
+  if (!body) return;
+
+  const now=bounds.now;
+  const cutoff=now<bounds.end ? now : bounds.end;
+  const active=scopedTasks.filter(x=>!['COMPLETADO','CANCELADO'].includes(x.estado));
+  const activeBy=planningDashboardGroup(active,x=>x.responsable_nombre || 'Sin responsable');
+  const groups=planningDashboardGroup(periodRows,x=>x.responsable_nombre || 'Sin responsable');
+
+  const rows=[...groups.entries()].map(([name,tasks])=>{
+    const dueToDate=tasks.filter(x=>{
+      const due=planningDashboardTaskDue(x);
+      return due && due<=cutoff;
+    });
+    const completed=tasks.filter(x=>x.estado==='COMPLETADO');
+    const completedDue=dueToDate.filter(x=>x.estado==='COMPLETADO');
+    const onTime=completed.filter(planningDashboardIsOnTime);
+    const overdue=dueToDate.filter(x=>!['COMPLETADO','CANCELADO'].includes(x.estado));
+    return {
+      name,
+      programmed:tasks.length,
+      completed:completed.length,
+      onTime:onTime.length,
+      overdue:overdue.length,
+      compliance:planningDashboardPercent(completedDue.length,dueToDate.length),
+      active:(activeBy.get(name)||[]).length
+    };
+  }).sort((a,b)=>b.overdue-a.overdue || b.active-a.active || a.name.localeCompare(b.name,'es'));
+
+  if (!rows.length) {
+    body.innerHTML='<tr><td colspan="7" class="table-empty">Sin pendientes programados para el periodo seleccionado.</td></tr>';
+    return;
+  }
+
+  body.innerHTML=rows.map(row=>`
+    <tr>
+      <td><strong>${escapeHtml(row.name)}</strong></td>
+      <td>${row.programmed}</td>
+      <td>${row.completed}</td>
+      <td>${row.onTime}</td>
+      <td class="${row.overdue?'dashboard-table-alert':''}">${row.overdue}</td>
+      <td><span class="planning-dashboard-percent-pill ${row.compliance>=90?'good':row.compliance>=70?'warn':'bad'}">${row.compliance}%</span></td>
+      <td>${row.active}</td>
+    </tr>
+  `).join('');
+}
+
+function planningDashboardProjectRows() {
+  return planningProjects
+    .filter(project=>!['CANCELADO'].includes(project.estado))
+    .map(project=>{
+      const activities=planningActivitiesFor(project.id).filter(x=>x.estado!=='CANCELADO');
+      const overdue=activities.filter(x=>planningActivitySituation(x).code==='ATRASADO');
+      const milestones=activities
+        .filter(x=>x.tipo==='HITO' && planningActivitySituation(x).code!=='COMPLETADO')
+        .sort((a,b)=>(planningParseDate(a.fecha_fin)?.getTime()||0)-(planningParseDate(b.fecha_fin)?.getTime()||0));
+      return {
+        project,
+        progress:planningProjectProgress(project.id),
+        activities:activities.length,
+        overdue:overdue.length,
+        nextMilestone:milestones[0] || null
+      };
+    })
+    .sort((a,b)=>b.overdue-a.overdue || a.progress-b.progress);
+}
+
+function planningDashboardRenderProjectHealth() {
+  const container=document.getElementById('planningDashboardProjectHealth');
+  if (!container) return;
+
+  const rows=planningDashboardProjectRows().slice(0,10);
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No hay proyectos planificados visibles.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(row=>`
+    <article class="planning-dashboard-project-card ${row.overdue?'at-risk':''}">
+      <div class="planning-dashboard-project-head">
+        <div>
+          <span>${escapeHtml(row.project.codigo || 'PLN')}</span>
+          <strong>${escapeHtml(row.project.nombre || 'Proyecto')}</strong>
+        </div>
+        <b>${row.progress}%</b>
+      </div>
+      <div class="planning-dashboard-project-track">
+        <div style="width:${Math.max(0,Math.min(100,row.progress))}%"></div>
+      </div>
+      <div class="planning-dashboard-project-meta">
+        <span>${row.activities} actividad(es)</span>
+        <span class="${row.overdue?'alert':''}">${row.overdue} atrasada(s)</span>
+        ${row.nextMilestone?`<span>Próximo hito: ${escapeHtml(formatDatePE(row.nextMilestone.fecha_fin))}</span>`:''}
+      </div>
+      <button class="secondary-btn small-btn" type="button" data-dashboard-open-project="${row.project.id}">Abrir Gantt</button>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('[data-dashboard-open-project]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      switchPlanningTab('PROJECTS');
+      openPlanningProject(button.dataset.dashboardOpenProject);
+    });
+  });
+}
+
+function renderPlanningDashboard() {
+  const periodEl=document.getElementById('planningDashboardPeriod');
+  const ownershipEl=document.getElementById('planningDashboardOwnership');
+  if (periodEl) planningDashboardPeriod=periodEl.value || planningDashboardPeriod;
+  if (ownershipEl) planningDashboardOwnership=ownershipEl.value || planningDashboardOwnership;
+
+  const bounds=planningDashboardPeriodBounds();
+  const scoped=planningDashboardScopedTasks();
+  const periodRows=scoped.filter(task=>{
+    const due=planningDashboardTaskDue(task);
+    return planningDashboardInPeriod(due,bounds.start,bounds.end);
+  });
+
+  const cutoff=bounds.now<bounds.end ? bounds.now : bounds.end;
+  const dueToDate=periodRows.filter(task=>{
+    const due=planningDashboardTaskDue(task);
+    return due && due<=cutoff;
+  });
+  const completedDue=dueToDate.filter(x=>x.estado==='COMPLETADO');
+  const compliance=planningDashboardPercent(completedDue.length,dueToDate.length);
+
+  const currentOverdue=scoped.filter(task=>{
+    const due=planningDashboardTaskDue(task);
+    return !['COMPLETADO','CANCELADO'].includes(task.estado) && due && due<bounds.now;
+  });
+
+  const completedPeriod=periodRows.filter(x=>x.estado==='COMPLETADO');
+  const onTime=completedPeriod.filter(planningDashboardIsOnTime);
+  const onTimePct=planningDashboardPercent(onTime.length,completedPeriod.length);
+
+  const active=scoped.filter(x=>!['COMPLETADO','CANCELADO'].includes(x.estado));
+
+  const closedInPeriod=scoped.filter(task=>{
+    const completed=planningDashboardTaskCompletedAt(task);
+    return task.estado==='COMPLETADO' && planningDashboardInPeriod(completed,bounds.start,bounds.end);
+  });
+
+  const cycleDays=closedInPeriod
+    .map(task=>{
+      const created=planningDashboardTaskCreatedAt(task);
+      const completed=planningDashboardTaskCompletedAt(task);
+      if (!created || !completed || completed<created) return null;
+      return (completed-created)/86400000;
+    })
+    .filter(x=>x!==null);
+
+  const avgClose=cycleDays.length
+    ? cycleDays.reduce((a,b)=>a+b,0)/cycleDays.length
+    : 0;
+
+  const projectsAtRisk=planningDashboardProjectRows().filter(x=>x.overdue>0).length;
+
+  planningDashboardSetText('planningDashboardCompliance',`${compliance}%`);
+  planningDashboardSetText(
+    'planningDashboardComplianceMeta',
+    `${completedDue.length} de ${dueToDate.length} vencimiento(s) atendido(s)`
+  );
+  planningDashboardSetText('planningDashboardOverdue',currentOverdue.length);
+  planningDashboardSetText('planningDashboardOnTime',`${onTimePct}%`);
+  planningDashboardSetText(
+    'planningDashboardOnTimeMeta',
+    `${onTime.length} de ${completedPeriod.length} completado(s)`
+  );
+  planningDashboardSetText('planningDashboardActiveLoad',active.length);
+  planningDashboardSetText('planningDashboardAvgClose',`${avgClose.toFixed(avgClose>=10?0:1)} d`);
+  planningDashboardSetText('planningDashboardProjectsAtRisk',projectsAtRisk);
+  planningDashboardSetText('planningDashboardPerformanceMeta',planningDashboardPeriodLabel());
+
+  planningDashboardRenderTrend(scoped);
+  planningDashboardRenderStatusMix(periodRows);
+  planningDashboardRenderWorkload(scoped);
+  planningDashboardRenderOverdueCategories(scoped);
+  planningDashboardRenderOrigin(periodRows);
+  planningDashboardRenderAttention(scoped);
+  planningDashboardRenderPerformance(scoped,periodRows,bounds);
+  planningDashboardRenderProjectHealth();
+}
+
+async function loadPlanningDashboard(force=false) {
+  if (!client) return;
+  await loadPlanningModule(force);
+  await loadPlanningTasksModule(force);
+  renderPlanningDashboard();
+}
+
+function printPlanningDashboard() {
+  document.body.classList.add('planning-dashboard-print-mode');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('planning-dashboard-print-mode'),300);
+}
+
 // ============================================================
 // ETAPA 17D · INTEGRACIONES AUTOMÁTICAS
 // ============================================================
@@ -937,26 +1470,35 @@ async function syncPlanningIntegrationModule(module,button=null) {
 }
 
 function switchPlanningTab(tab) {
-  planningModuleTab=['PROJECTS','TASKS','INTEGRATIONS'].includes(tab) ? tab : 'PROJECTS';
+  planningModuleTab=['PROJECTS','DASHBOARD','TASKS','INTEGRATIONS'].includes(tab) ? tab : 'PROJECTS';
   const projects=planningModuleTab==='PROJECTS';
+  const dashboard=planningModuleTab==='DASHBOARD';
   const tasks=planningModuleTab==='TASKS';
   const integrations=planningModuleTab==='INTEGRATIONS';
 
   document.getElementById('planningProjectsTab')?.classList.toggle('active',projects);
+  document.getElementById('planningDashboardTab')?.classList.toggle('active',dashboard);
   document.getElementById('planningTasksTab')?.classList.toggle('active',tasks);
   document.getElementById('planningIntegrationsTab')?.classList.toggle('active',integrations);
+
   document.getElementById('planningProjectsView')?.classList.toggle('hidden',!projects);
+  document.getElementById('planningDashboardView')?.classList.toggle('hidden',!dashboard);
   document.getElementById('planningTasksView')?.classList.toggle('hidden',!tasks);
   document.getElementById('planningIntegrationsView')?.classList.toggle('hidden',!integrations);
 
   const topButton=document.getElementById('planningNewProjectButton');
   if (topButton) {
     topButton.classList.remove('hidden');
-    topButton.textContent=projects
-      ? '＋ Nuevo proyecto'
+    topButton.textContent=
+      projects ? '＋ Nuevo proyecto'
+      : dashboard ? '↻ Actualizar dashboard'
       : tasks
         ? (planningTaskMode==='RECURRENCES'?'＋ Nueva recurrencia':planningTaskMode==='ALERTS'?'↻ Actualizar centro':'＋ Nuevo pendiente')
         : '↻ Actualizar integraciones';
+  }
+
+  if (dashboard) {
+    loadPlanningDashboard();
   }
 
   if (tasks) {
@@ -2002,6 +2544,7 @@ async function loadPlanningTasksModule(force=false) {
     updatePlanningRecurrenceStats();
     renderPlanningRecurrenceList();
     renderPlanningAlertCenter();
+    if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
     return;
   }
 
@@ -2047,6 +2590,7 @@ async function loadPlanningTasksModule(force=false) {
   updatePlanningRecurrenceStats();
   renderPlanningRecurrenceList();
   renderPlanningAlertCenter();
+  if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -2467,8 +3011,19 @@ document.querySelectorAll('[data-integration-sync]').forEach(button=>{
 
 // Eventos 17A
 document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
+document.getElementById('planningDashboardTab')?.addEventListener('click',()=>switchPlanningTab('DASHBOARD'));
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
 document.getElementById('planningIntegrationsTab')?.addEventListener('click',()=>switchPlanningTab('INTEGRATIONS'));
+document.getElementById('planningDashboardPeriod')?.addEventListener('change',event=>{
+  planningDashboardPeriod=event.target.value || 'MONTH';
+  renderPlanningDashboard();
+});
+document.getElementById('planningDashboardOwnership')?.addEventListener('change',event=>{
+  planningDashboardOwnership=event.target.value || 'MINE';
+  renderPlanningDashboard();
+});
+document.getElementById('planningDashboardRefreshButton')?.addEventListener('click',()=>loadPlanningDashboard(true));
+document.getElementById('planningDashboardPrintButton')?.addEventListener('click',printPlanningDashboard);
 document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
   if (planningModuleTab==='TASKS') {
     if (planningTaskMode==='RECURRENCES') {
@@ -2479,6 +3034,8 @@ document.getElementById('planningNewProjectButton')?.addEventListener('click',()
     } else {
       openPlanningTaskModal();
     }
+  } else if (planningModuleTab==='DASHBOARD') {
+    loadPlanningDashboard(true);
   } else if (planningModuleTab==='INTEGRATIONS') {
     planningIntegrationsLoaded=false;
     loadPlanningIntegrationsDashboard(true);

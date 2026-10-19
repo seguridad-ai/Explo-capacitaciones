@@ -7514,3 +7514,570 @@ body.modal-open{
     width:100%;
   }
 }
+
+
+/* ============================================================
+   ETAPA 17E · DASHBOARD DE PRODUCTIVIDAD
+   ============================================================ */
+
+.planning-dashboard-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:18px;
+  margin-bottom:16px;
+}
+
+.planning-dashboard-toolbar h3{
+  margin:3px 0 0;
+  color:#182a42;
+  font-size:17px;
+}
+
+.planning-dashboard-toolbar p{
+  margin:5px 0 0;
+  color:#748196;
+  font-size:8.5px;
+}
+
+.planning-dashboard-controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+}
+
+.planning-dashboard-controls select{
+  min-width:150px;
+  border:1px solid #d0d9e4;
+  border-radius:8px;
+  background:#fff;
+  padding:9px 10px;
+  font:inherit;
+}
+
+.planning-dashboard-kpis{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:14px;
+}
+
+.planning-dashboard-kpis article{
+  border:1px solid #dce3eb;
+  border-radius:13px;
+  background:#fff;
+  padding:13px 14px;
+  box-shadow:0 4px 16px rgba(28,45,68,.04);
+}
+
+.planning-dashboard-kpis article.dashboard-kpi-alert{
+  border-left:4px solid #c00000;
+}
+
+.planning-dashboard-kpis span,
+.planning-dashboard-kpis small{
+  display:block;
+  color:#78869a;
+  font-size:7.8px;
+}
+
+.planning-dashboard-kpis strong{
+  display:block;
+  margin:5px 0 2px;
+  color:#142942;
+  font-size:22px;
+}
+
+.planning-dashboard-kpis .dashboard-kpi-alert strong{
+  color:#c00000;
+}
+
+.planning-dashboard-grid{
+  display:grid;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.planning-dashboard-grid.two-cols{
+  grid-template-columns:1fr 1fr;
+}
+
+.planning-dashboard-card{
+  margin-bottom:12px;
+}
+
+.planning-dashboard-card-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.planning-dashboard-card-head h3{
+  margin:3px 0 0;
+  color:#1d2e45;
+  font-size:13px;
+}
+
+.planning-dashboard-card-head>small{
+  color:#8792a2;
+  font-size:7.5px;
+  text-align:right;
+}
+
+.planning-dashboard-bars{
+  display:grid;
+  gap:9px;
+}
+
+.planning-dashboard-bar-row{
+  display:grid;
+  grid-template-columns:minmax(130px,180px) minmax(120px,1fr) 42px;
+  gap:8px;
+  align-items:center;
+}
+
+.planning-dashboard-bar-label span,
+.planning-dashboard-bar-label small{
+  display:block;
+}
+
+.planning-dashboard-bar-label span{
+  color:#425168;
+  font-size:8.5px;
+  font-weight:750;
+}
+
+.planning-dashboard-bar-label small{
+  margin-top:2px;
+  color:#8a95a5;
+  font-size:7px;
+}
+
+.planning-dashboard-bar-track{
+  height:9px;
+  border-radius:999px;
+  background:#edf1f5;
+  overflow:hidden;
+}
+
+.planning-dashboard-bar-fill{
+  height:100%;
+  min-width:3px;
+  border-radius:999px;
+  background:#5a79a5;
+}
+
+.planning-dashboard-bar-fill.vencido{
+  background:#c00000;
+}
+
+.planning-dashboard-bar-fill.en_proceso{
+  background:#376ac2;
+}
+
+.planning-dashboard-bar-fill.en_espera{
+  background:#6a3fc7;
+}
+
+.planning-dashboard-bar-fill.completado{
+  background:#18864a;
+}
+
+.planning-dashboard-bar-fill.pendiente{
+  background:#9aa6b5;
+}
+
+.planning-dashboard-bar-row>strong{
+  color:#2d3e55;
+  font-size:9px;
+  text-align:right;
+}
+
+.planning-dashboard-trend{
+  display:grid;
+  gap:8px;
+}
+
+.planning-dashboard-trend-legend{
+  display:flex;
+  justify-content:flex-end;
+  gap:14px;
+  color:#768397;
+  font-size:7px;
+}
+
+.planning-dashboard-trend-legend span{
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+
+.planning-dashboard-trend-legend i{
+  width:12px;
+  height:5px;
+  border-radius:999px;
+  display:inline-block;
+}
+
+.planning-dashboard-trend-legend .trend-programmed{
+  background:#cfd8e4;
+}
+
+.planning-dashboard-trend-legend .trend-completed{
+  background:#c00000;
+}
+
+.planning-dashboard-trend-row{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) 44px 72px;
+  gap:8px;
+  align-items:center;
+}
+
+.planning-dashboard-trend-month{
+  color:#526177;
+  font-size:8px;
+  font-weight:800;
+  text-transform:capitalize;
+}
+
+.planning-dashboard-trend-bars{
+  display:grid;
+  gap:4px;
+}
+
+.planning-dashboard-trend-track{
+  height:6px;
+  border-radius:999px;
+  background:#f0f3f6;
+  overflow:hidden;
+}
+
+.planning-dashboard-trend-fill{
+  height:100%;
+  border-radius:999px;
+}
+
+.planning-dashboard-trend-fill.programmed{
+  background:#cfd8e4;
+}
+
+.planning-dashboard-trend-fill.completed{
+  background:#c00000;
+}
+
+.planning-dashboard-trend-row>strong{
+  color:#304158;
+  font-size:8px;
+  text-align:right;
+}
+
+.planning-dashboard-trend-row>small{
+  color:#7e8999;
+  font-size:7px;
+  text-align:right;
+}
+
+.planning-dashboard-origin-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px;
+}
+
+.planning-dashboard-origin-card{
+  position:relative;
+  border:1px solid #dfe5ec;
+  border-radius:11px;
+  background:#fafbfd;
+  padding:12px;
+  text-align:center;
+}
+
+.planning-dashboard-origin-card>span{
+  display:block;
+  font-size:18px;
+}
+
+.planning-dashboard-origin-card>strong{
+  display:block;
+  margin-top:5px;
+  color:#1e324a;
+  font-size:20px;
+}
+
+.planning-dashboard-origin-card>small{
+  display:block;
+  margin-top:2px;
+  color:#78869a;
+  font-size:7.5px;
+}
+
+.planning-dashboard-origin-card>b{
+  display:inline-block;
+  margin-top:6px;
+  border-radius:999px;
+  background:#eef2f7;
+  color:#54647a;
+  padding:3px 6px;
+  font-size:7px;
+}
+
+.planning-dashboard-attention{
+  display:grid;
+  gap:7px;
+}
+
+.planning-dashboard-attention-item{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid #e0e5eb;
+  border-left:4px solid #d99a00;
+  border-radius:9px;
+  background:#fff;
+  padding:9px 10px;
+}
+
+.planning-dashboard-attention-item.overdue{
+  border-left-color:#c00000;
+  background:#fffafa;
+}
+
+.planning-dashboard-attention-item span,
+.planning-dashboard-attention-item strong,
+.planning-dashboard-attention-item small{
+  display:block;
+}
+
+.planning-dashboard-attention-item span{
+  color:#c00000;
+  font-size:7px;
+  font-weight:900;
+}
+
+.planning-dashboard-attention-item strong{
+  margin-top:2px;
+  color:#29394f;
+  font-size:9px;
+}
+
+.planning-dashboard-attention-item small{
+  margin-top:3px;
+  color:#7b8798;
+  font-size:7.5px;
+}
+
+.planning-dashboard-table-wrap{
+  overflow:auto;
+}
+
+.planning-dashboard-table th,
+.planning-dashboard-table td{
+  white-space:nowrap;
+}
+
+.dashboard-table-alert{
+  color:#c00000;
+  font-weight:850;
+}
+
+.planning-dashboard-percent-pill{
+  display:inline-flex;
+  justify-content:center;
+  min-width:48px;
+  border-radius:999px;
+  padding:4px 7px;
+  font-size:7.5px;
+  font-weight:900;
+}
+
+.planning-dashboard-percent-pill.good{
+  background:#e5f6ea;
+  color:#14763a;
+}
+
+.planning-dashboard-percent-pill.warn{
+  background:#fff0d8;
+  color:#965b00;
+}
+
+.planning-dashboard-percent-pill.bad{
+  background:#ffe3e3;
+  color:#b00000;
+}
+
+.planning-dashboard-project-health{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+
+.planning-dashboard-project-card{
+  border:1px solid #dce3eb;
+  border-left:4px solid #7692b5;
+  border-radius:10px;
+  background:#fff;
+  padding:11px;
+}
+
+.planning-dashboard-project-card.at-risk{
+  border-left-color:#c00000;
+  background:#fffafa;
+}
+
+.planning-dashboard-project-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+
+.planning-dashboard-project-head span,
+.planning-dashboard-project-head strong{
+  display:block;
+}
+
+.planning-dashboard-project-head span{
+  color:#c00000;
+  font-size:7px;
+  font-weight:900;
+}
+
+.planning-dashboard-project-head strong{
+  margin-top:2px;
+  color:#24364c;
+  font-size:9px;
+}
+
+.planning-dashboard-project-head>b{
+  color:#20364f;
+  font-size:10px;
+}
+
+.planning-dashboard-project-track{
+  height:7px;
+  border-radius:999px;
+  background:#edf1f5;
+  overflow:hidden;
+  margin:9px 0 7px;
+}
+
+.planning-dashboard-project-track>div{
+  height:100%;
+  border-radius:999px;
+  background:#5579a5;
+}
+
+.planning-dashboard-project-card.at-risk .planning-dashboard-project-track>div{
+  background:#c00000;
+}
+
+.planning-dashboard-project-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px 10px;
+  margin-bottom:8px;
+  color:#7c899a;
+  font-size:7.5px;
+}
+
+.planning-dashboard-project-meta .alert{
+  color:#c00000;
+  font-weight:850;
+}
+
+@media(max-width:1250px){
+  .planning-dashboard-kpis{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+
+@media(max-width:900px){
+  .planning-dashboard-toolbar{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .planning-dashboard-grid.two-cols{
+    grid-template-columns:1fr;
+  }
+
+  .planning-dashboard-project-health{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:650px){
+  .planning-dashboard-kpis{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .planning-dashboard-controls{
+    width:100%;
+  }
+
+  .planning-dashboard-controls select,
+  .planning-dashboard-controls button{
+    flex:1 1 100%;
+    width:100%;
+  }
+
+  .planning-dashboard-bar-row{
+    grid-template-columns:110px minmax(80px,1fr) 34px;
+  }
+
+  .planning-dashboard-trend-row{
+    grid-template-columns:36px minmax(0,1fr) 40px;
+  }
+
+  .planning-dashboard-trend-row>small{
+    grid-column:2/-1;
+    text-align:left;
+  }
+
+  .planning-dashboard-origin-grid{
+    grid-template-columns:1fr;
+  }
+
+  .planning-dashboard-attention-item{
+    grid-template-columns:1fr;
+  }
+}
+
+@media print{
+  body.planning-dashboard-print-mode .sidebar,
+  body.planning-dashboard-print-mode .topbar,
+  body.planning-dashboard-print-mode .planning-tabs,
+  body.planning-dashboard-print-mode .planning-section-title,
+  body.planning-dashboard-print-mode #planningMessage,
+  body.planning-dashboard-print-mode #planningProjectsView,
+  body.planning-dashboard-print-mode #planningTasksView,
+  body.planning-dashboard-print-mode #planningIntegrationsView,
+  body.planning-dashboard-print-mode .planning-dashboard-controls{
+    display:none!important;
+  }
+
+  body.planning-dashboard-print-mode .main-content{
+    margin:0!important;
+    padding:0!important;
+    width:100%!important;
+  }
+
+  body.planning-dashboard-print-mode #planificacion{
+    display:block!important;
+  }
+
+  body.planning-dashboard-print-mode #planningDashboardView{
+    display:block!important;
+  }
+
+  body.planning-dashboard-print-mode .panel,
+  body.planning-dashboard-print-mode .planning-dashboard-kpis article{
+    box-shadow:none!important;
+    break-inside:avoid;
+  }
+}

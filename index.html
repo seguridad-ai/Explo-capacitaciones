@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17d" />
+  <link rel="stylesheet" href="styles.css?v=20261019-17e" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -850,6 +850,7 @@
 
         <div class="planning-tabs" role="tablist">
           <button id="planningProjectsTab" class="active" type="button">Proyectos y Gantt</button>
+          <button id="planningDashboardTab" type="button">Dashboard</button>
           <button id="planningTasksTab" type="button">Pendientes</button>
           <button id="planningIntegrationsTab" type="button">Integraciones <span id="planningIntegrationBadge" class="planning-integration-tab-badge hidden">0</span></button>
         </div>
@@ -981,6 +982,151 @@
               </div>
             </section>
           </div>
+        </div>
+
+
+        <div id="planningDashboardView" class="hidden">
+          <article class="panel planning-dashboard-toolbar">
+            <div>
+              <span class="eyebrow">CONTROL DE PRODUCTIVIDAD</span>
+              <h3>Dashboard de Planificación</h3>
+              <p>Seguimiento de cumplimiento, carga de trabajo, atrasos, responsables y avance de proyectos.</p>
+            </div>
+            <div class="planning-dashboard-controls">
+              <select id="planningDashboardPeriod">
+                <option value="WEEK">Semana actual</option>
+                <option value="MONTH" selected>Mes actual</option>
+                <option value="QUARTER">Trimestre actual</option>
+                <option value="YEAR">Año actual</option>
+              </select>
+              <select id="planningDashboardOwnership">
+                <option value="MINE">Mis pendientes</option>
+                <option value="ALL">Todos visibles</option>
+              </select>
+              <button id="planningDashboardRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+              <button id="planningDashboardPrintButton" class="primary-btn" type="button">🖨 Imprimir / PDF</button>
+            </div>
+          </article>
+
+          <div class="planning-dashboard-kpis">
+            <article>
+              <span>Cumplimiento a la fecha</span>
+              <strong id="planningDashboardCompliance">0%</strong>
+              <small id="planningDashboardComplianceMeta">0 de 0 vencimientos atendidos</small>
+            </article>
+            <article class="dashboard-kpi-alert">
+              <span>Vencidos actuales</span>
+              <strong id="planningDashboardOverdue">0</strong>
+              <small>Pendientes que ya superaron su plazo</small>
+            </article>
+            <article>
+              <span>Completados a tiempo</span>
+              <strong id="planningDashboardOnTime">0%</strong>
+              <small id="planningDashboardOnTimeMeta">0 de 0 completados</small>
+            </article>
+            <article>
+              <span>Carga activa</span>
+              <strong id="planningDashboardActiveLoad">0</strong>
+              <small>Pendiente + en proceso + en espera</small>
+            </article>
+            <article>
+              <span>Tiempo medio de cierre</span>
+              <strong id="planningDashboardAvgClose">0 d</strong>
+              <small>Desde creación hasta cierre</small>
+            </article>
+            <article>
+              <span>Proyectos con atraso</span>
+              <strong id="planningDashboardProjectsAtRisk">0</strong>
+              <small>Con actividades vencidas sin completar</small>
+            </article>
+          </div>
+
+          <div class="planning-dashboard-grid two-cols">
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">TENDENCIA</span><h3>Cumplimiento de los últimos 6 meses</h3></div>
+                <small>Completados vs. programados por vencimiento</small>
+              </div>
+              <div id="planningDashboardTrend" class="planning-dashboard-trend"></div>
+            </article>
+
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">ESTADO ACTUAL</span><h3>Distribución de pendientes</h3></div>
+                <small>Situación de la carga visible</small>
+              </div>
+              <div id="planningDashboardStatusMix" class="planning-dashboard-bars"></div>
+            </article>
+          </div>
+
+          <div class="planning-dashboard-grid two-cols">
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">RESPONSABLES</span><h3>Carga de trabajo activa</h3></div>
+                <small>Top de responsables por pendientes activos</small>
+              </div>
+              <div id="planningDashboardWorkload" class="planning-dashboard-bars"></div>
+            </article>
+
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">ATRASOS</span><h3>Vencidos por categoría</h3></div>
+                <small>Áreas de planificación que requieren intervención</small>
+              </div>
+              <div id="planningDashboardOverdueCategories" class="planning-dashboard-bars"></div>
+            </article>
+          </div>
+
+          <div class="planning-dashboard-grid two-cols">
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">ORIGEN</span><h3>Cómo se generan los pendientes</h3></div>
+                <small>Manual, recurrente o integrado con otros módulos</small>
+              </div>
+              <div id="planningDashboardOriginMix" class="planning-dashboard-origin-grid"></div>
+            </article>
+
+            <article class="panel planning-dashboard-card">
+              <div class="planning-dashboard-card-head">
+                <div><span class="eyebrow">ATENCIÓN</span><h3>Prioridades que requieren acción</h3></div>
+                <small>Vencidos y críticos más urgentes</small>
+              </div>
+              <div id="planningDashboardAttentionList" class="planning-dashboard-attention"></div>
+            </article>
+          </div>
+
+          <article class="panel planning-dashboard-card">
+            <div class="planning-dashboard-card-head">
+              <div><span class="eyebrow">DESEMPEÑO</span><h3>Desempeño por responsable</h3></div>
+              <small id="planningDashboardPerformanceMeta">Periodo seleccionado</small>
+            </div>
+            <div class="planning-dashboard-table-wrap">
+              <table class="data-table planning-dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Responsable</th>
+                    <th>Programados</th>
+                    <th>Completados</th>
+                    <th>A tiempo</th>
+                    <th>Vencidos</th>
+                    <th>Cumplimiento</th>
+                    <th>Carga activa</th>
+                  </tr>
+                </thead>
+                <tbody id="planningDashboardPerformanceBody">
+                  <tr><td colspan="7" class="table-empty">Sin datos.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel planning-dashboard-card">
+            <div class="planning-dashboard-card-head">
+              <div><span class="eyebrow">GANTT</span><h3>Salud de proyectos planificados</h3></div>
+              <small>Avance y actividades atrasadas por proyecto</small>
+            </div>
+            <div id="planningDashboardProjectHealth" class="planning-dashboard-project-health"></div>
+          </article>
         </div>
 
         <div id="planningTasksView" class="hidden">
@@ -4310,7 +4456,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17d"></script>
+  <script src="app.js?v=20261019-17e"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

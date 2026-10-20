@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261020-17f" />
+  <link rel="stylesheet" href="styles.css?v=20261020-17f1" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -688,6 +688,115 @@
     </div>
   </section>
 
+  <section id="publicPlanningScreen" class="public-planning-screen hidden" aria-label="Planificación compartida">
+    <div class="public-planning-shell">
+      <header class="public-planning-header">
+        <div class="public-planning-brand">
+          <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
+          <div>
+            <span class="eyebrow">PLANIFICACIÓN COMPARTIDA</span>
+            <h1 id="publicPlanningTitle">Planificación</h1>
+            <p id="publicPlanningDescription">Pendientes programados</p>
+          </div>
+        </div>
+        <button id="publicPlanningSuggestButton" class="primary-btn hidden" type="button">＋ Proponer tarea</button>
+      </header>
+
+      <main class="public-planning-main">
+        <div id="publicPlanningMessage" class="form-message"></div>
+
+        <div class="public-planning-stats">
+          <article><span>Programados</span><strong id="publicPlanningTotal">0</strong></article>
+          <article><span>Para hoy</span><strong id="publicPlanningToday">0</strong></article>
+          <article class="alert"><span>Vencidos</span><strong id="publicPlanningOverdue">0</strong></article>
+          <article><span>Completados</span><strong id="publicPlanningCompleted">0</strong></article>
+        </div>
+
+        <article class="public-planning-toolbar">
+          <input id="publicPlanningSearch" type="search" placeholder="Buscar tarea, código, categoría..." />
+          <select id="publicPlanningStatusFilter">
+            <option value="ALL">Todos los estados</option>
+            <option value="PENDIENTE">Pendientes</option>
+            <option value="EN_PROCESO">En proceso</option>
+            <option value="EN_ESPERA">En espera</option>
+            <option value="COMPLETADO">Completados</option>
+          </select>
+          <select id="publicPlanningPeriodFilter">
+            <option value="ALL">Todas las fechas</option>
+            <option value="TODAY">Hoy</option>
+            <option value="WEEK">Próximos 7 días</option>
+            <option value="MONTH">Este mes</option>
+          </select>
+          <button id="publicPlanningRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+        </article>
+
+        <div class="public-planning-headline">
+          <div><span class="eyebrow">TAREAS PROGRAMADAS</span><h2>Agenda compartida</h2></div>
+          <span id="publicPlanningResultCount">0 tareas</span>
+        </div>
+
+        <div id="publicPlanningTaskList" class="public-planning-task-list">
+          <div class="training-library-empty">Cargando planificación…</div>
+        </div>
+
+        <section id="publicPlanningSuggestionPanel" class="public-planning-suggestion-panel hidden">
+          <div class="public-planning-suggestion-card">
+            <div class="public-planning-suggestion-head">
+              <div>
+                <span class="eyebrow">PROPONER UNA TAREA</span>
+                <h2>Enviar para aprobación</h2>
+                <p>La propuesta no se incorpora a la planificación hasta que el responsable del tablero la apruebe.</p>
+              </div>
+              <button id="publicPlanningSuggestionClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="form-grid public-planning-suggestion-grid">
+              <label><span>Tu nombre / identificación *</span><input id="publicPlanningRequesterName" maxlength="160" placeholder="Nombres y apellidos" /></label>
+              <label><span>Contacto</span><input id="publicPlanningRequesterContact" maxlength="180" placeholder="Correo, teléfono o área" /></label>
+
+              <label class="form-span-2"><span>Tarea propuesta *</span><input id="publicPlanningSuggestionTitle" maxlength="260" placeholder="Ej. Revisar documentación mensual del proyecto" /></label>
+
+              <label><span>Categoría</span>
+                <select id="publicPlanningSuggestionCategory">
+                  <option value="SIG">SIG</option><option value="SST">SST</option>
+                  <option value="AMBIENTAL">Ambiental</option><option value="CALIDAD">Calidad</option>
+                  <option value="AUDITORIA">Auditoría</option><option value="INDICADORES">Indicadores</option>
+                  <option value="COMITE_SST">Comité SST</option><option value="CAPACITACION">Capacitación</option>
+                  <option value="CLIENTE">Cliente</option><option value="OPERACIONES">Operaciones</option><option value="OTRO">Otro</option>
+                </select>
+              </label>
+
+              <label><span>Prioridad sugerida</span>
+                <select id="publicPlanningSuggestionPriority">
+                  <option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option>
+                  <option value="ALTA">Alta</option><option value="CRITICA">Crítica</option>
+                </select>
+              </label>
+
+              <label><span>Fecha propuesta *</span><input id="publicPlanningSuggestionDate" type="date" /></label>
+              <label><span>Hora</span><input id="publicPlanningSuggestionTime" type="time" /></label>
+
+              <label class="form-span-2"><span>Descripción</span><textarea id="publicPlanningSuggestionDescription" rows="3" maxlength="2000"></textarea></label>
+              <label class="form-span-2"><span>Comentario para el responsable</span><textarea id="publicPlanningSuggestionComment" rows="2" maxlength="1200" placeholder="Contexto o motivo de la solicitud"></textarea></label>
+            </div>
+
+            <div id="publicPlanningSuggestionMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="publicPlanningSuggestionCancel" class="secondary-btn" type="button">Cancelar</button>
+              <button id="publicPlanningSuggestionSubmit" class="primary-btn" type="button">Enviar para aprobación</button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="public-planning-footer">
+        <span>Explo Drilling Perú S.R.L. · Sistema Integrado de Gestión</span>
+        <span>By RonyC</span>
+      </footer>
+    </div>
+  </section>
+
   <div id="authLoading" class="auth-loading">
     <div class="loading-card">
       <img src="assets/logo-explo.jpg" alt="Explo Drilling Perú" />
@@ -1218,10 +1327,11 @@
             <div class="planning-reminder-status-main">
               <span class="eyebrow">AVISOS DE VENCIMIENTO</span>
               <strong id="planningReminderStatusTitle">Avisos sonoros activos</strong>
-              <p id="planningReminderStatusText">Turno bancario · 60, 30 y 10 min antes + vencimiento</p>
+              <p id="planningReminderStatusText">High Tone Ping · 60, 30 y 10 min antes + vencimiento</p>
             </div>
             <div class="planning-reminder-status-actions">
               <button id="planningReminderTestButton" class="secondary-btn" type="button">▶ Probar sonido</button>
+              <button id="planningShareButton" class="secondary-btn" type="button">🌐 Compartir</button>
               <button id="planningReminderSettingsButton" class="primary-btn" type="button">⚙ Configurar avisos</button>
             </div>
           </article>
@@ -1230,6 +1340,7 @@
             <button class="active" type="button" data-planning-task-mode="QUEUE">☑ Bandeja</button>
             <button type="button" data-planning-task-mode="RECURRENCES">↻ Recurrencias</button>
             <button type="button" data-planning-task-mode="ALERTS">🔔 Centro de llamados <span id="planningAlertCenterBadge" class="planning-alert-tab-badge hidden">0</span></button>
+            <button type="button" data-planning-task-mode="REQUESTS">📥 Solicitudes <span id="planningPublicRequestBadge" class="planning-alert-tab-badge hidden">0</span></button>
           </div>
 
           <div id="planningTaskQueueView">
@@ -1408,6 +1519,34 @@
 
             <div id="planningAlertCenterList" class="planning-alert-center-list">
               <div class="training-library-empty">Cargando centro de llamados…</div>
+            </div>
+          </div>
+
+          <div id="planningPublicRequestsView" class="hidden">
+            <div class="planning-public-request-stats">
+              <article class="pending"><span>Pendientes de aprobación</span><strong id="planningPublicRequestPendingCount">0</strong><small>Requieren revisión</small></article>
+              <article><span>Aprobadas</span><strong id="planningPublicRequestApprovedCount">0</strong><small>Convertidas en ticket</small></article>
+              <article><span>Rechazadas</span><strong id="planningPublicRequestRejectedCount">0</strong><small>No ingresaron a planificación</small></article>
+            </div>
+
+            <article class="panel planning-public-request-toolbar">
+              <input id="planningPublicRequestSearch" type="search" placeholder="Buscar solicitud, solicitante o tarea..." />
+              <select id="planningPublicRequestStatusFilter">
+                <option value="PENDIENTE">Pendientes</option>
+                <option value="ALL">Todas</option>
+                <option value="APROBADA">Aprobadas</option>
+                <option value="RECHAZADA">Rechazadas</option>
+              </select>
+              <button id="planningPublicRequestRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+            </article>
+
+            <div class="planning-library-headline">
+              <div><span class="eyebrow">ACCESO PÚBLICO</span><h3>Solicitudes recibidas</h3></div>
+              <span id="planningPublicRequestResultCount" class="schedule-result-count">0 solicitudes</span>
+            </div>
+
+            <div id="planningPublicRequestList" class="planning-public-request-list">
+              <div class="training-library-empty">Cargando solicitudes…</div>
             </div>
           </div>
         </div>
@@ -1606,6 +1745,112 @@
                 <button id="planningRecurrenceSave" class="primary-btn" type="submit">Guardar recurrencia</button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <div id="planningShareModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-share-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">🌐 PLANIFICACIÓN PÚBLICA</span>
+                <h3>Compartir pendientes mediante enlace</h3>
+                <p class="modal-subtitle">Las personas con el enlace podrán visualizar las tareas. Si lo habilitas, podrán proponer nuevas tareas que requerirán tu aprobación.</p>
+              </div>
+              <button id="planningShareModalClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <div class="form-grid planning-share-form-grid">
+              <label class="form-span-2"><span>Nombre del tablero *</span><input id="planningShareName" maxlength="180" placeholder="Ej. Pendientes SIG · Explo Drilling Perú" /></label>
+              <label class="form-span-2"><span>Descripción pública</span><textarea id="planningShareDescription" rows="2" maxlength="600" placeholder="Breve descripción para las personas que reciban el enlace"></textarea></label>
+
+              <label><span>Qué pendientes compartir</span>
+                <select id="planningShareScope">
+                  <option value="MINE">Mis pendientes</option>
+                  <option value="CREATED">Asignados / creados por mí</option>
+                  <option value="BOTH">Mis pendientes + creados por mí</option>
+                </select>
+              </label>
+
+              <label><span>Vencimiento del enlace</span><input id="planningShareExpiry" type="datetime-local" /></label>
+
+              <label class="planning-share-toggle"><input id="planningShareActive" type="checkbox" checked /><span>Enlace activo</span></label>
+              <label class="planning-share-toggle"><input id="planningShareAllowSuggestions" type="checkbox" checked /><span>Permitir proponer tareas</span></label>
+              <label class="planning-share-toggle"><input id="planningShareShowResponsible" type="checkbox" checked /><span>Mostrar responsable</span></label>
+              <label class="planning-share-toggle"><input id="planningShareShowDescription" type="checkbox" /><span>Mostrar descripción</span></label>
+              <label class="planning-share-toggle"><input id="planningShareShowCompleted" type="checkbox" /><span>Mostrar completados</span></label>
+            </div>
+
+            <section id="planningShareLinkSection" class="planning-share-link-section hidden">
+              <span class="eyebrow">ENLACE PÚBLICO</span>
+              <div class="planning-share-link-row">
+                <input id="planningShareLink" type="text" readonly />
+                <button id="planningShareCopyButton" class="secondary-btn" type="button">Copiar</button>
+                <button id="planningShareWhatsappButton" class="secondary-btn" type="button">WhatsApp</button>
+              </div>
+              <small>El enlace no requiere usuario ni contraseña. Puedes desactivarlo o regenerarlo cuando quieras.</small>
+              <button id="planningShareRegenerateButton" class="danger-outline-btn" type="button">Regenerar enlace</button>
+            </section>
+
+            <div id="planningShareMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="planningShareCancel" class="secondary-btn" type="button">Cerrar</button>
+              <button id="planningShareSave" class="primary-btn" type="button">Guardar y generar enlace</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="planningPublicRequestReviewModal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop"></div>
+          <div class="modal-card planning-public-request-review-modal-card">
+            <div class="modal-head">
+              <div>
+                <span class="eyebrow">📥 SOLICITUD PÚBLICA</span>
+                <h3 id="planningPublicRequestReviewTitle">Revisar y aprobar</h3>
+                <p id="planningPublicRequestReviewSubtitle" class="modal-subtitle">Ajusta los datos antes de convertir la solicitud en un ticket oficial.</p>
+              </div>
+              <button id="planningPublicRequestReviewClose" class="modal-close" type="button">×</button>
+            </div>
+
+            <input id="planningPublicRequestReviewId" type="hidden" />
+
+            <div class="planning-public-request-source-card">
+              <strong id="planningPublicRequestSourceName">—</strong>
+              <span id="planningPublicRequestSourceContact">—</span>
+              <p id="planningPublicRequestSourceComment">—</p>
+            </div>
+
+            <div class="form-grid">
+              <label class="form-span-2"><span>Tarea *</span><input id="planningPublicRequestReviewTask" maxlength="260" /></label>
+              <label><span>Categoría *</span>
+                <select id="planningPublicRequestReviewCategory">
+                  <option value="PERSONAL">Personal</option><option value="SIG">SIG</option><option value="SST">SST</option>
+                  <option value="AMBIENTAL">Ambiental</option><option value="CALIDAD">Calidad</option><option value="AUDITORIA">Auditoría</option>
+                  <option value="INDICADORES">Indicadores</option><option value="COMITE_SST">Comité SST</option><option value="CAPACITACION">Capacitación</option>
+                  <option value="CLIENTE">Cliente</option><option value="OPERACIONES">Operaciones</option><option value="OTRO">Otro</option>
+                </select>
+              </label>
+              <label><span>Prioridad *</span>
+                <select id="planningPublicRequestReviewPriority">
+                  <option value="BAJA">Baja</option><option value="MEDIA">Media</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option>
+                </select>
+              </label>
+              <label><span>Fecha objetivo *</span><input id="planningPublicRequestReviewDate" type="date" /></label>
+              <label><span>Hora</span><input id="planningPublicRequestReviewTime" type="time" /></label>
+              <label><span>Responsable *</span><select id="planningPublicRequestReviewAssignee"></select></label>
+              <label id="planningPublicRequestReviewManualField" class="hidden"><span>Responsable manual *</span><input id="planningPublicRequestReviewManual" maxlength="180" /></label>
+              <label class="form-span-2"><span>Descripción</span><textarea id="planningPublicRequestReviewDescription" rows="3" maxlength="2000"></textarea></label>
+              <label class="form-span-2"><span>Respuesta / nota de aprobación</span><textarea id="planningPublicRequestReviewResponse" rows="2" maxlength="1000"></textarea></label>
+            </div>
+
+            <div id="planningPublicRequestReviewMessage" class="form-message"></div>
+
+            <div class="modal-actions">
+              <button id="planningPublicRequestRejectButton" class="danger-outline-btn" type="button">Rechazar</button>
+              <button id="planningPublicRequestReviewCancel" class="secondary-btn" type="button">Cancelar</button>
+              <button id="planningPublicRequestApproveButton" class="primary-btn" type="button">Aprobar y crear ticket</button>
+            </div>
           </div>
         </div>
 
@@ -1840,7 +2085,7 @@
                 <label>
                   <span>Tipo de sonido</span>
                   <select id="planningReminderSoundType">
-                    <option value="BANCO">Turno bancario · Tin–Ton</option>
+                    <option value="BANCO">Tono personalizado · High Tone Ping</option>
                     <option value="CAMPANA">Campana corta</option>
                     <option value="SUAVE">Aviso suave</option>
                     <option value="SIN_SONIDO">Sin sonido</option>
@@ -4529,7 +4774,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261020-17f"></script>
+  <script src="app.js?v=20261020-17f1"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">

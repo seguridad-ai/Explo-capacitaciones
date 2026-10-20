@@ -16,6 +16,7 @@ const publicPracticeScreen = document.getElementById('publicPracticeScreen');
 const publicEvaluationScreen = document.getElementById('publicEvaluationScreen');
 const publicMeetingSignatureScreen = document.getElementById('publicMeetingSignatureScreen');
 const publicCommitteeTrainingScreen = document.getElementById('publicCommitteeTrainingScreen');
+const publicPlanningScreen = document.getElementById('publicPlanningScreen');
 
 const menuItems = [...document.querySelectorAll('.menu-item')];
 const sections = [...document.querySelectorAll('.page-section')];
@@ -77,6 +78,14 @@ let planningReminderActive = null;
 let planningReminderChecking = false;
 let planningReminderInitialized = false;
 
+let planningShareLinkRecord = null;
+let planningPublicRequests = [];
+let planningPublicRequestsLoaded = false;
+let publicPlanningToken = null;
+let publicPlanningData = null;
+
+const PLANNING_CUSTOM_SOUND_URL = 'assets/planning-high-tone-ping.mp3';
+
 
 function showMessage(message, type = 'error') {
   if (!loginMessage) return;
@@ -91,6 +100,7 @@ function setLoginBusy(busy) {
 }
 
 function showAuthScreen() {
+  publicPlanningScreen?.classList.add('hidden');
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
@@ -103,6 +113,7 @@ function showAuthScreen() {
 }
 
 function showLoading() {
+  publicPlanningScreen?.classList.add('hidden');
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
@@ -114,6 +125,7 @@ function showLoading() {
 }
 
 function showApp() {
+  publicPlanningScreen?.classList.add('hidden');
   publicExamScreen?.classList.add('hidden');
   publicPracticeScreen?.classList.add('hidden');
   publicEvaluationScreen?.classList.add('hidden');
@@ -268,6 +280,7 @@ async function initializeAuth() {
   const publicEvaluationCodeParam = publicParams.get('evaluation');
   const publicMeetingSignatureTokenParam = publicParams.get('meetingSign');
   const publicCommitteeTrainingTokenParam = publicParams.get('committeeTraining');
+  const publicPlanningTokenParam = publicParams.get('planningShare');
   if (publicExamCode) {
     await initializePublicExamMode(publicExamCode);
     return;
@@ -290,6 +303,10 @@ async function initializeAuth() {
   }
   if (publicCommitteeTrainingTokenParam) {
     await initializePublicCommitteeTrainingMode(publicCommitteeTrainingTokenParam);
+    return;
+  }
+  if (publicPlanningTokenParam) {
+    await initializePublicPlanningMode(publicPlanningTokenParam);
     return;
   }
 
@@ -379,6 +396,295 @@ mobileMenu?.addEventListener('click', () => sidebar?.classList.toggle('open'));
 
 
 
+
+
+// ============================================================
+// ETAPA 17F.1 · PLANIFICACIÓN PÚBLICA
+// ============================================================
+
+function publicPlanningMessage(message='',type='error') {
+  const el=document.getElementById('publicPlanningMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function publicPlanningSuggestionMessage(message='',type='error') {
+  const el=document.getElementById('publicPlanningSuggestionMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function showPublicPlanningScreen() {
+  authScreen?.classList.add('hidden');
+  authLoading?.classList.add('hidden');
+  appShell?.classList.add('hidden');
+
+  publicExamScreen?.classList.add('hidden');
+  publicPracticeScreen?.classList.add('hidden');
+  publicEvaluationScreen?.classList.add('hidden');
+  publicMeetingSignatureScreen?.classList.add('hidden');
+  publicCommitteeTrainingScreen?.classList.add('hidden');
+
+  publicPlanningScreen?.classList.remove('hidden');
+  window.scrollTo({top:0,behavior:'auto'});
+}
+
+function publicPlanningTaskDateTime(task) {
+  if (!task?.fecha_objetivo) return null;
+  const time=task.hora_objetivo ? String(task.hora_objetivo).slice(0,5) : '23:59';
+  const dt=new Date(`${task.fecha_objetivo}T${time}:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function publicPlanningStatusLabel(value) {
+  return {
+    PENDIENTE:'Pendiente',
+    EN_PROCESO:'En proceso',
+    EN_ESPERA:'En espera',
+    COMPLETADO:'Completado'
+  }[value] || value || '—';
+}
+
+function publicPlanningPriorityLabel(value) {
+  return {BAJA:'Baja',MEDIA:'Media',ALTA:'Alta',CRITICA:'Crítica'}[value] || value || '—';
+}
+
+function publicPlanningDateSituation(task) {
+  if (task?.estado==='COMPLETADO') return {code:'COMPLETADO',label:'Completado'};
+  const due=publicPlanningTaskDateTime(task);
+  if (!due) return {code:'PROGRAMADO',label:'Programado'};
+
+  const now=new Date();
+  if (due<now) return {code:'VENCIDO',label:'Vencido'};
+
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const d=new Date(due.getFullYear(),due.getMonth(),due.getDate());
+  if (d.getTime()===today.getTime()) {
+    return {code:'HOY',label:task.hora_objetivo?`Hoy · ${String(task.hora_objetivo).slice(0,5)}`:'Hoy'};
+  }
+
+  const diff=Math.ceil((d-today)/86400000);
+  if (diff===1) return {code:'MANANA',label:'Mañana'};
+  if (diff>1 && diff<=7) return {code:'PROXIMO',label:`En ${diff} días`};
+  return {code:'PROGRAMADO',label:formatDatePE(task.fecha_objetivo)};
+}
+
+function updatePublicPlanningStats(tasks) {
+  const now=new Date();
+  const today=planningIsoDate(now);
+
+  const total=tasks.length;
+  const completed=tasks.filter(x=>x.estado==='COMPLETADO').length;
+  const todayCount=tasks.filter(x=>x.fecha_objetivo===today && x.estado!=='COMPLETADO').length;
+  const overdue=tasks.filter(x=>{
+    if (x.estado==='COMPLETADO') return false;
+    const due=publicPlanningTaskDateTime(x);
+    return due && due<now;
+  }).length;
+
+  const map={
+    publicPlanningTotal:total,
+    publicPlanningToday:todayCount,
+    publicPlanningOverdue:overdue,
+    publicPlanningCompleted:completed
+  };
+
+  Object.entries(map).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function publicPlanningMatchesPeriod(task,period) {
+  if (period==='ALL') return true;
+  const date=planningParseDate(task.fecha_objetivo);
+  if (!date) return false;
+
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+
+  if (period==='TODAY') return date.getTime()===today.getTime();
+
+  if (period==='WEEK') {
+    const end=planningAddDays(today,7);
+    return date>=today && date<=end;
+  }
+
+  if (period==='MONTH') {
+    return date.getMonth()===today.getMonth() && date.getFullYear()===today.getFullYear();
+  }
+
+  return true;
+}
+
+function renderPublicPlanningTasks() {
+  const container=document.getElementById('publicPlanningTaskList');
+  if (!container || !publicPlanningData?.tareas) return;
+
+  const q=(document.getElementById('publicPlanningSearch')?.value || '').trim().toLowerCase();
+  const status=document.getElementById('publicPlanningStatusFilter')?.value || 'ALL';
+  const period=document.getElementById('publicPlanningPeriodFilter')?.value || 'ALL';
+
+  let rows=[...(publicPlanningData.tareas || [])].filter(task=>{
+    if (status!=='ALL' && task.estado!==status) return false;
+    if (!publicPlanningMatchesPeriod(task,period)) return false;
+
+    const hay=[
+      task.codigo,task.titulo,task.descripcion,task.categoria,task.prioridad,
+      task.responsable,task.estado
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return !q || hay.includes(q);
+  });
+
+  rows.sort((a,b)=>{
+    const aDone=a.estado==='COMPLETADO'?1:0;
+    const bDone=b.estado==='COMPLETADO'?1:0;
+    if (aDone!==bDone) return aDone-bDone;
+
+    const ad=publicPlanningTaskDateTime(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bd=publicPlanningTaskDateTime(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    if (ad!==bd) return ad-bd;
+
+    return planningTaskPriorityRank(a.prioridad)-planningTaskPriorityRank(b.prioridad);
+  });
+
+  const count=document.getElementById('publicPlanningResultCount');
+  if (count) count.textContent=`${rows.length} tarea${rows.length===1?'':'s'}`;
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No hay tareas que coincidan con los filtros.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(task=>{
+    const situation=publicPlanningDateSituation(task);
+    return `
+      <article class="public-planning-task-card ${situation.code.toLowerCase()}">
+        <div class="public-planning-task-code">
+          <span>${escapeHtml(task.codigo || 'TK')}</span>
+          <small>${escapeHtml(task.categoria || '—')}</small>
+        </div>
+
+        <div class="public-planning-task-main">
+          <div class="public-planning-task-badges">
+            <span class="planning-ticket-priority ${String(task.prioridad||'').toLowerCase()}">${escapeHtml(publicPlanningPriorityLabel(task.prioridad))}</span>
+            <span class="planning-ticket-status ${String(task.estado||'').toLowerCase()}">${escapeHtml(publicPlanningStatusLabel(task.estado))}</span>
+            <span class="planning-ticket-situation ${situation.code.toLowerCase()}">${escapeHtml(situation.label)}</span>
+            ${task.recurrente?'<span class="planning-alert-mini-badge recurring">↻ Recurrente</span>':''}
+            ${task.integrado?'<span class="planning-alert-mini-badge recurring">⇄ Integrado</span>':''}
+          </div>
+
+          <h3>${escapeHtml(task.titulo || 'Tarea')}</h3>
+          ${task.descripcion?`<p>${escapeHtml(task.descripcion)}</p>`:''}
+
+          <div class="public-planning-task-meta">
+            <span>Fecha: <strong>${escapeHtml(formatDatePE(task.fecha_objetivo))}</strong>${task.hora_objetivo?` · ${escapeHtml(String(task.hora_objetivo).slice(0,5))}`:''}</span>
+            ${task.responsable?`<span>Responsable: <strong>${escapeHtml(task.responsable)}</strong></span>`:''}
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+async function initializePublicPlanningMode(token) {
+  publicPlanningToken=token;
+  publicPlanningMessage('');
+  showPublicPlanningScreen();
+
+  const container=document.getElementById('publicPlanningTaskList');
+  if (container) container.innerHTML='<div class="training-library-empty">Cargando planificación compartida…</div>';
+
+  const {data,error}=await client.rpc('obtener_planificacion_publica',{p_token:token});
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    publicPlanningData=null;
+    publicPlanningMessage(data?.error || error?.message || 'No fue posible abrir la planificación compartida.');
+    if (container) container.innerHTML='<div class="training-library-empty">El enlace no está disponible.</div>';
+    return;
+  }
+
+  publicPlanningData=data;
+
+  document.getElementById('publicPlanningTitle').textContent=data.tablero?.nombre || 'Planificación compartida';
+  document.getElementById('publicPlanningDescription').textContent=data.tablero?.descripcion || 'Pendientes programados';
+
+  const suggestButton=document.getElementById('publicPlanningSuggestButton');
+  suggestButton?.classList.toggle('hidden',!data.tablero?.permitir_sugerencias);
+
+  updatePublicPlanningStats(data.tareas || []);
+  renderPublicPlanningTasks();
+}
+
+function openPublicPlanningSuggestion() {
+  publicPlanningSuggestionMessage('');
+  const panel=document.getElementById('publicPlanningSuggestionPanel');
+  panel?.classList.remove('hidden');
+
+  const date=document.getElementById('publicPlanningSuggestionDate');
+  if (date && !date.value) date.value=planningIsoDate(new Date());
+
+  setTimeout(()=>document.getElementById('publicPlanningRequesterName')?.focus(),50);
+}
+
+function closePublicPlanningSuggestion() {
+  document.getElementById('publicPlanningSuggestionPanel')?.classList.add('hidden');
+}
+
+async function submitPublicPlanningSuggestion() {
+  if (!client || !publicPlanningToken) return;
+
+  publicPlanningSuggestionMessage('');
+
+  const payload={
+    p_token:publicPlanningToken,
+    p_solicitante_nombre:document.getElementById('publicPlanningRequesterName').value.trim(),
+    p_solicitante_contacto:document.getElementById('publicPlanningRequesterContact').value.trim() || null,
+    p_titulo:document.getElementById('publicPlanningSuggestionTitle').value.trim(),
+    p_descripcion:document.getElementById('publicPlanningSuggestionDescription').value.trim() || null,
+    p_categoria:document.getElementById('publicPlanningSuggestionCategory').value,
+    p_prioridad:document.getElementById('publicPlanningSuggestionPriority').value,
+    p_fecha_objetivo:document.getElementById('publicPlanningSuggestionDate').value || null,
+    p_hora_objetivo:document.getElementById('publicPlanningSuggestionTime').value || null,
+    p_comentario:document.getElementById('publicPlanningSuggestionComment').value.trim() || null
+  };
+
+  if (!payload.p_solicitante_nombre || !payload.p_titulo || !payload.p_fecha_objetivo) {
+    publicPlanningSuggestionMessage('Completa tu nombre, la tarea y la fecha propuesta.');
+    return;
+  }
+
+  const button=document.getElementById('publicPlanningSuggestionSubmit');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Enviando…';
+
+  const {data,error}=await client.rpc('enviar_sugerencia_planificacion_publica',payload);
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    publicPlanningSuggestionMessage(data?.error || error?.message || 'No fue posible enviar la propuesta.');
+    return;
+  }
+
+  publicPlanningSuggestionMessage(
+    `${data.message || 'Propuesta enviada.'} Código: ${data.codigo || '—'}`,
+    'success'
+  );
+
+  ['publicPlanningSuggestionTitle','publicPlanningSuggestionDescription','publicPlanningSuggestionComment']
+    .forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('publicPlanningSuggestionPriority').value='MEDIA';
+
+  setTimeout(closePublicPlanningSuggestion,2200);
+}
 
 // ============================================================
 // ETAPA 17A · PLANIFICACIÓN · PROYECTOS Y GANTT
@@ -3074,6 +3380,7 @@ function renderPlanningTaskList() {
                 <span class="planning-ticket-status ${String(task.estado||'').toLowerCase()}">${escapeHtml(planningTaskStatusLabel(task.estado))}</span>
                 ${task.recurrencia_id?'<span class="planning-ticket-recurring">↻ Recurrente</span>':''}
                 ${task.origen_modulo?'<span class="planning-ticket-integrated">⇄ Integrado</span>':''}
+                ${task.sugerencia_publica_id?'<span class="planning-ticket-public">🌐 Público</span>':''}
                 <span class="planning-ticket-situation ${situation.code.toLowerCase()}">${escapeHtml(situation.label)}</span>
               </div>
               <h4>${escapeHtml(task.titulo || 'Pendiente')}</h4>
@@ -3164,6 +3471,7 @@ async function loadPlanningTasksModule(force=false) {
     renderPlanningAlertCenter();
     if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
     if (planningModuleTab==='CALENDAR') renderPlanningCalendar();
+    loadPlanningPublicRequests();
     return;
   }
 
@@ -3211,6 +3519,7 @@ async function loadPlanningTasksModule(force=false) {
   renderPlanningAlertCenter();
   if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
   if (planningModuleTab==='CALENDAR') renderPlanningCalendar();
+  loadPlanningPublicRequests(true);
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -3666,6 +3975,8 @@ document.getElementById('planningNewProjectButton')?.addEventListener('click',()
     } else if (planningTaskMode==='ALERTS') {
       planningTasksLoaded=false;
       loadPlanningTasksModule(true);
+    } else if (planningTaskMode==='REQUESTS') {
+      openPlanningShareModal();
     } else {
       openPlanningTaskModal();
     }
@@ -4210,11 +4521,501 @@ async function refreshPlanningAlertCenter() {
   renderPlanningAlertCenter();
 }
 
+
+function planningShareMessage(message='',type='error') {
+  const el=document.getElementById('planningShareMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningPublicRequestReviewMessage(message='',type='error') {
+  const el=document.getElementById('planningPublicRequestReviewMessage');
+  if (!el) return;
+  el.textContent=message || '';
+  el.className=`form-message ${message?'visible':''} ${type}`;
+}
+
+function planningSharePublicUrl(token) {
+  const base=`${window.location.origin}${window.location.pathname}`;
+  return `${base}?planningShare=${encodeURIComponent(token || '')}`;
+}
+
+function planningShareDateTimeLocal(value) {
+  if (!value) return '';
+  const d=new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function loadPlanningShareLink(force=false) {
+  if (!client || !currentProfile?.id) return null;
+  if (planningShareLinkRecord && !force) return planningShareLinkRecord;
+
+  const {data,error}=await client.from('planificacion_enlaces_publicos')
+    .select('*')
+    .eq('propietario_id',currentProfile.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Enlace público:',error);
+    planningShareLinkRecord=null;
+    return null;
+  }
+
+  planningShareLinkRecord=data || null;
+  return planningShareLinkRecord;
+}
+
+async function openPlanningShareModal() {
+  planningShareMessage('');
+  const link=await loadPlanningShareLink(true);
+
+  const defaultName=`Pendientes · ${planningProfileDisplayName(currentProfile) || 'Planificación'}`;
+
+  document.getElementById('planningShareName').value=link?.nombre || defaultName;
+  document.getElementById('planningShareDescription').value=link?.descripcion || '';
+  document.getElementById('planningShareScope').value=link?.alcance || 'MINE';
+  document.getElementById('planningShareExpiry').value=planningShareDateTimeLocal(link?.fecha_expiracion);
+  document.getElementById('planningShareActive').checked=link?.activo ?? true;
+  document.getElementById('planningShareAllowSuggestions').checked=link?.permitir_sugerencias ?? true;
+  document.getElementById('planningShareShowResponsible').checked=link?.mostrar_responsable ?? true;
+  document.getElementById('planningShareShowDescription').checked=link?.mostrar_descripcion ?? false;
+  document.getElementById('planningShareShowCompleted').checked=link?.mostrar_completados ?? false;
+
+  const section=document.getElementById('planningShareLinkSection');
+  section?.classList.toggle('hidden',!link?.token);
+  if (link?.token) {
+    document.getElementById('planningShareLink').value=planningSharePublicUrl(link.token);
+  }
+
+  const modal=document.getElementById('planningShareModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningShareModal() {
+  document.getElementById('planningShareModal')?.classList.add('hidden');
+  document.getElementById('planningShareModal')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+async function savePlanningShare() {
+  if (!client || !currentProfile?.id) return;
+
+  planningShareMessage('');
+
+  const name=document.getElementById('planningShareName').value.trim();
+  if (!name) {
+    planningShareMessage('Ingresa un nombre para el tablero público.');
+    return;
+  }
+
+  const expiryValue=document.getElementById('planningShareExpiry').value;
+  let expiry=null;
+  if (expiryValue) {
+    const d=new Date(expiryValue);
+    if (Number.isNaN(d.getTime())) {
+      planningShareMessage('La fecha de vencimiento del enlace no es válida.');
+      return;
+    }
+    expiry=d.toISOString();
+  }
+
+  const payload={
+    propietario_id:currentProfile.id,
+    nombre:name,
+    descripcion:document.getElementById('planningShareDescription').value.trim() || null,
+    alcance:document.getElementById('planningShareScope').value,
+    mostrar_descripcion:document.getElementById('planningShareShowDescription').checked,
+    mostrar_responsable:document.getElementById('planningShareShowResponsible').checked,
+    mostrar_completados:document.getElementById('planningShareShowCompleted').checked,
+    permitir_sugerencias:document.getElementById('planningShareAllowSuggestions').checked,
+    activo:document.getElementById('planningShareActive').checked,
+    fecha_expiracion:expiry
+  };
+
+  const button=document.getElementById('planningShareSave');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Guardando…';
+
+  const query=planningShareLinkRecord?.id
+    ? client.from('planificacion_enlaces_publicos')
+        .update(payload)
+        .eq('id',planningShareLinkRecord.id)
+        .select()
+        .single()
+    : client.from('planificacion_enlaces_publicos')
+        .insert(payload)
+        .select()
+        .single();
+
+  const {data,error}=await query;
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error) {
+    console.error(error);
+    planningShareMessage(error.message || 'No fue posible crear el enlace público.');
+    return;
+  }
+
+  planningShareLinkRecord=data;
+  document.getElementById('planningShareLinkSection')?.classList.remove('hidden');
+  document.getElementById('planningShareLink').value=planningSharePublicUrl(data.token);
+  planningShareMessage('Configuración pública guardada correctamente.','success');
+}
+
+async function copyPlanningShareLink() {
+  const input=document.getElementById('planningShareLink');
+  const value=input?.value || '';
+  if (!value) return;
+
+  try {
+    await navigator.clipboard.writeText(value);
+    planningShareMessage('Enlace copiado al portapapeles.','success');
+  } catch {
+    input.select();
+    document.execCommand?.('copy');
+    planningShareMessage('Enlace copiado.','success');
+  }
+}
+
+function whatsappPlanningShareLink() {
+  const value=document.getElementById('planningShareLink')?.value || '';
+  if (!value) return;
+  const name=document.getElementById('planningShareName')?.value.trim() || 'Planificación compartida';
+  const text=`${name}\n\nConsulta las tareas programadas aquí:\n${value}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener');
+}
+
+async function regeneratePlanningShareLink() {
+  if (!planningShareLinkRecord?.id) return;
+  if (!confirm('¿Generar un nuevo enlace público?\n\nEl enlace anterior dejará de funcionar inmediatamente.')) return;
+
+  const {data,error}=await client.rpc('regenerar_token_planificacion_publica');
+  if (error || !data?.ok) {
+    planningShareMessage(data?.error || error?.message || 'No fue posible regenerar el enlace.');
+    return;
+  }
+
+  planningShareLinkRecord={...planningShareLinkRecord,token:data.token};
+  document.getElementById('planningShareLink').value=planningSharePublicUrl(data.token);
+  planningShareMessage('Nuevo enlace generado. El enlace anterior fue invalidado.','success');
+}
+
+function planningPublicRequestStatusLabel(value) {
+  return {
+    PENDIENTE:'Pendiente de aprobación',
+    APROBADA:'Aprobada',
+    RECHAZADA:'Rechazada'
+  }[value] || value || '—';
+}
+
+async function loadPlanningPublicRequests(force=false) {
+  if (!client || !currentProfile?.id) return;
+
+  if (planningPublicRequestsLoaded && !force) {
+    renderPlanningPublicRequests();
+    return;
+  }
+
+  const {data,error}=await client.from('planificacion_sugerencias_publicas')
+    .select('*')
+    .order('created_at',{ascending:false});
+
+  if (error) {
+    console.warn('Solicitudes públicas:',error);
+    planningPublicRequests=[];
+    planningPublicRequestsLoaded=true;
+    updatePlanningPublicRequestBadge();
+    renderPlanningPublicRequests();
+    return;
+  }
+
+  planningPublicRequests=data || [];
+  planningPublicRequestsLoaded=true;
+  updatePlanningPublicRequestBadge();
+  renderPlanningPublicRequests();
+}
+
+function updatePlanningPublicRequestBadge() {
+  const pending=planningPublicRequests.filter(x=>x.estado==='PENDIENTE').length;
+  const badge=document.getElementById('planningPublicRequestBadge');
+  if (!badge) return;
+  badge.textContent=String(pending);
+  badge.classList.toggle('hidden',pending===0);
+}
+
+function renderPlanningPublicRequestStats() {
+  const values={
+    planningPublicRequestPendingCount:planningPublicRequests.filter(x=>x.estado==='PENDIENTE').length,
+    planningPublicRequestApprovedCount:planningPublicRequests.filter(x=>x.estado==='APROBADA').length,
+    planningPublicRequestRejectedCount:planningPublicRequests.filter(x=>x.estado==='RECHAZADA').length
+  };
+  Object.entries(values).forEach(([id,value])=>{
+    const el=document.getElementById(id);
+    if (el) el.textContent=String(value);
+  });
+}
+
+function renderPlanningPublicRequests() {
+  const container=document.getElementById('planningPublicRequestList');
+  if (!container) return;
+
+  renderPlanningPublicRequestStats();
+  updatePlanningPublicRequestBadge();
+
+  const q=(document.getElementById('planningPublicRequestSearch')?.value || '').trim().toLowerCase();
+  const status=document.getElementById('planningPublicRequestStatusFilter')?.value || 'PENDIENTE';
+
+  let rows=planningPublicRequests.filter(row=>{
+    if (status!=='ALL' && row.estado!==status) return false;
+    const hay=[
+      row.codigo,row.titulo,row.descripcion,row.solicitante_nombre,
+      row.solicitante_contacto,row.comentario,row.categoria,row.prioridad
+    ].filter(Boolean).join(' ').toLowerCase();
+    return !q || hay.includes(q);
+  });
+
+  const count=document.getElementById('planningPublicRequestResultCount');
+  if (count) count.textContent=`${rows.length} solicitud${rows.length===1?'':'es'}`;
+
+  if (!rows.length) {
+    container.innerHTML='<div class="training-library-empty">No hay solicitudes para este filtro.</div>';
+    return;
+  }
+
+  container.innerHTML=rows.map(row=>`
+    <article class="planning-public-request-card ${String(row.estado||'').toLowerCase()}">
+      <div class="planning-public-request-code">
+        <span>🌐</span>
+        <strong>${escapeHtml(row.codigo || 'SOL')}</strong>
+        <small>${escapeHtml(planningPublicRequestStatusLabel(row.estado))}</small>
+      </div>
+
+      <div class="planning-public-request-main">
+        <div class="planning-public-request-badges">
+          <span class="planning-ticket-priority ${String(row.prioridad||'').toLowerCase()}">${escapeHtml(planningPriorityLabel(row.prioridad))}</span>
+          <span class="planning-public-request-status ${String(row.estado||'').toLowerCase()}">${escapeHtml(planningPublicRequestStatusLabel(row.estado))}</span>
+        </div>
+        <h4>${escapeHtml(row.titulo || 'Solicitud')}</h4>
+        ${row.descripcion?`<p>${escapeHtml(row.descripcion)}</p>`:''}
+        <div class="planning-public-request-meta">
+          <span>Solicitante: <strong>${escapeHtml(row.solicitante_nombre || '—')}</strong></span>
+          ${row.solicitante_contacto?`<span>Contacto: ${escapeHtml(row.solicitante_contacto)}</span>`:''}
+          <span>Fecha propuesta: <strong>${escapeHtml(formatDatePE(row.fecha_objetivo))}</strong>${row.hora_objetivo?` · ${escapeHtml(String(row.hora_objetivo).slice(0,5))}`:''}</span>
+          <span>Recibida: ${row.created_at?new Date(row.created_at).toLocaleString('es-PE'):'—'}</span>
+        </div>
+        ${row.comentario?`<div class="planning-public-request-comment">${escapeHtml(row.comentario)}</div>`:''}
+        ${row.respuesta_usuario?`<div class="planning-public-request-response"><strong>Respuesta:</strong> ${escapeHtml(row.respuesta_usuario)}</div>`:''}
+      </div>
+
+      <div class="planning-public-request-actions">
+        ${row.estado==='PENDIENTE'?`
+          <button class="primary-btn small-btn" type="button" data-public-request-review="${row.id}">Revisar y aprobar</button>
+          <button class="danger-outline-btn small-btn" type="button" data-public-request-reject="${row.id}">Rechazar</button>
+        `:''}
+        ${row.estado==='APROBADA' && row.ticket_id?`
+          <button class="secondary-btn small-btn" type="button" data-public-request-ticket="${row.ticket_id}">Abrir ticket</button>
+        `:''}
+      </div>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('[data-public-request-review]').forEach(button=>{
+    button.addEventListener('click',()=>openPlanningPublicRequestReview(button.dataset.publicRequestReview));
+  });
+
+  container.querySelectorAll('[data-public-request-reject]').forEach(button=>{
+    button.addEventListener('click',()=>rejectPlanningPublicRequest(button.dataset.publicRequestReject));
+  });
+
+  container.querySelectorAll('[data-public-request-ticket]').forEach(button=>{
+    button.addEventListener('click',async()=>{
+      const id=button.dataset.publicRequestTicket;
+      let task=planningTaskRecords.find(x=>x.id===id);
+      if (!task) {
+        planningTasksLoaded=false;
+        await loadPlanningTasksModule(true);
+        task=planningTaskRecords.find(x=>x.id===id);
+      }
+      if (task) openPlanningTaskModal(task);
+    });
+  });
+}
+
+function populatePlanningPublicRequestAssignees(row) {
+  const select=document.getElementById('planningPublicRequestReviewAssignee');
+  if (!select) return;
+
+  const meName=planningProfileDisplayName(currentProfile) || 'Usuario actual';
+  select.innerHTML=
+    `<option value="${currentProfile?.id || ''}">Yo mismo · ${escapeHtml(meName)}</option>`+
+    planningAssignableUsers
+      .filter(x=>x.id!==currentProfile?.id)
+      .map(x=>`<option value="${x.id}">${escapeHtml(x.nombre || 'Usuario')}${x.cargo?` · ${escapeHtml(x.cargo)}`:''}</option>`)
+      .join('')+
+    '<option value="MANUAL">Responsable sin usuario del sistema</option>';
+
+  select.value=currentProfile?.id || 'MANUAL';
+  document.getElementById('planningPublicRequestReviewManual').value='';
+  togglePlanningPublicRequestManualAssignee();
+}
+
+function togglePlanningPublicRequestManualAssignee() {
+  const manual=document.getElementById('planningPublicRequestReviewAssignee')?.value==='MANUAL';
+  document.getElementById('planningPublicRequestReviewManualField')?.classList.toggle('hidden',!manual);
+}
+
+function openPlanningPublicRequestReview(id) {
+  const row=planningPublicRequests.find(x=>x.id===id);
+  if (!row || row.estado!=='PENDIENTE') return;
+
+  planningPublicRequestReviewMessage('');
+
+  document.getElementById('planningPublicRequestReviewId').value=row.id;
+  document.getElementById('planningPublicRequestReviewTitle').textContent=`Revisar · ${row.codigo || 'Solicitud'}`;
+  document.getElementById('planningPublicRequestReviewSubtitle').textContent='Ajusta los datos antes de convertir la solicitud en un ticket oficial.';
+
+  document.getElementById('planningPublicRequestSourceName').textContent=row.solicitante_nombre || '—';
+  document.getElementById('planningPublicRequestSourceContact').textContent=row.solicitante_contacto || 'Sin contacto informado';
+  document.getElementById('planningPublicRequestSourceComment').textContent=row.comentario || 'Sin comentario adicional.';
+
+  document.getElementById('planningPublicRequestReviewTask').value=row.titulo || '';
+  document.getElementById('planningPublicRequestReviewCategory').value=row.categoria || 'SIG';
+  document.getElementById('planningPublicRequestReviewPriority').value=row.prioridad || 'MEDIA';
+  document.getElementById('planningPublicRequestReviewDate').value=row.fecha_objetivo || planningIsoDate(new Date());
+  document.getElementById('planningPublicRequestReviewTime').value=row.hora_objetivo ? String(row.hora_objetivo).slice(0,5) : '';
+  document.getElementById('planningPublicRequestReviewDescription').value=row.descripcion || '';
+  document.getElementById('planningPublicRequestReviewResponse').value='';
+
+  populatePlanningPublicRequestAssignees(row);
+
+  const modal=document.getElementById('planningPublicRequestReviewModal');
+  modal?.classList.remove('hidden');
+  modal?.setAttribute('aria-hidden','false');
+  document.body.classList.add('modal-open');
+}
+
+function closePlanningPublicRequestReview() {
+  document.getElementById('planningPublicRequestReviewModal')?.classList.add('hidden');
+  document.getElementById('planningPublicRequestReviewModal')?.setAttribute('aria-hidden','true');
+  document.body.classList.remove('modal-open');
+}
+
+function selectedPlanningPublicRequestAssignee() {
+  const value=document.getElementById('planningPublicRequestReviewAssignee')?.value || 'MANUAL';
+
+  if (value==='MANUAL') {
+    return {
+      id:null,
+      name:document.getElementById('planningPublicRequestReviewManual').value.trim()
+    };
+  }
+
+  const found=planningAssignableUsers.find(x=>x.id===value);
+  if (found) return {id:found.id,name:found.nombre || 'Usuario'};
+  if (value===currentProfile?.id) {
+    return {id:currentProfile.id,name:planningProfileDisplayName(currentProfile) || 'Usuario'};
+  }
+
+  return {id:null,name:''};
+}
+
+async function approvePlanningPublicRequest() {
+  const id=document.getElementById('planningPublicRequestReviewId').value;
+  const row=planningPublicRequests.find(x=>x.id===id);
+  if (!row) return;
+
+  planningPublicRequestReviewMessage('');
+
+  const assignee=selectedPlanningPublicRequestAssignee();
+  const payload={
+    p_sugerencia_id:id,
+    p_titulo:document.getElementById('planningPublicRequestReviewTask').value.trim(),
+    p_descripcion:document.getElementById('planningPublicRequestReviewDescription').value.trim() || null,
+    p_categoria:document.getElementById('planningPublicRequestReviewCategory').value,
+    p_prioridad:document.getElementById('planningPublicRequestReviewPriority').value,
+    p_fecha_objetivo:document.getElementById('planningPublicRequestReviewDate').value || null,
+    p_hora_objetivo:document.getElementById('planningPublicRequestReviewTime').value || null,
+    p_asignado_a_profile_id:assignee.id,
+    p_responsable_nombre:assignee.name,
+    p_respuesta:document.getElementById('planningPublicRequestReviewResponse').value.trim() || null
+  };
+
+  if (!payload.p_titulo || !payload.p_fecha_objetivo || !payload.p_responsable_nombre) {
+    planningPublicRequestReviewMessage('Completa tarea, fecha y responsable.');
+    return;
+  }
+
+  const button=document.getElementById('planningPublicRequestApproveButton');
+  const old=button.textContent;
+  button.disabled=true;
+  button.textContent='Aprobando…';
+
+  const {data,error}=await client.rpc('aprobar_sugerencia_planificacion',payload);
+
+  button.disabled=false;
+  button.textContent=old;
+
+  if (error || !data?.ok) {
+    console.error(error,data);
+    planningPublicRequestReviewMessage(data?.error || error?.message || 'No fue posible aprobar la solicitud.');
+    return;
+  }
+
+  closePlanningPublicRequestReview();
+  planningPublicRequestsLoaded=false;
+  planningTasksLoaded=false;
+  await loadPlanningTasksModule(true);
+  await loadPlanningPublicRequests(true);
+  planningMessage(`${data.message || 'Solicitud aprobada.'} ${data.ticket_codigo || ''}`,'success');
+}
+
+async function rejectPlanningPublicRequest(id=null) {
+  const requestId=id || document.getElementById('planningPublicRequestReviewId')?.value;
+  const row=planningPublicRequests.find(x=>x.id===requestId);
+  if (!row || row.estado!=='PENDIENTE') return;
+
+  const reason=prompt(
+    `Motivo de rechazo para ${row.codigo || 'la solicitud'}:\n\n${row.titulo}`,
+    'No se aprueba para la planificación actual.'
+  );
+
+  if (reason===null) return;
+
+  const {data,error}=await client.rpc('rechazar_sugerencia_planificacion',{
+    p_sugerencia_id:row.id,
+    p_motivo:reason.trim() || null
+  });
+
+  if (error || !data?.ok) {
+    const message=data?.error || error?.message || 'No fue posible rechazar la solicitud.';
+    if (document.getElementById('planningPublicRequestReviewModal')?.classList.contains('hidden')) {
+      planningMessage(message);
+    } else {
+      planningPublicRequestReviewMessage(message);
+    }
+    return;
+  }
+
+  closePlanningPublicRequestReview();
+  planningPublicRequestsLoaded=false;
+  await loadPlanningPublicRequests(true);
+  planningMessage('Solicitud rechazada.','success');
+}
+
 function switchPlanningTaskMode(mode) {
-  planningTaskMode=['QUEUE','RECURRENCES','ALERTS'].includes(mode) ? mode : 'QUEUE';
+  planningTaskMode=['QUEUE','RECURRENCES','ALERTS','REQUESTS'].includes(mode) ? mode : 'QUEUE';
   const queue=planningTaskMode==='QUEUE';
   const recurrences=planningTaskMode==='RECURRENCES';
   const alerts=planningTaskMode==='ALERTS';
+  const requests=planningTaskMode==='REQUESTS';
 
   document.querySelectorAll('[data-planning-task-mode]').forEach(button=>{
     button.classList.toggle('active',button.dataset.planningTaskMode===planningTaskMode);
@@ -4223,6 +5024,7 @@ function switchPlanningTaskMode(mode) {
   document.getElementById('planningTaskQueueView')?.classList.toggle('hidden',!queue);
   document.getElementById('planningRecurrenceView')?.classList.toggle('hidden',!recurrences);
   document.getElementById('planningAlertCenterView')?.classList.toggle('hidden',!alerts);
+  document.getElementById('planningPublicRequestsView')?.classList.toggle('hidden',!requests);
 
   const topButton=document.getElementById('planningNewProjectButton');
   if (topButton && planningModuleTab==='TASKS') {
@@ -4230,7 +5032,8 @@ function switchPlanningTaskMode(mode) {
     topButton.textContent=
       queue ? '＋ Nuevo pendiente'
       : recurrences ? '＋ Nueva recurrencia'
-      : '↻ Actualizar centro';
+      : alerts ? '↻ Actualizar centro'
+      : '🌐 Compartir planificación';
   }
 
   if (recurrences) {
@@ -4240,6 +5043,10 @@ function switchPlanningTaskMode(mode) {
 
   if (alerts) {
     renderPlanningAlertCenter();
+  }
+
+  if (requests) {
+    loadPlanningPublicRequests();
   }
 }
 
@@ -4924,11 +5731,11 @@ function planningReminderSelectedDefaults() {
 
 function planningReminderSoundLabel(code) {
   return {
-    BANCO:'Turno bancario · Tin–Ton',
+    BANCO:'Tono personalizado · High Tone Ping',
     CAMPANA:'Campana corta',
     SUAVE:'Aviso suave',
     SIN_SONIDO:'Sin sonido'
-  }[code] || 'Turno bancario · Tin–Ton';
+  }[code] || 'Tono personalizado · High Tone Ping';
 }
 
 function updatePlanningReminderStatusCard() {
@@ -5163,21 +5970,31 @@ function planningReminderTone(ctx,frequency,start,duration,volume) {
 
 function playPlanningReminderSound(code=null,urgent=false) {
   const soundCode=code || planningReminderPreferences.sonido_codigo || 'BANCO';
+
   if (
     !planningReminderPreferences.sonido_habilitado
     || soundCode==='SIN_SONIDO'
   ) return;
+
+  if (soundCode==='BANCO') {
+    try {
+      const audio=new Audio(PLANNING_CUSTOM_SOUND_URL);
+      audio.preload='auto';
+      audio.volume=Math.min(1,Math.max(0,Number(planningReminderPreferences.volumen ?? 0.55)));
+      audio.play().catch(err=>{
+        console.warn('El navegador bloqueó el sonido automático hasta que exista interacción del usuario.',err);
+      });
+    } catch(err) {
+      console.warn('No fue posible reproducir el tono personalizado:',err);
+    }
+    return;
+  }
 
   const ctx=getPlanningReminderAudioContext();
   if (!ctx) return;
 
   const base=Math.min(0.35,Math.max(0.02,Number(planningReminderPreferences.volumen || 0.55)*0.28));
   const now=ctx.currentTime+0.03;
-
-  const playBank=(offset=0)=>{
-    planningReminderTone(ctx,880,now+offset,0.17,base);
-    planningReminderTone(ctx,659.25,now+offset+0.24,0.23,base*0.95);
-  };
 
   if (soundCode==='CAMPANA') {
     planningReminderTone(ctx,1046.5,now,0.28,base*0.75);
@@ -5193,9 +6010,6 @@ function playPlanningReminderSound(code=null,urgent=false) {
       planningReminderTone(ctx,659.25,now+0.68,0.22,base*0.55);
       planningReminderTone(ctx,783.99,now+0.96,0.25,base*0.42);
     }
-  } else {
-    playBank(0);
-    if (urgent) playBank(0.72);
   }
 }
 
@@ -20015,6 +20829,39 @@ document.getElementById('publicCommitteeTrainingReviewBackButton')?.addEventList
   document.getElementById('publicCommitteeTrainingReviewView')?.classList.add('hidden');
   document.getElementById('publicCommitteeTrainingResultView')?.classList.remove('hidden');
   window.scrollTo({top:0,behavior:'smooth'});
+});
+
+
+// Eventos 17F.1 · Tono personalizado + enlace público
+document.getElementById('planningShareButton')?.addEventListener('click',openPlanningShareModal);
+document.getElementById('planningShareModalClose')?.addEventListener('click',closePlanningShareModal);
+document.getElementById('planningShareCancel')?.addEventListener('click',closePlanningShareModal);
+document.getElementById('planningShareModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningShareModal);
+document.getElementById('planningShareSave')?.addEventListener('click',savePlanningShare);
+document.getElementById('planningShareCopyButton')?.addEventListener('click',copyPlanningShareLink);
+document.getElementById('planningShareWhatsappButton')?.addEventListener('click',whatsappPlanningShareLink);
+document.getElementById('planningShareRegenerateButton')?.addEventListener('click',regeneratePlanningShareLink);
+
+document.getElementById('planningPublicRequestSearch')?.addEventListener('input',renderPlanningPublicRequests);
+document.getElementById('planningPublicRequestStatusFilter')?.addEventListener('change',renderPlanningPublicRequests);
+document.getElementById('planningPublicRequestRefreshButton')?.addEventListener('click',()=>loadPlanningPublicRequests(true));
+
+document.getElementById('planningPublicRequestReviewClose')?.addEventListener('click',closePlanningPublicRequestReview);
+document.getElementById('planningPublicRequestReviewCancel')?.addEventListener('click',closePlanningPublicRequestReview);
+document.getElementById('planningPublicRequestReviewModal')?.querySelector('.modal-backdrop')?.addEventListener('click',closePlanningPublicRequestReview);
+document.getElementById('planningPublicRequestReviewAssignee')?.addEventListener('change',togglePlanningPublicRequestManualAssignee);
+document.getElementById('planningPublicRequestApproveButton')?.addEventListener('click',approvePlanningPublicRequest);
+document.getElementById('planningPublicRequestRejectButton')?.addEventListener('click',()=>rejectPlanningPublicRequest());
+
+document.getElementById('publicPlanningSuggestButton')?.addEventListener('click',openPublicPlanningSuggestion);
+document.getElementById('publicPlanningSuggestionClose')?.addEventListener('click',closePublicPlanningSuggestion);
+document.getElementById('publicPlanningSuggestionCancel')?.addEventListener('click',closePublicPlanningSuggestion);
+document.getElementById('publicPlanningSuggestionSubmit')?.addEventListener('click',submitPublicPlanningSuggestion);
+document.getElementById('publicPlanningSearch')?.addEventListener('input',renderPublicPlanningTasks);
+document.getElementById('publicPlanningStatusFilter')?.addEventListener('change',renderPublicPlanningTasks);
+document.getElementById('publicPlanningPeriodFilter')?.addEventListener('change',renderPublicPlanningTasks);
+document.getElementById('publicPlanningRefreshButton')?.addEventListener('click',()=>{
+  if (publicPlanningToken) initializePublicPlanningMode(publicPlanningToken);
 });
 
 

@@ -54,6 +54,10 @@ let planningIntegrationSources = {
 let planningIntegrationsLoaded = false;
 let planningDashboardPeriod = 'MONTH';
 let planningDashboardOwnership = 'MINE';
+let planningCalendarMode = 'MONTH';
+let planningCalendarReferenceDate = new Date();
+let planningCalendarOwnership = 'MINE';
+let planningCalendarDragContext = null;
 let activePlanningTaskId = null;
 let activePlanningRecurrenceId = null;
 let planningRecurrenceLastGeneration = 0;
@@ -598,6 +602,619 @@ async function loadPlanningModule(force=false) {
 }
 
 
+
+
+// ============================================================
+// ETAPA 17F · CALENDARIO Y AGENDA OPERATIVA
+// ============================================================
+
+function planningCalendarCurrentProfileName() {
+  return planningProfileDisplayName(currentProfile) || [currentProfile?.nombres,currentProfile?.apellidos].filter(Boolean).join(' ').trim();
+}
+
+function planningCalendarNormalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9 ]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim()
+    .toLowerCase();
+}
+
+function planningCalendarSamePerson(a,b) {
+  const x=planningCalendarNormalizeText(a);
+  const y=planningCalendarNormalizeText(b);
+  if (!x || !y) return false;
+  if (x===y) return true;
+  const xs=new Set(x.split(' ').filter(Boolean));
+  const ys=new Set(y.split(' ').filter(Boolean));
+  const shared=[...xs].filter(v=>ys.has(v));
+  return shared.length>=Math.min(2,Math.min(xs.size,ys.size));
+}
+
+function planningCalendarMonday(date) {
+  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  const day=d.getDay() || 7;
+  d.setDate(d.getDate()-day+1);
+  return d;
+}
+
+function planningCalendarEndOfWeek(date) {
+  const d=planningCalendarMonday(date);
+  d.setDate(d.getDate()+6);
+  d.setHours(23,59,59,999);
+  return d;
+}
+
+function planningCalendarDateKey(date) {
+  return planningIsoDate(date);
+}
+
+function planningCalendarEventProjectId(event) {
+  if (event.kind==='TASK' || event.kind==='FOLLOWUP') return event.task?.proyecto_id || null;
+  const project=planningProjects.find(x=>x.id===event.activity?.planificacion_proyecto_id);
+  return project?.proyecto_id || null;
+}
+
+function planningCalendarTaskInMyAgenda(task) {
+  return planningDashboardTaskIsMine(task);
+}
+
+function planningCalendarActivityInMyAgenda(activity) {
+  if (!activity || !currentProfile) return false;
+  if (activity.responsable_profile_id && activity.responsable_profile_id===currentProfile.id) return true;
+  if (planningCalendarSamePerson(activity.responsable_nombre,planningCalendarCurrentProfileName())) return true;
+  const project=planningProjects.find(x=>x.id===activity.planificacion_proyecto_id);
+  if (planningCalendarSamePerson(project?.responsable_nombre,planningCalendarCurrentProfileName())) return true;
+  return false;
+}
+
+function planningCalendarTaskCanDrag(task) {
+  if (!task || task.origen_modulo) return false;
+  if (['COMPLETADO','CANCELADO'].includes(task.estado)) return false;
+  return planningTaskCanManage(task);
+}
+
+function planningCalendarActivityCanDrag(activity) {
+  if (!activity || ['COMPLETADO','CANCELADO'].includes(activity.estado)) return false;
+  const project=planningProjects.find(x=>x.id===activity.planificacion_proyecto_id);
+  return !!project && planningCanManage(project);
+}
+
+function planningCalendarBuildEvents() {
+  const ownership=document.getElementById('planningCalendarOwnership')?.value || planningCalendarOwnership || 'MINE';
+  const typeFilter=document.getElementById('planningCalendarTypeFilter')?.value || 'ALL';
+  const statusFilter=document.getElementById('planningCalendarStatusFilter')?.value || 'ACTIVE';
+  const projectFilter=document.getElementById('planningCalendarProjectFilter')?.value || 'ALL';
+  planningCalendarOwnership=ownership;
+
+  const events=[];
+
+  planningTaskRecords.forEach(task=>{
+    const mine=planningCalendarTaskInMyAgenda(task);
+    if (ownership==='MINE' && !mine) return;
+
+    const taskCompleted=task.estado==='COMPLETADO';
+    const taskCancelled=task.estado==='CANCELADO';
+    if (statusFilter==='ACTIVE' && (taskCompleted || taskCancelled)) return;
+    if (statusFilter==='COMPLETED' && !taskCompleted) return;
+
+    const taskEvent={
+      id:`TASK:${task.id}`,
+      kind:'TASK',
+      task,
+      title:task.titulo || 'Pendiente',
+      date:task.fecha_objetivo,
+      endDate:task.fecha_objetivo,
+      time:task.hora_objetivo ? String(task.hora_objetivo).slice(0,5) : null,
+      priority:task.prioridad || 'MEDIA',
+      completed:taskCompleted,
+      cancelled:taskCancelled,
+      overdue:planningTaskSituation(task).code==='VENCIDO',
+      integrated:!!task.origen_modulo,
+      recurring:!!task.recurrencia_id,
+      draggable:planningCalendarTaskCanDrag(task)
+    };
+
+    if ((typeFilter==='ALL' || typeFilter==='TASK') && taskEvent.date) events.push(taskEvent);
+
+    if (task.estado==='EN_ESPERA' && task.fecha_seguimiento) {
+      const follow={
+        id:`FOLLOWUP:${task.id}`,
+        kind:'FOLLOWUP',
+        task,
+        title:`Seguimiento · ${task.titulo || 'Pendiente'}`,
+        date:task.fecha_seguimiento,
+        endDate:task.fecha_seguimiento,
+        time:task.hora_seguimiento ? String(task.hora_seguimiento).slice(0,5) : '09:00',
+        priority:task.prioridad || 'MEDIA',
+        completed:false,
+        cancelled:false,
+        overdue:planningFollowupDateTime(task) ? planningFollowupDateTime(task)<new Date() : false,
+        integrated:!!task.origen_modulo,
+        recurring:!!task.recurrencia_id,
+        draggable:planningTaskCanManage(task)
+      };
+      if (typeFilter==='ALL' || typeFilter==='FOLLOWUP') events.push(follow);
+    }
+  });
+
+  planningActivities.forEach(activity=>{
+    if (activity.estado==='CANCELADO' && statusFilter!=='ALL') return;
+    const completed=activity.estado==='COMPLETADO' || Number(activity.progreso)>=100;
+    if (statusFilter==='ACTIVE' && completed) return;
+    if (statusFilter==='COMPLETED' && !completed) return;
+    if (ownership==='MINE' && !planningCalendarActivityInMyAgenda(activity)) return;
+
+    const kind=activity.tipo==='HITO'?'MILESTONE':'GANTT';
+    if (typeFilter!=='ALL' && typeFilter!==kind) return;
+
+    const project=planningProjects.find(x=>x.id===activity.planificacion_proyecto_id);
+    const event={
+      id:`GANTT:${activity.id}`,
+      kind,
+      activity,
+      project,
+      title:activity.nombre || (kind==='MILESTONE'?'Hito':'Actividad Gantt'),
+      date:activity.fecha_inicio,
+      endDate:activity.fecha_fin,
+      time:null,
+      priority:activity.prioridad || 'MEDIA',
+      completed,
+      cancelled:activity.estado==='CANCELADO',
+      overdue:planningActivitySituation(activity).code==='ATRASADO',
+      integrated:false,
+      recurring:false,
+      draggable:planningCalendarActivityCanDrag(activity)
+    };
+    events.push(event);
+  });
+
+  return events.filter(event=>{
+    if (projectFilter==='ALL') return true;
+    if (projectFilter==='CORPORATE') return !planningCalendarEventProjectId(event);
+    return planningCalendarEventProjectId(event)===projectFilter;
+  });
+}
+
+function planningCalendarEventOccursOn(event,dateKey) {
+  if (!event?.date) return false;
+  return dateKey>=event.date && dateKey<=(event.endDate || event.date);
+}
+
+function planningCalendarEventSort(a,b) {
+  const ta=a.time || (a.kind==='MILESTONE'?'00:01':'23:59');
+  const tb=b.time || (b.kind==='MILESTONE'?'00:01':'23:59');
+  if (ta!==tb) return ta.localeCompare(tb);
+  const rank={FOLLOWUP:0,MILESTONE:1,TASK:2,GANTT:3};
+  const ar=rank[a.kind] ?? 9;
+  const br=rank[b.kind] ?? 9;
+  if (ar!==br) return ar-br;
+  return String(a.title).localeCompare(String(b.title),'es');
+}
+
+function planningCalendarFilteredEventsForDate(dateKey,events=planningCalendarBuildEvents()) {
+  return events.filter(event=>planningCalendarEventOccursOn(event,dateKey)).sort(planningCalendarEventSort);
+}
+
+function planningCalendarEventClass(event) {
+  const classes=[`kind-${event.kind.toLowerCase()}`,`priority-${String(event.priority||'').toLowerCase()}`];
+  if (event.completed) classes.push('is-completed');
+  if (event.cancelled) classes.push('is-cancelled');
+  if (event.overdue) classes.push('is-overdue');
+  if (event.integrated) classes.push('is-integrated');
+  if (event.recurring) classes.push('is-recurring');
+  if (!event.draggable) classes.push('is-locked');
+  return classes.join(' ');
+}
+
+function planningCalendarEventMeta(event,instanceDate=null) {
+  const bits=[];
+  if (event.time) bits.push(event.time);
+  if (event.kind==='FOLLOWUP') bits.push(event.task?.esperando_de?`Espera: ${event.task.esperando_de}`:'Seguimiento');
+  if (event.kind==='GANTT' || event.kind==='MILESTONE') {
+    if (event.project?.codigo) bits.push(event.project.codigo);
+    if (event.activity?.responsable_nombre) bits.push(event.activity.responsable_nombre);
+  } else if (event.task?.responsable_nombre) bits.push(event.task.responsable_nombre);
+  if (event.integrated) bits.push('⇄ Integrado');
+  if (event.recurring) bits.push('↻ Recurrente');
+  return bits.join(' · ');
+}
+
+function planningCalendarEventHtml(event,instanceDate,compact=false) {
+  const icon=event.kind==='FOLLOWUP'?'📞':event.kind==='MILESTONE'?'◆':event.kind==='GANTT'?'▰':'☑';
+  const title=event.integrated
+    ? 'Ticket integrado: modifica la fecha desde el módulo origen.'
+    : event.draggable
+      ? 'Arrastra para reprogramar. Clic para abrir.'
+      : 'Clic para abrir.';
+  return `
+    <article class="planning-calendar-event ${planningCalendarEventClass(event)} ${compact?'compact':''}"
+      data-calendar-event-id="${escapeHtml(event.id)}"
+      data-calendar-instance-date="${escapeHtml(instanceDate || event.date)}"
+      draggable="${event.draggable?'true':'false'}"
+      title="${escapeHtml(title)}">
+      <span class="planning-calendar-event-icon">${icon}</span>
+      <div>
+        <strong>${escapeHtml(event.title)}</strong>
+        ${compact?'':`<small>${escapeHtml(planningCalendarEventMeta(event,instanceDate) || planningPriorityLabel(event.priority))}</small>`}
+      </div>
+      ${event.time && compact?`<b>${escapeHtml(event.time)}</b>`:''}
+      ${event.overdue?'<i class="planning-calendar-overdue-dot"></i>':''}
+    </article>
+  `;
+}
+
+function populatePlanningCalendarProjectFilter() {
+  const select=document.getElementById('planningCalendarProjectFilter');
+  if (!select) return;
+  const current=select.value || 'ALL';
+  select.innerHTML='<option value="ALL">Todos los proyectos</option><option value="CORPORATE">Corporativo / sin proyecto</option>'+
+    planningOperationalProjects.filter(x=>x.activo!==false).map(p=>
+      `<option value="${p.id}">${escapeHtml(p.nombre)}${p.cliente?` · ${escapeHtml(p.cliente)}`:''}</option>`
+    ).join('');
+  if ([...select.options].some(o=>o.value===current)) select.value=current;
+}
+
+function updatePlanningCalendarSummary(events=planningCalendarBuildEvents()) {
+  const now=new Date();
+  const todayKey=planningIsoDate(now);
+  const weekStart=planningCalendarMonday(now);
+  const weekEnd=planningCalendarEndOfWeek(now);
+  const inWeek=events.filter(e=>{
+    const d=planningParseDate(e.date);
+    const end=planningParseDate(e.endDate || e.date);
+    return d && end && end>=weekStart && d<=weekEnd;
+  }).length;
+  const today=events.filter(e=>planningCalendarEventOccursOn(e,todayKey)).length;
+  const overdue=events.filter(e=>e.overdue && !e.completed && !e.cancelled).length;
+  const followupLimit=planningAddDays(now,7);
+  const followups=events.filter(e=>{
+    if (e.kind!=='FOLLOWUP') return false;
+    const d=planningParseDate(e.date);
+    return d && d>=planningParseDate(todayKey) && d<=followupLimit;
+  }).length;
+  const milestoneLimit=planningAddDays(now,30);
+  const milestones=events.filter(e=>{
+    if (e.kind!=='MILESTONE') return false;
+    const d=planningParseDate(e.date);
+    return d && d>=planningParseDate(todayKey) && d<=milestoneLimit;
+  }).length;
+
+  const values={
+    planningCalendarTodayCount:today,
+    planningCalendarWeekCount:inWeek,
+    planningCalendarOverdueCount:overdue,
+    planningCalendarFollowupCount:followups,
+    planningCalendarMilestoneCount:milestones
+  };
+  Object.entries(values).forEach(([id,value])=>{const el=document.getElementById(id);if(el)el.textContent=String(value);});
+}
+
+function planningCalendarHeaderLabel() {
+  const ref=planningCalendarReferenceDate;
+  if (planningCalendarMode==='MONTH') {
+    return ref.toLocaleDateString('es-PE',{month:'long',year:'numeric'});
+  }
+  if (planningCalendarMode==='WEEK') {
+    const start=planningCalendarMonday(ref);
+    const end=planningCalendarEndOfWeek(ref);
+    const fmt=new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'short'});
+    return `${fmt.format(start)} – ${fmt.format(end)} ${end.getFullYear()}`;
+  }
+  return ref.toLocaleDateString('es-PE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+}
+
+function planningCalendarRenderMonth(events) {
+  const container=document.getElementById('planningCalendarMonthView');
+  if (!container) return;
+  const ref=planningCalendarReferenceDate;
+  const first=new Date(ref.getFullYear(),ref.getMonth(),1);
+  const start=planningCalendarMonday(first);
+  const todayKey=planningIsoDate(new Date());
+  const weekdays=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const cells=[];
+
+  for (let i=0;i<42;i++) {
+    const day=planningAddDays(start,i);
+    const key=planningIsoDate(day);
+    const rows=planningCalendarFilteredEventsForDate(key,events);
+    const visible=rows.slice(0,4);
+    const outside=day.getMonth()!==ref.getMonth();
+    cells.push(`
+      <section class="planning-calendar-day ${outside?'outside-month':''} ${key===todayKey?'today':''}"
+        data-calendar-drop-date="${key}" data-calendar-day-key="${key}">
+        <header>
+          <button type="button" class="planning-calendar-day-number" data-calendar-agenda-date="${key}">${day.getDate()}</button>
+          <button type="button" class="planning-calendar-day-add" data-calendar-new-date="${key}" title="Nuevo pendiente">＋</button>
+        </header>
+        <div class="planning-calendar-day-events">
+          ${visible.map(e=>planningCalendarEventHtml(e,key,true)).join('')}
+          ${rows.length>4?`<button class="planning-calendar-more" type="button" data-calendar-agenda-date="${key}">＋ ${rows.length-4} más</button>`:''}
+        </div>
+      </section>
+    `);
+  }
+
+  container.innerHTML=`
+    <div class="planning-calendar-month-grid weekday-head">${weekdays.map(x=>`<div>${x}</div>`).join('')}</div>
+    <div class="planning-calendar-month-grid">${cells.join('')}</div>
+  `;
+}
+
+function planningCalendarRenderWeek(events) {
+  const container=document.getElementById('planningCalendarWeekView');
+  if (!container) return;
+  const start=planningCalendarMonday(planningCalendarReferenceDate);
+  const todayKey=planningIsoDate(new Date());
+  const columns=[];
+
+  for (let i=0;i<7;i++) {
+    const day=planningAddDays(start,i);
+    const key=planningIsoDate(day);
+    const rows=planningCalendarFilteredEventsForDate(key,events);
+    columns.push(`
+      <section class="planning-calendar-week-day ${key===todayKey?'today':''}" data-calendar-drop-date="${key}">
+        <header>
+          <button type="button" data-calendar-agenda-date="${key}">
+            <span>${day.toLocaleDateString('es-PE',{weekday:'short'})}</span>
+            <strong>${day.getDate()}</strong>
+          </button>
+          <button type="button" data-calendar-new-date="${key}" title="Nuevo pendiente">＋</button>
+        </header>
+        <div class="planning-calendar-week-events">
+          ${rows.length?rows.map(e=>planningCalendarEventHtml(e,key,false)).join(''):'<div class="planning-calendar-empty-day">Sin eventos</div>'}
+        </div>
+      </section>
+    `);
+  }
+
+  container.innerHTML=`<div class="planning-calendar-week-grid">${columns.join('')}</div>`;
+}
+
+function planningCalendarRenderAgenda(events) {
+  const container=document.getElementById('planningCalendarAgendaView');
+  if (!container) return;
+  const key=planningIsoDate(planningCalendarReferenceDate);
+  const rows=planningCalendarFilteredEventsForDate(key,events);
+  const allDay=rows.filter(e=>!e.time || ['GANTT','MILESTONE'].includes(e.kind));
+  const timed=rows.filter(e=>e.time && !['GANTT','MILESTONE'].includes(e.kind));
+  const hours=[];
+
+  for (let hour=6;hour<=23;hour++) {
+    const hourRows=timed.filter(e=>Number(String(e.time).slice(0,2))===hour);
+    const time=`${String(hour).padStart(2,'0')}:00`;
+    hours.push(`
+      <section class="planning-calendar-agenda-slot" data-calendar-drop-date="${key}" data-calendar-drop-time="${time}">
+        <div class="planning-calendar-agenda-time">${time}</div>
+        <div class="planning-calendar-agenda-events">
+          ${hourRows.map(e=>planningCalendarEventHtml(e,key,false)).join('')}
+          <button type="button" class="planning-calendar-agenda-add" data-calendar-new-date="${key}" data-calendar-new-time="${time}">＋ Agregar</button>
+        </div>
+      </section>
+    `);
+  }
+
+  container.innerHTML=`
+    <article class="planning-calendar-agenda-day-head">
+      <div><span class="eyebrow">AGENDA DEL DÍA</span><h3>${escapeHtml(planningCalendarReferenceDate.toLocaleDateString('es-PE',{weekday:'long',day:'2-digit',month:'long'}))}</h3></div>
+      <button class="primary-btn" type="button" data-calendar-new-date="${key}">＋ Nuevo pendiente</button>
+    </article>
+    <section class="planning-calendar-all-day" data-calendar-drop-date="${key}">
+      <strong>Todo el día / sin hora</strong>
+      <div>${allDay.length?allDay.map(e=>planningCalendarEventHtml(e,key,false)).join(''):'<span class="planning-calendar-no-all-day">Sin actividades de día completo.</span>'}</div>
+    </section>
+    <div class="planning-calendar-agenda-hours">${hours.join('')}</div>
+  `;
+}
+
+function bindPlanningCalendarEvents() {
+  document.querySelectorAll('[data-calendar-event-id]').forEach(card=>{
+    card.addEventListener('click',event=>{
+      event.stopPropagation();
+      openPlanningCalendarEvent(card.dataset.calendarEventId);
+    });
+
+    if (card.getAttribute('draggable')==='true') {
+      card.addEventListener('dragstart',event=>{
+        planningCalendarDragContext={
+          id:card.dataset.calendarEventId,
+          instanceDate:card.dataset.calendarInstanceDate || null
+        };
+        event.dataTransfer.effectAllowed='move';
+        event.dataTransfer.setData('text/plain',JSON.stringify(planningCalendarDragContext));
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend',()=>{
+        card.classList.remove('dragging');
+        document.querySelectorAll('.calendar-drop-active').forEach(x=>x.classList.remove('calendar-drop-active'));
+      });
+    }
+  });
+
+  document.querySelectorAll('[data-calendar-drop-date]').forEach(zone=>{
+    zone.addEventListener('dragover',event=>{
+      event.preventDefault();
+      event.dataTransfer.dropEffect='move';
+      zone.classList.add('calendar-drop-active');
+    });
+    zone.addEventListener('dragleave',()=>zone.classList.remove('calendar-drop-active'));
+    zone.addEventListener('drop',async event=>{
+      event.preventDefault();
+      zone.classList.remove('calendar-drop-active');
+      let context=planningCalendarDragContext;
+      try {
+        const parsed=JSON.parse(event.dataTransfer.getData('text/plain') || '{}');
+        if (parsed?.id) context=parsed;
+      } catch {}
+      if (!context?.id) return;
+      await movePlanningCalendarEvent(
+        context.id,
+        zone.dataset.calendarDropDate,
+        zone.dataset.calendarDropTime || null,
+        context.instanceDate || null
+      );
+      planningCalendarDragContext=null;
+    });
+  });
+
+  document.querySelectorAll('[data-calendar-new-date]').forEach(button=>{
+    button.addEventListener('click',event=>{
+      event.stopPropagation();
+      openPlanningCalendarNewTask(button.dataset.calendarNewDate,button.dataset.calendarNewTime || null);
+    });
+  });
+
+  document.querySelectorAll('[data-calendar-agenda-date]').forEach(button=>{
+    button.addEventListener('click',event=>{
+      event.stopPropagation();
+      const d=planningParseDate(button.dataset.calendarAgendaDate);
+      if (!d) return;
+      planningCalendarReferenceDate=d;
+      planningCalendarMode='AGENDA';
+      document.querySelectorAll('[data-planning-calendar-view]').forEach(x=>x.classList.toggle('active',x.dataset.planningCalendarView==='AGENDA'));
+      renderPlanningCalendar();
+    });
+  });
+}
+
+function renderPlanningCalendar() {
+  const month=document.getElementById('planningCalendarMonthView');
+  if (!month) return;
+  populatePlanningCalendarProjectFilter();
+  const events=planningCalendarBuildEvents();
+  updatePlanningCalendarSummary(events);
+
+  const title=document.getElementById('planningCalendarTitle');
+  if (title) title.textContent=planningCalendarHeaderLabel();
+
+  month.classList.toggle('hidden',planningCalendarMode!=='MONTH');
+  document.getElementById('planningCalendarWeekView')?.classList.toggle('hidden',planningCalendarMode!=='WEEK');
+  document.getElementById('planningCalendarAgendaView')?.classList.toggle('hidden',planningCalendarMode!=='AGENDA');
+
+  if (planningCalendarMode==='MONTH') planningCalendarRenderMonth(events);
+  else if (planningCalendarMode==='WEEK') planningCalendarRenderWeek(events);
+  else planningCalendarRenderAgenda(events);
+
+  bindPlanningCalendarEvents();
+}
+
+async function loadPlanningCalendar(force=false) {
+  if (!client) return;
+  await loadPlanningModule(force);
+  await loadPlanningTasksModule(force);
+  renderPlanningCalendar();
+}
+
+function navigatePlanningCalendar(direction) {
+  const d=new Date(planningCalendarReferenceDate);
+  if (planningCalendarMode==='MONTH') d.setMonth(d.getMonth()+direction);
+  else if (planningCalendarMode==='WEEK') d.setDate(d.getDate()+7*direction);
+  else d.setDate(d.getDate()+direction);
+  planningCalendarReferenceDate=d;
+  renderPlanningCalendar();
+}
+
+function setPlanningCalendarMode(mode) {
+  planningCalendarMode=['MONTH','WEEK','AGENDA'].includes(mode)?mode:'MONTH';
+  document.querySelectorAll('[data-planning-calendar-view]').forEach(button=>{
+    button.classList.toggle('active',button.dataset.planningCalendarView===planningCalendarMode);
+  });
+  renderPlanningCalendar();
+}
+
+function openPlanningCalendarNewTask(dateKey,time=null) {
+  openPlanningTaskModal();
+  const date=document.getElementById('planningTaskDueDate');
+  const hour=document.getElementById('planningTaskDueTime');
+  if (date && dateKey) date.value=dateKey;
+  if (hour && time) hour.value=time;
+  document.getElementById('planningTaskTitle')?.focus();
+}
+
+function planningCalendarFindEvent(id) {
+  return planningCalendarBuildEvents().find(x=>x.id===id) || null;
+}
+
+function openPlanningCalendarEvent(id) {
+  const event=planningCalendarFindEvent(id);
+  if (!event) return;
+  if (event.kind==='FOLLOWUP') {
+    openPlanningFollowupModal(event.task);
+    return;
+  }
+  if (event.kind==='TASK') {
+    openPlanningTaskModal(event.task);
+    return;
+  }
+  if (event.activity) {
+    switchPlanningTab('PROJECTS');
+    activePlanningProjectId=event.activity.planificacion_proyecto_id;
+    openPlanningProject(activePlanningProjectId);
+    setTimeout(()=>openPlanningActivityModal(event.activity),80);
+  }
+}
+
+async function movePlanningCalendarEvent(id,targetDate,targetTime=null,originDate=null) {
+  const event=planningCalendarFindEvent(id);
+  if (!event || !targetDate) return;
+
+  if (event.kind==='TASK') {
+    if (event.integrated) {
+      planningMessage('Este ticket está integrado con otro módulo. Modifica la fecha desde el registro origen para conservar la sincronización.');
+      return;
+    }
+    if (!planningCalendarTaskCanDrag(event.task)) {
+      planningMessage('No tienes permiso para reprogramar este pendiente desde el calendario.');
+      return;
+    }
+    const payload={
+      fecha_objetivo:targetDate,
+      ultimo_motivo_cambio:'Pendiente reprogramado mediante arrastre en Calendario.'
+    };
+    if (targetTime) payload.hora_objetivo=targetTime;
+    const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',event.task.id);
+    if (error) {planningMessage(error.message || 'No fue posible reprogramar el pendiente.');return;}
+  } else if (event.kind==='FOLLOWUP') {
+    if (!planningTaskCanManage(event.task)) {
+      planningMessage('No tienes permiso para reprogramar este seguimiento.');
+      return;
+    }
+    const payload={
+      fecha_seguimiento:targetDate,
+      seguimiento_pospuesto_hasta:null,
+      ultimo_motivo_cambio:'Seguimiento reprogramado mediante arrastre en Calendario.'
+    };
+    if (targetTime) payload.hora_seguimiento=targetTime;
+    const {error}=await client.from('planificacion_pendientes').update(payload).eq('id',event.task.id);
+    if (error) {planningMessage(error.message || 'No fue posible reprogramar el seguimiento.');return;}
+  } else if (event.activity) {
+    if (!planningCalendarActivityCanDrag(event.activity)) {
+      planningMessage('No tienes permiso para mover esta actividad Gantt.');
+      return;
+    }
+    const activity=event.activity;
+    const project=planningProjects.find(x=>x.id===activity.planificacion_proyecto_id);
+    const baseDate=originDate || activity.fecha_inicio;
+    const delta=planningDaysBetween(baseDate,targetDate);
+    const newStart=planningIsoDate(planningAddDays(planningParseDate(activity.fecha_inicio),delta));
+    const newEnd=planningIsoDate(planningAddDays(planningParseDate(activity.fecha_fin),delta));
+    if (project && (newStart<project.fecha_inicio || newEnd>project.fecha_fin)) {
+      planningMessage(`No se puede mover: la actividad debe permanecer dentro del rango del proyecto (${formatDatePE(project.fecha_inicio)} al ${formatDatePE(project.fecha_fin)}).`);
+      return;
+    }
+    const {error}=await client.from('planificacion_actividades').update({fecha_inicio:newStart,fecha_fin:newEnd}).eq('id',activity.id);
+    if (error) {planningMessage(error.message || 'No fue posible mover la actividad Gantt.');return;}
+  }
+
+  planningLoaded=false;
+  planningTasksLoaded=false;
+  await loadPlanningModule(true);
+  await loadPlanningTasksModule(true);
+  renderPlanningCalendar();
+  planningMessage('Calendario actualizado correctamente.','success');
+}
 
 // ============================================================
 // ETAPA 17E · DASHBOARD DE PRODUCTIVIDAD
@@ -1470,19 +2087,22 @@ async function syncPlanningIntegrationModule(module,button=null) {
 }
 
 function switchPlanningTab(tab) {
-  planningModuleTab=['PROJECTS','DASHBOARD','TASKS','INTEGRATIONS'].includes(tab) ? tab : 'PROJECTS';
+  planningModuleTab=['PROJECTS','DASHBOARD','CALENDAR','TASKS','INTEGRATIONS'].includes(tab) ? tab : 'PROJECTS';
   const projects=planningModuleTab==='PROJECTS';
   const dashboard=planningModuleTab==='DASHBOARD';
+  const calendar=planningModuleTab==='CALENDAR';
   const tasks=planningModuleTab==='TASKS';
   const integrations=planningModuleTab==='INTEGRATIONS';
 
   document.getElementById('planningProjectsTab')?.classList.toggle('active',projects);
   document.getElementById('planningDashboardTab')?.classList.toggle('active',dashboard);
+  document.getElementById('planningCalendarTab')?.classList.toggle('active',calendar);
   document.getElementById('planningTasksTab')?.classList.toggle('active',tasks);
   document.getElementById('planningIntegrationsTab')?.classList.toggle('active',integrations);
 
   document.getElementById('planningProjectsView')?.classList.toggle('hidden',!projects);
   document.getElementById('planningDashboardView')?.classList.toggle('hidden',!dashboard);
+  document.getElementById('planningCalendarView')?.classList.toggle('hidden',!calendar);
   document.getElementById('planningTasksView')?.classList.toggle('hidden',!tasks);
   document.getElementById('planningIntegrationsView')?.classList.toggle('hidden',!integrations);
 
@@ -1492,23 +2112,21 @@ function switchPlanningTab(tab) {
     topButton.textContent=
       projects ? '＋ Nuevo proyecto'
       : dashboard ? '↻ Actualizar dashboard'
+      : calendar ? '＋ Nuevo pendiente'
       : tasks
         ? (planningTaskMode==='RECURRENCES'?'＋ Nueva recurrencia':planningTaskMode==='ALERTS'?'↻ Actualizar centro':'＋ Nuevo pendiente')
         : '↻ Actualizar integraciones';
   }
 
-  if (dashboard) {
-    loadPlanningDashboard();
-  }
+  if (dashboard) loadPlanningDashboard();
+  if (calendar) loadPlanningCalendar();
 
   if (tasks) {
     loadPlanningTasksModule();
     switchPlanningTaskMode(planningTaskMode);
   }
 
-  if (integrations) {
-    loadPlanningIntegrationsDashboard();
-  }
+  if (integrations) loadPlanningIntegrationsDashboard();
 }
 
 function openPlanningProjectModal(project=null) {
@@ -2545,6 +3163,7 @@ async function loadPlanningTasksModule(force=false) {
     renderPlanningRecurrenceList();
     renderPlanningAlertCenter();
     if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
+    if (planningModuleTab==='CALENDAR') renderPlanningCalendar();
     return;
   }
 
@@ -2591,6 +3210,7 @@ async function loadPlanningTasksModule(force=false) {
   renderPlanningRecurrenceList();
   renderPlanningAlertCenter();
   if (planningModuleTab==='DASHBOARD') renderPlanningDashboard();
+  if (planningModuleTab==='CALENDAR') renderPlanningCalendar();
 }
 
 function renderPlanningTaskHistory(taskId) {
@@ -3012,6 +3632,7 @@ document.querySelectorAll('[data-integration-sync]').forEach(button=>{
 // Eventos 17A
 document.getElementById('planningProjectsTab')?.addEventListener('click',()=>switchPlanningTab('PROJECTS'));
 document.getElementById('planningDashboardTab')?.addEventListener('click',()=>switchPlanningTab('DASHBOARD'));
+document.getElementById('planningCalendarTab')?.addEventListener('click',()=>switchPlanningTab('CALENDAR'));
 document.getElementById('planningTasksTab')?.addEventListener('click',()=>switchPlanningTab('TASKS'));
 document.getElementById('planningIntegrationsTab')?.addEventListener('click',()=>switchPlanningTab('INTEGRATIONS'));
 document.getElementById('planningDashboardPeriod')?.addEventListener('change',event=>{
@@ -3024,6 +3645,20 @@ document.getElementById('planningDashboardOwnership')?.addEventListener('change'
 });
 document.getElementById('planningDashboardRefreshButton')?.addEventListener('click',()=>loadPlanningDashboard(true));
 document.getElementById('planningDashboardPrintButton')?.addEventListener('click',printPlanningDashboard);
+document.querySelectorAll('[data-planning-calendar-view]').forEach(button=>{
+  button.addEventListener('click',()=>setPlanningCalendarMode(button.dataset.planningCalendarView));
+});
+document.getElementById('planningCalendarPrevButton')?.addEventListener('click',()=>navigatePlanningCalendar(-1));
+document.getElementById('planningCalendarNextButton')?.addEventListener('click',()=>navigatePlanningCalendar(1));
+document.getElementById('planningCalendarTodayButton')?.addEventListener('click',()=>{
+  planningCalendarReferenceDate=new Date();
+  renderPlanningCalendar();
+});
+document.getElementById('planningCalendarOwnership')?.addEventListener('change',renderPlanningCalendar);
+document.getElementById('planningCalendarTypeFilter')?.addEventListener('change',renderPlanningCalendar);
+document.getElementById('planningCalendarStatusFilter')?.addEventListener('change',renderPlanningCalendar);
+document.getElementById('planningCalendarProjectFilter')?.addEventListener('change',renderPlanningCalendar);
+document.getElementById('planningCalendarRefreshButton')?.addEventListener('click',()=>loadPlanningCalendar(true));
 document.getElementById('planningNewProjectButton')?.addEventListener('click',()=>{
   if (planningModuleTab==='TASKS') {
     if (planningTaskMode==='RECURRENCES') {
@@ -3036,6 +3671,8 @@ document.getElementById('planningNewProjectButton')?.addEventListener('click',()
     }
   } else if (planningModuleTab==='DASHBOARD') {
     loadPlanningDashboard(true);
+  } else if (planningModuleTab==='CALENDAR') {
+    openPlanningCalendarNewTask(planningIsoDate(planningCalendarReferenceDate));
   } else if (planningModuleTab==='INTEGRATIONS') {
     planningIntegrationsLoaded=false;
     loadPlanningIntegrationsDashboard(true);

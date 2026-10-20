@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>.hidden{display:none!important}</style>
-  <link rel="stylesheet" href="styles.css?v=20261019-17e" />
+  <link rel="stylesheet" href="styles.css?v=20261020-17f" />
 </head>
 <body>
   <section id="publicCommitteeTrainingScreen" class="public-committee-training-screen hidden" aria-label="Capacitación del Comité SST">
@@ -851,6 +851,7 @@
         <div class="planning-tabs" role="tablist">
           <button id="planningProjectsTab" class="active" type="button">Proyectos y Gantt</button>
           <button id="planningDashboardTab" type="button">Dashboard</button>
+          <button id="planningCalendarTab" type="button">Calendario</button>
           <button id="planningTasksTab" type="button">Pendientes</button>
           <button id="planningIntegrationsTab" type="button">Integraciones <span id="planningIntegrationBadge" class="planning-integration-tab-badge hidden">0</span></button>
         </div>
@@ -1127,6 +1128,78 @@
             </div>
             <div id="planningDashboardProjectHealth" class="planning-dashboard-project-health"></div>
           </article>
+        </div>
+
+        <div id="planningCalendarView" class="hidden">
+          <article class="panel planning-calendar-toolbar">
+            <div class="planning-calendar-nav">
+              <button id="planningCalendarPrevButton" class="secondary-btn" type="button">←</button>
+              <button id="planningCalendarTodayButton" class="secondary-btn" type="button">Hoy</button>
+              <button id="planningCalendarNextButton" class="secondary-btn" type="button">→</button>
+              <div>
+                <span class="eyebrow">AGENDA OPERATIVA</span>
+                <h3 id="planningCalendarTitle">Calendario</h3>
+              </div>
+            </div>
+
+            <div class="planning-calendar-controls">
+              <div class="planning-calendar-view-switch">
+                <button class="active" type="button" data-planning-calendar-view="MONTH">Mes</button>
+                <button type="button" data-planning-calendar-view="WEEK">Semana</button>
+                <button type="button" data-planning-calendar-view="AGENDA">Agenda</button>
+              </div>
+              <select id="planningCalendarOwnership">
+                <option value="MINE">Mi agenda</option>
+                <option value="ALL">Todo visible</option>
+              </select>
+              <select id="planningCalendarTypeFilter">
+                <option value="ALL">Todos los tipos</option>
+                <option value="TASK">Pendientes</option>
+                <option value="FOLLOWUP">Seguimientos</option>
+                <option value="GANTT">Actividades Gantt</option>
+                <option value="MILESTONE">Hitos</option>
+              </select>
+              <select id="planningCalendarStatusFilter">
+                <option value="ACTIVE">Activos</option>
+                <option value="ALL">Todos los estados</option>
+                <option value="COMPLETED">Completados</option>
+              </select>
+              <select id="planningCalendarProjectFilter">
+                <option value="ALL">Todos los proyectos</option>
+              </select>
+              <button id="planningCalendarRefreshButton" class="secondary-btn" type="button">↻ Actualizar</button>
+            </div>
+          </article>
+
+          <div class="planning-calendar-summary">
+            <article><span>Hoy</span><strong id="planningCalendarTodayCount">0</strong><small>Eventos programados</small></article>
+            <article><span>Esta semana</span><strong id="planningCalendarWeekCount">0</strong><small>Compromisos visibles</small></article>
+            <article class="calendar-summary-alert"><span>Vencidos</span><strong id="planningCalendarOverdueCount">0</strong><small>Pendientes sin completar</small></article>
+            <article><span>Seguimientos</span><strong id="planningCalendarFollowupCount">0</strong><small>Próximos 7 días</small></article>
+            <article><span>Hitos</span><strong id="planningCalendarMilestoneCount">0</strong><small>Próximos 30 días</small></article>
+          </div>
+
+          <article class="planning-calendar-help">
+            <span>↔</span>
+            <div>
+              <strong>Arrastra para reprogramar</strong>
+              <p>En PC puedes mover pendientes, seguimientos y actividades Gantt a otra fecha. En Agenda también puedes cambiar la hora. Los tickets integrados ⇄ se editan desde su módulo origen.</p>
+            </div>
+          </article>
+
+          <div class="planning-calendar-legend">
+            <span><i class="calendar-legend-task"></i>Pendiente</span>
+            <span><i class="calendar-legend-followup"></i>Seguimiento</span>
+            <span><i class="calendar-legend-gantt"></i>Gantt</span>
+            <span><i class="calendar-legend-milestone"></i>Hito</span>
+            <span><i class="calendar-legend-overdue"></i>Vencido</span>
+            <span>⇄ Integrado</span>
+            <span>↻ Recurrente</span>
+          </div>
+
+          <div id="planningCalendarMonthView" class="planning-calendar-mode"></div>
+          <div id="planningCalendarWeekView" class="planning-calendar-mode hidden"></div>
+          <div id="planningCalendarAgendaView" class="planning-calendar-mode hidden"></div>
         </div>
 
         <div id="planningTasksView" class="hidden">
@@ -4456,7 +4529,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js?v=20261011-15"></script>
-  <script src="app.js?v=20261019-17e"></script>
+  <script src="app.js?v=20261020-17f"></script>
 
   <div id="planningReminderCallLayer" class="planning-reminder-call-layer hidden" aria-live="assertive">
     <article class="planning-reminder-call-card">
